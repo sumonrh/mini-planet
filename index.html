@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Little Planet — A Pocket Adventure</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Top-left brand -->
+  <div id="brand" class="pill-dark">
+    <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+      <circle cx="15" cy="17" r="9" stroke="#fff" stroke-width="1" opacity="0.9"/>
+      <ellipse cx="15" cy="17" rx="13" ry="4.5" stroke="#fff" stroke-width="0.8" opacity="0.6" transform="rotate(-20 15 17)"/>
+      <circle cx="24" cy="9" r="1.6" fill="#fff"/>
+      <circle cx="27" cy="14" r="1" fill="#fff" opacity="0.7"/>
+    </svg>
+    <div>
+      <div class="brand-title">LITTLE PLANET</div>
+      <div class="brand-sub">A POCKET ADVENTURE</div>
+    </div>
+  </div>
+
+  <!-- Top-center wonders tracker -->
+  <div id="wonder-tracker" class="pill-dark" title="Curiosity Checklist">
+    <span class="tracker-icon">▤</span>
+    <span id="wonder-count">0 / 7</span>
+    <span class="tracker-label">small wonders</span>
+  </div>
+
+  <!-- Top-right buttons -->
+  <div id="top-right">
+    <button id="btn-globe" class="round-btn" title="Globe view (M)">🌐</button>
+    <button id="btn-sound" class="round-btn" title="Sound on/off">🔊</button>
+    <button id="btn-help" class="round-btn" title="Help">⚙</button>
+  </div>
+
+  <!-- Biome label bottom-left -->
+  <div id="biome-label">
+    <div id="biome-code">FARM · 02</div>
+    <h1 id="biome-name">Greenacre</h1>
+    <p id="biome-desc">Every great adventure starts with a small step.</p>
+  </div>
+
+  <!-- Biome tag bottom-right (arctic style label) -->
+  <div id="biome-tag" class="pill-dark hidden">
+    <div id="biome-tag-code">ARCRE · 01</div>
+    <div id="biome-tag-name">The Arctic</div>
+  </div>
+
+  <!-- Contextual interact bar bottom-center -->
+  <div id="interact-bar" class="hidden">
+    <span id="interact-key">E</span>
+    <span id="interact-kind">A SMALL WONDER</span>
+    <span id="interact-label">Tend the fire</span>
+    <span id="interact-arrow">›</span>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="hidden"></div>
+
+  <!-- Controls hint -->
+  <div id="controls-hint" class="pill-dark">
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
+    <span><kbd>Q</kbd> run</span>
+    <span><kbd>space</kbd> hop</span>
+    <span><kbd>E</kbd> interact</span>
+    <span><kbd>M</kbd> globe</span>
+  </div>
+
+  <!-- Help overlay -->
+  <div id="help-overlay" class="hidden">
+    <div class="help-card">
+      <h2>Little Planet — Pocket Adventure</h2>
+      <p>Explore one tiny planet. Restore its fractured biomes by completing <b>7 Small Wonders</b>.</p>
+      <ul>
+        <li><b>Farmstead:</b> grow the Wondrous Harvest (plant → water → harvest). Feed sheep.</li>
+        <li><b>Fernwood Forest:</b> tend the eternal flame 3×, ring the chapel bell.</li>
+        <li><b>Arctic Reach:</b> meet the polar bear, try ice fishing.</li>
+        <li><b>Shell Cove:</b> collect 3 shells, wade into the lagoon.</li>
+      </ul>
+      <p class="muted">WASD move · Q run · Space hop · E interact · M globe view · drag mouse to orbit</p>
+      <button id="btn-close-help">Start exploring</button>
+    </div>
+  </div>
+
+  <!-- Title intro -->
+  <div id="intro">
+    <div class="intro-code">FOREST - 01</div>
+    <h1>Fernwood</h1>
+    <p>Every great adventure starts with a small step.</p>
+  </div>
+
+  <script>
+    // Dev source entry: needs `npm run dev`. When double-clicked from disk,
+    // forward to the self-contained build instead of showing a dead page.
+    if (location.protocol === 'file:' && !/dist\/index\.html$/.test(location.pathname)) {
+      location.replace('dist/index.html');
+    }
+  </script>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

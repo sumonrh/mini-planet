@@ -1,0 +1,19 @@
+{
+  "name": "little-planet-pocket-adventure",
+  "version": "0.1.0",
+  "description": "Little Planet: A Pocket Adventure — low-poly isometric tiny-planet exploration prototype",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "play": "vite build && vite preview --open"
+  },
+  "dependencies": {
+    "three": "^0.170.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
