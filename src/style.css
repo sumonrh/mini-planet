@@ -22,8 +22,9 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
 #wonder-tracker {
   position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 10;
   display: flex; align-items: center; gap: 10px;
-  padding: 9px 22px; font-size: 13px;
+  padding: 9px 22px; font-size: 13px; cursor: pointer; font-family: inherit;
 }
+#wonder-tracker:hover { background: rgba(40,60,78,0.85); }
 .tracker-icon { opacity: 0.8; }
 .tracker-label { opacity: 0.65; font-size: 12px; }
 #wonder-count { font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -40,13 +41,6 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
 #biome-code { font-size: 11px; letter-spacing: 0.3em; opacity: 0.7; }
 #biome-label h1 { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 500; line-height: 1; margin: 6px 0; }
 #biome-desc { font-size: 13px; opacity: 0.75; line-height: 1.5; }
-
-#biome-tag {
-  position: fixed; right: 18px; bottom: 88px; z-index: 10; text-align: right;
-  padding: 12px 22px; border-radius: 16px;
-}
-#biome-tag-code { font-size: 10px; letter-spacing: 0.3em; opacity: 0.6; }
-#biome-tag-name { font-family: 'Cormorant Garamond', serif; font-size: 34px; }
 .hidden { display: none !important; }
 
 #interact-bar {
@@ -97,11 +91,82 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
   padding: 12px 28px; font-weight: 700; cursor: pointer; font-size: 14px;
 }
 
-#intro {
-  position: fixed; left: 24px; bottom: 170px; z-index: 8; color: #fff; opacity: 0;
-  transition: opacity 1s; pointer-events: none; text-shadow: 0 2px 20px rgba(0,0,0,0.6);
+#biome-label.swap { animation: biomeIn 0.6s ease; }
+@keyframes biomeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* Field journal */
+#journal-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,12,18,0.55); backdrop-filter: blur(3px);
 }
-#intro.show { opacity: 1; }
-#intro .intro-code { font-size: 11px; letter-spacing: 0.3em; opacity: 0.7; }
-#intro h1 { font-family: 'Cormorant Garamond', serif; font-size: 46px; font-weight: 500; }
-#intro p { font-size: 13px; opacity: 0.75; }
+.journal-card { position: relative; max-height: 84vh; overflow-y: auto; min-width: min(430px, calc(100vw - 40px)); }
+.journal-close {
+  position: absolute; right: 16px; top: 12px; font-size: 24px; color: #aabcad;
+  border: none; background: transparent; cursor: pointer; padding: 2px 8px; border-radius: 50%;
+}
+.journal-eyebrow { font-size: 10px; letter-spacing: 0.3em; opacity: 0.65; }
+.journal-sub { opacity: 0.7; font-size: 13px; margin: 4px 0 14px; }
+.journal-progress { height: 3px; background: rgba(255,255,255,0.12); border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+#journal-fill { display: block; height: 100%; width: 0; background: #ffd97a; border-radius: 3px; transition: width 0.5s; }
+.journal-entry {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  background: transparent; border: none; border-radius: 10px; padding: 9px 8px;
+  color: #eaf2f5; cursor: pointer; font-family: inherit;
+}
+.journal-entry:hover { background: rgba(255,255,255,0.06); }
+.entry-num {
+  width: 28px; height: 28px; flex: 0 0 28px; border-radius: 50%;
+  border: 1px solid rgba(255,217,122,0.6); color: #ffd97a;
+  display: flex; align-items: center; justify-content: center; font-size: 10px;
+}
+.journal-entry.done .entry-num { background: #ffd97a; color: #2a2000; }
+.entry-copy { flex: 1; }
+.entry-copy strong { display: block; font-size: 13px; font-weight: 600; }
+.entry-copy span { font-size: 11px; opacity: 0.65; }
+.entry-arrow { opacity: 0.5; }
+
+/* Survival + inventory panel */
+#stats {
+  position: fixed; right: 20px; bottom: 18px; z-index: 10;
+  padding: 10px 16px; font-size: 13px; white-space: nowrap;
+  display: flex; flex-direction: column; gap: 6px;
+}
+#inv-row { display: flex; gap: 7px; align-items: center; font-variant-numeric: tabular-nums; }
+#pack-count { opacity: 0.6; font-size: 11px; margin-left: 4px; }
+.meter { display: flex; gap: 8px; align-items: center; }
+.meter .bar { width: 110px; height: 6px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
+.meter .bar span { display: block; height: 100%; width: 100%; border-radius: 4px; }
+#energy-fill { background: #9df0a8; }
+#cold-fill { background: #9fdcff; width: 0; }
+
+/* Touch controls: hidden unless the device reports touch */
+#touch-ui { display: none; }
+body.touch #touch-ui { display: block; }
+body.touch #controls-hint { display: none; }
+body.touch #stats { bottom: 150px; }
+body.touch #wonder-tracker { top: 68px; }
+body.touch #biome-label { bottom: 252px; max-width: 220px; }
+body.touch #biome-label h1 { font-size: 34px; }
+#stick {
+  position: fixed; left: 24px; bottom: 24px; z-index: 20;
+  width: 124px; height: 124px; border-radius: 50%;
+  background: rgba(16,28,38,0.5); border: 1px solid rgba(255,255,255,0.25);
+  touch-action: none;
+}
+#stick-knob {
+  position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(255,255,255,0.75); transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+#touch-btns {
+  position: fixed; right: 20px; bottom: 24px; z-index: 20;
+  display: flex; gap: 12px; touch-action: none;
+}
+.touch-btn {
+  width: 58px; height: 58px; border-radius: 50%;
+  background: rgba(16,28,38,0.72); color: #fff; font-size: 20px; font-weight: 600;
+  border: 1px solid rgba(255,255,255,0.25);
+  touch-action: none; font-family: inherit;
+}
+.touch-btn:active { background: rgba(255,217,122,0.85); color: #2a2000; }
+#scene { touch-action: none; }

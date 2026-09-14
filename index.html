@@ -25,12 +25,12 @@
     </div>
   </div>
 
-  <!-- Top-center wonders tracker -->
-  <div id="wonder-tracker" class="pill-dark" title="Curiosity Checklist">
+  <!-- Top-center wonders tracker (click opens the field journal) -->
+  <button id="wonder-tracker" class="pill-dark" title="Field journal (J)">
     <span class="tracker-icon">▤</span>
     <span id="wonder-count">0 / 7</span>
     <span class="tracker-label">small wonders</span>
-  </div>
+  </button>
 
   <!-- Top-right buttons -->
   <div id="top-right">
@@ -46,12 +46,6 @@
     <p id="biome-desc">Every great adventure starts with a small step.</p>
   </div>
 
-  <!-- Biome tag bottom-right (arctic style label) -->
-  <div id="biome-tag" class="pill-dark hidden">
-    <div id="biome-tag-code">ARCRE · 01</div>
-    <div id="biome-tag-name">The Arctic</div>
-  </div>
-
   <!-- Contextual interact bar bottom-center -->
   <div id="interact-bar" class="hidden">
     <span id="interact-key">E</span>
@@ -63,12 +57,32 @@
   <!-- Toast -->
   <div id="toast" class="hidden"></div>
 
+  <!-- Survival + inventory panel bottom-right -->
+  <div id="stats" class="pill-dark">
+    <div id="inv-row">🪵<span id="inv-wood">0</span> 🪨<span id="inv-stone">0</span> 🪙<span id="inv-gold">0</span> 🍎<span id="inv-food">2</span> 🐑<span id="inv-wool">0</span> <span id="pack-count">2/10</span></div>
+    <div class="meter"><span>⚡</span><div class="bar"><span id="energy-fill"></span></div></div>
+    <div class="meter"><span>❄️</span><div class="bar"><span id="cold-fill"></span></div></div>
+  </div>
+
+  <!-- Touch controls (shown only on touch devices) -->
+  <div id="touch-ui">
+    <div id="stick"><div id="stick-knob"></div></div>
+    <div id="touch-btns">
+      <button id="btn-act" class="touch-btn" title="Interact">E</button>
+      <button id="btn-hop" class="touch-btn" title="Hop">▲</button>
+      <button id="btn-eat" class="touch-btn" title="Eat">🍎</button>
+      <button id="btn-run" class="touch-btn" title="Run (hold)">🏃</button>
+    </div>
+  </div>
+
   <!-- Controls hint -->
   <div id="controls-hint" class="pill-dark">
-    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>/<kbd>←↑↓→</kbd> walk</span>
     <span><kbd>Q</kbd> run</span>
     <span><kbd>space</kbd> hop</span>
     <span><kbd>E</kbd> interact</span>
+    <span><kbd>F</kbd> eat</span>
+    <span>click map = walk</span>
     <span><kbd>M</kbd> globe</span>
   </div>
 
@@ -76,23 +90,34 @@
   <div id="help-overlay" class="hidden">
     <div class="help-card">
       <h2>Little Planet — Pocket Adventure</h2>
-      <p>Explore one tiny planet. Restore its fractured biomes by completing <b>7 Small Wonders</b>.</p>
+      <p>Explore one tiny planet. Seven worlds, seven small moments — <b>7 Small Wonders</b>.</p>
       <ul>
-        <li><b>Farmstead:</b> grow the Wondrous Harvest (plant → water → harvest). Feed sheep.</li>
-        <li><b>Fernwood Forest:</b> tend the eternal flame 3×, ring the chapel bell.</li>
-        <li><b>Arctic Reach:</b> meet the polar bear, try ice fishing.</li>
-        <li><b>Shell Cove:</b> collect 3 shells, wade into the lagoon.</li>
+        <li><b>Fernwood:</b> tend the eternal flame 3×.</li>
+        <li><b>Clover Fields:</b> water and harvest the rows.</li>
+        <li><b>Sunstone Oasis:</b> wake the oasis spring.</li>
+        <li><b>Shell Cove:</b> ring the dune bell.</li>
+        <li><b>Tideglass Reef:</b> light the lighthouse (you can swim!).</li>
+        <li><b>Ember Heights:</b> scan the volcano — hold still.</li>
+        <li><b>Northlight:</b> wake the aurora at the stones.</li>
+        <li><b>Gather:</b> the axe appears near trees — chop pines, split the fallen trunk, mine basalt, pick berries, shear sheep (E). Nodes regrow.</li>
+        <li><b>Move:</b> WASD, arrow keys, or click anywhere on the planet to walk there.</li>
+        <li><b>Survive:</b> sprinting burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
       </ul>
-      <p class="muted">WASD move · Q run · Space hop · E interact · M globe view · drag mouse to orbit</p>
+      <p class="muted">WASD/arrows move · click map to walk · Q run · Space hop · E interact · F eat food · M globe · J journal · drag mouse to orbit</p>
       <button id="btn-close-help">Start exploring</button>
     </div>
   </div>
 
-  <!-- Title intro -->
-  <div id="intro">
-    <div class="intro-code">FOREST - 01</div>
-    <h1>Fernwood</h1>
-    <p>Every great adventure starts with a small step.</p>
+  <!-- Field journal overlay -->
+  <div id="journal-overlay" class="hidden">
+    <div class="help-card journal-card">
+      <button id="btn-close-journal" class="journal-close" title="Close (J)">×</button>
+      <div class="journal-eyebrow">YOUR FIELD JOURNAL</div>
+      <h2>A world worth wandering.</h2>
+      <p class="journal-sub">Seven small moments. All yours to find.</p>
+      <div class="journal-progress"><span id="journal-fill"></span></div>
+      <div id="journal-list"></div>
+    </div>
   </div>
 
   <script>

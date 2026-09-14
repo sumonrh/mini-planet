@@ -15,19 +15,20 @@ One traversable sphere, 4 biomes, 7 Small Wonders, contextual `E` interactions, 
 - `W A S D` walk · `Q` run · `Space` hop · `E` interact · `M` globe view
 - Drag mouse to orbit the camera slightly.
 
-## The 7 Small Wonders
+## The 7 Worlds & Small Wonders
 
-| # | Wonder | Where | How |
-|---|--------|-------|-----|
-| 1 | 🎃 Wondrous Harvest | Farmstead crop rows | `E` ×3: plant → water → harvest |
-| 2 | 🔥 Eternal Flame | Fernwood campfire | `E` ×3 to tend |
-| 3 | 🔔 Chapel Bell | Fernwood bell frame | `E` to ring |
-| 4 | 🐻‍❄️ Polar Bear | Arctic Reach | `E` to greet |
-| 5 | 🐟 Special Fish | Arctic ice hole | `E` to cast, wait, `E` to pull |
-| 6 | 🐚 Exotic Shell | Shell Cove (3 shells) | `E` at each shell |
-| 7 | 🏝️ Lost Lagoon | Cove shallows (south) | walk south / `E` to wade |
+| # | World | Moment | How |
+|---|-------|--------|-----|
+| 1 | Fernwood | 🔥 Eternal Flame | Campfire `E` ×3 to tend |
+| 2 | Clover Fields | 🌾 Bountiful Harvest | Crop rows `E` ×3: plant → water → harvest |
+| 3 | Sunstone Oasis | ☀️ Wake the Oasis | Spring `E` ×3: brush sand → turn stones → wake |
+| 4 | Shell Cove | 🔔 Ring the Bell | Dune bell `E` to ring |
+| 5 | Tideglass Reef | 💡 Light the Lighthouse | Rock lighthouse `E` to light (swimmable shallows) |
+| 6 | Ember Heights | 🌋 Scan the Volcano | Tripod `E`, hold still 2.5s |
+| 7 | Northlight | 🌌 Wake the Aurora | Stone circle `E` |
 
 At 2 / 4 / 6 wonders the three broken bridges repair. At 7/7 the planet is whole.
+Press `J` (or click the tracker) for the field journal. Deep links: `dist/index.html#oasis` etc. (`fernwood clover oasis cove reef ember north`).
 
 ## Structure
 
