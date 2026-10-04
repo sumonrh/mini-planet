@@ -138,6 +138,113 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
 .meter .bar span { display: block; height: 100%; width: 100%; border-radius: 4px; }
 #energy-fill { background: #9df0a8; }
 #cold-fill { background: #9fdcff; width: 0; }
+#health-fill { background: #ff6b6b; width: 100%; transition: width 0.2s; }
+#health-fill.low { background: #e03131; animation: hpulse 0.8s ease-in-out infinite; }
+@keyframes hpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+/* Damage flash + game over + checkpoint */
+#damage-flash {
+  position: fixed; inset: 0; z-index: 40; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(224,49,49,0) 40%, rgba(224,49,49,0.55) 100%);
+  opacity: 0; transition: opacity 0.1s;
+}
+#damage-flash.show { opacity: 1; }
+#gameover {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  background: rgba(20, 4, 6, 0.78); backdrop-filter: blur(3px);
+}
+.gameover-card { text-align: center; color: #ffe3e3; }
+.gameover-eyebrow { font-size: 11px; letter-spacing: 0.3em; opacity: 0.7; }
+.gameover-card h2 { font-family: 'Cormorant Garamond', serif; font-size: 44px; margin: 8px 0; }
+.gameover-card p { opacity: 0.8; font-size: 14px; }
+#checkpoint-flag {
+  position: fixed; top: 120px; left: 50%; transform: translateX(-50%); z-index: 12;
+  background: rgba(47, 158, 95, 0.95); color: #fff; font-weight: 600; font-size: 13px;
+  padding: 8px 20px; border-radius: 999px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+}
+
+/* NPC trade dialogue (scoped under #npc-overlay so .help-card button can't bleed in) */
+#npc-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,12,18,0.55); backdrop-filter: blur(3px);
+}
+#npc-overlay .npc-card { position: relative; max-height: 84vh; overflow-y: auto; min-width: min(400px, calc(100vw - 40px)); }
+#npc-overlay .journal-close {
+  background: transparent; border: none; border-radius: 50%;
+  padding: 2px 8px; margin-top: 0; font-weight: 400; color: #aabcad;
+}
+#npc-overlay .journal-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+#npc-name { font-family: 'Cormorant Garamond', serif; font-size: 34px; margin: 2px 0 6px; color: #fff; }
+#npc-line { font-size: 13.5px; line-height: 1.6; color: #d7e3e8; opacity: 1; }
+#npc-trades { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+#npc-overlay .npc-trade {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,217,122,0.45);
+  border-radius: 12px; padding: 10px 12px; margin-top: 0;
+  color: #f2f7f9; cursor: pointer; font-family: inherit; font-weight: 400; font-size: 13px;
+}
+#npc-overlay .npc-trade:hover:not(:disabled) { background: rgba(255,217,122,0.18); border-color: rgba(255,217,122,0.8); }
+#npc-overlay .npc-trade:disabled { opacity: 0.55; cursor: default; }
+#npc-overlay .npc-trade .trade-main { flex: 1; }
+#npc-overlay .npc-trade .trade-route { font-size: 13.5px; font-weight: 700; color: #ffd97a; }
+#npc-overlay .npc-trade .trade-blurb { font-size: 11px; color: #c3d2d8; }
+#npc-overlay .npc-trade .trade-count { font-size: 11px; color: #ffd97a; white-space: nowrap; }
+#btn-npc-leave {
+  margin-top: 10px; background: transparent; border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 999px; padding: 9px 22px; color: #eaf2f5; cursor: pointer; font-size: 13px; font-family: inherit;
+}
+#btn-npc-leave:hover { background: rgba(255,255,255,0.08); }
+
+/* Life-sim HUD: day pill, home row, extra need meters, sleep fade */
+#day-pill {
+  position: fixed; top: 74px; left: 20px; z-index: 10;
+  padding: 7px 16px; font-size: 13px; font-weight: 600;
+}
+#home-row { display: flex; gap: 8px; align-items: center; font-size: 12px; opacity: 0.95; }
+#home-row #upkeep { opacity: 0.75; font-size: 11px; margin-left: 2px; }
+#hunger-fill { background: #ffa94d; width: 100%; }
+#warmth-fill { background: #ff8787; width: 100%; }
+#morale-fill { background: #f7a8c4; width: 100%; }
+#sleep-fade {
+  position: fixed; inset: 0; z-index: 55; background: #000;
+  opacity: 0; pointer-events: none; transition: opacity 0.6s;
+}
+#sleep-fade.show { opacity: 1; pointer-events: all; }
+/* Homestead build overlay (same card theme as NPC trades) */
+#build-overlay {
+  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,12,18,0.55); backdrop-filter: blur(3px);
+}
+#build-overlay .npc-card { position: relative; max-height: 86vh; overflow-y: auto; min-width: min(430px, calc(100vw - 40px)); }
+#build-overlay .journal-close {
+  background: transparent; border: none; border-radius: 50%;
+  padding: 2px 8px; margin-top: 0; font-weight: 400; color: #aabcad;
+}
+#build-overlay .journal-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
+#build-title { font-family: 'Cormorant Garamond', serif; font-size: 32px; margin: 2px 0 4px; color: #fff; }
+#build-sub { font-size: 13px; line-height: 1.55; color: #d7e3e8; }
+#build-goals { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.goal-row { font-size: 12px; color: #c3d2d8; display: flex; gap: 8px; align-items: baseline; }
+.goal-row.done { color: #9df0a8; }
+.goal-row .goal-era { color: #ffd97a; font-weight: 700; letter-spacing: 0.08em; font-size: 10px; }
+#build-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+#build-overlay .npc-trade {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(157,240,168,0.4);
+  border-radius: 12px; padding: 10px 12px; margin-top: 0;
+  color: #f2f7f9; cursor: pointer; font-family: inherit; font-weight: 400; font-size: 13px;
+}
+#build-overlay .npc-trade:hover:not(:disabled) { background: rgba(157,240,168,0.14); border-color: rgba(157,240,168,0.8); }
+#build-overlay .npc-trade:disabled { opacity: 0.55; cursor: default; }
+#build-overlay .npc-trade .trade-main { flex: 1; }
+#build-overlay .npc-trade .trade-route { font-size: 13.5px; font-weight: 700; color: #9df0a8; }
+#build-overlay .npc-trade .trade-blurb { font-size: 11px; color: #c3d2d8; }
+#build-overlay .npc-trade .trade-count { font-size: 11px; color: #9df0a8; white-space: nowrap; }
+#btn-build-leave {
+  margin-top: 10px; background: transparent; border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 999px; padding: 9px 22px; color: #eaf2f5; cursor: pointer; font-size: 13px; font-family: inherit;
+}
+#btn-build-leave:hover { background: rgba(255,255,255,0.08); }
 
 /* Touch controls: hidden unless the device reports touch */
 #touch-ui { display: none; }
