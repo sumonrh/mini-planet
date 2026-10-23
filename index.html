@@ -71,7 +71,7 @@
 
   <!-- Survival + inventory panel bottom-right -->
   <div id="stats" class="pill-dark">
-    <div id="inv-row">🪵<span id="inv-wood">0</span> 🪨<span id="inv-stone">0</span> 🪙<span id="inv-gold">0</span> 🍎<span id="inv-food">2</span> 🐑<span id="inv-wool">0</span> 🌿<span id="inv-remedy">0</span> 🥚<span id="inv-egg">0</span> 🥛<span id="inv-milk">0</span> 🍲<span id="inv-meal">0</span> <span id="pack-count">2/10</span></div>
+    <div id="inv-row">🪵<span id="inv-wood">0</span> 🪨<span id="inv-stone">0</span> 🪙<span id="inv-gold">0</span> 🍎<span id="inv-food">2</span> 🐟<span id="inv-fish">0</span> 🐑<span id="inv-wool">0</span> 🌿<span id="inv-remedy">0</span> 🥚<span id="inv-egg">0</span> 🥛<span id="inv-milk">0</span> 🍲<span id="inv-meal">0</span> <span id="pack-count">2/10</span></div>
     <div id="home-row">🏠<span id="home-tier">Tent</span> 👕<span id="clothes-tier">Rags</span> <span id="upkeep">👪 1🍎/day</span></div>
     <div class="meter"><span>❤️</span><div class="bar"><span id="health-fill"></span></div></div>
     <div class="meter"><span>🍽️</span><div class="bar"><span id="hunger-fill"></span></div></div>
@@ -111,7 +111,7 @@
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>/<kbd>←↑↓→</kbd> walk</span>
     <span><kbd>Q</kbd> run</span>
     <span><kbd>space</kbd> hop</span>
-    <span><kbd>E</kbd> talk · trade · fight</span>
+    <span><kbd>E</kbd> talk · fish · board</span>
     <span><kbd>F</kbd> eat</span>
     <span><kbd>R</kbd> remedy</span>
     <span><kbd>H</kbd> homestead</span>
@@ -134,13 +134,14 @@
         <li><b>Ember Heights:</b> scan the volcano — hold still.</li>
         <li><b>Northlight:</b> wake the aurora at the stones.</li>
         <li><b>Gather:</b> your axe is always in hand — chop any pine, palm, or orchard tree, split the fallen trunk, mine basalt, pick berries, shear sheep (E). Nodes regrow.</li>
+        <li><b>Sea skiff:</b> follow the trail south from Shell Cove to the shore skiff. Board with <kbd>E</kbd>, sail with WASD, and press <kbd>E</kbd> in open water to cast and again to reel in a 🐟. Return to shore and press <kbd>E</kbd> to step off.</li>
         <li><b>Move:</b> WASD, arrow keys, or click anywhere on the planet to walk there.</li>
         <li><b>Survive:</b> sprinting burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
         <li><b>Live:</b> hunger, warmth and morale drain daily — cook meals (campfire), sew clothes, sleep in a bed. Press <kbd>H</kbd> for the homestead board: build hut → farmhouse, dig a well, plant plots, raise animals.</li>
         <li><b>Family:</b> befriend Lena or Marina with gifts, craft a sunstone ring, marry, raise kids — every mouth adds upkeep. Hire hands, survive droughts, floods, tornadoes and wolf packs, then retire into your heir.</li>
         <li><b>Bears:</b> adult polar bears attack up close — swing your axe (<kbd>E</kbd>) to fight back. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Save anytime from the pause menu (<kbd>Esc</kbd> → Save Game); death returns you to your last save.</li>
       </ul>
-      <p class="muted">WASD/arrows move · click map to walk · Q run · Space hop · E interact/fight · F eat food · R remedy · M globe · J journal · Esc menu · drag mouse to orbit</p>
+      <p class="muted">WASD/arrows move · click map to walk · Q run/trim · Space hop · E interact/fight/fish · F eat food · R remedy · M globe · J journal · Esc menu · drag mouse to orbit</p>
       <button id="btn-close-help">Start exploring</button>
     </div>
   </div>

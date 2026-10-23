@@ -14,6 +14,8 @@ One traversable sphere, 4 biomes, 7 Small Wonders, contextual `E` interactions, 
 
 - `W A S D` walk · `Q` run · `Space` hop · `E` interact · `M` globe view
 - Drag mouse to orbit the camera slightly.
+- **Sea skiff:** follow the trail south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals.
+- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless.
 
 ## The 7 Worlds & Small Wonders
 

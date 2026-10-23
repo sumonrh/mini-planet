@@ -827,6 +827,104 @@ function makeCrystal(s = 1) {
   return g;
 }
 
+function makeOrchardTree(fruitColor = 0xe8c96a) {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.6, 7), mat(0x7a5230), 0, 0.8, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(1.15, 1), mat(0x3f9a4c), 0, 2.2, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.75, 1), mat(0x4da855), 0.7, 1.7, 0.3, false));
+  const fruitM = mat(fruitColor);
+  for (let a = 0; a < 6; a++) {
+    const aa = (a / 6) * Math.PI * 2;
+    g.add(mesh(new THREE.SphereGeometry(0.11, 6, 5), fruitM,
+      Math.cos(aa) * 0.95, 2.1 + Math.sin(aa * 2) * 0.35, Math.sin(aa) * 0.95, false));
+  }
+  return g;
+}
+function makeAcacia(h = 3.2) {
+  const g = new THREE.Group();
+  const bark = mat(0x8a6238), leafM = mat(0x7da84a), leafL = mat(0x93b957);
+  g.add(mesh(new THREE.CylinderGeometry(0.18, 0.28, h, 6), bark, 0, h / 2, 0));
+  for (let i = 0; i < 3; i++) {
+    const branch = mesh(new THREE.CylinderGeometry(0.06, 0.1, h * 0.62, 5), bark, 0, h * 0.8, 0);
+    branch.rotation.z = (i - 1) * 0.42; branch.rotation.y = i * 2.1;
+    g.add(branch);
+  }
+  for (let i = 0; i < 3; i++) {
+    const crown = mesh(new THREE.SphereGeometry(i ? 0.95 : 1.35, 8, 5), i ? leafL : leafM,
+      (i - 1) * 0.75, h + 0.2 + (i === 0 ? 0.18 : 0), (i % 2 ? 0.35 : -0.3), false);
+    crown.scale.set(1.3, 0.32, 1.1);
+    g.add(crown);
+  }
+  return g;
+}
+function makeEmberTree(h = 3.4) {
+  const g = new THREE.Group();
+  const bark = mat(0x3a2a22), leafM = mat(0x7a3a24, { emissive: 0x5a1c08, emissiveIntensity: 0.35 });
+  g.add(mesh(new THREE.CylinderGeometry(0.16, 0.28, h, 6), bark, 0, h / 2, 0));
+  for (let i = 0; i < 3; i++) {
+    const aa = i * 2.1;
+    const branch = mesh(new THREE.CylinderGeometry(0.04, 0.08, 1.15, 5), bark,
+      Math.cos(aa) * 0.36, h * 0.78, Math.sin(aa) * 0.36);
+    branch.rotation.z = 0.55 * (i - 1); branch.rotation.y = aa;
+    g.add(branch);
+    const crown = mesh(new THREE.IcosahedronGeometry(0.62, 0), leafM,
+      Math.cos(aa) * 0.62, h * 0.95 + 0.22, Math.sin(aa) * 0.62, false);
+    crown.scale.set(1, 0.72, 1);
+    g.add(crown);
+  }
+  return g;
+}
+function makeSkiff() {
+  const g = new THREE.Group();
+  const hullM = mat(0xf3e9dc), trimM = mat(0x2e8b8b), woodM = mat(0x9a6b42);
+  const darkM = mat(0x4a3320), sailM = mat(0xffb35a, { side: THREE.DoubleSide });
+  // pointed low-poly hull, bow toward +Z
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.9, -1.7); shape.lineTo(0.9, -1.7); shape.lineTo(0.9, 0.95);
+  shape.lineTo(0, 1.9); shape.lineTo(-0.9, 0.95); shape.closePath();
+  const hull = mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.55, bevelEnabled: false }), hullM);
+  hull.rotation.x = Math.PI / 2; hull.position.y = 0.55;
+  g.add(hull);
+  g.add(mesh(new THREE.BoxGeometry(1.82, 0.08, 2.7), trimM, 0, 0.17, -0.2, false)); // waterline stripe
+  for (const sx of [-1, 1])
+    g.add(mesh(new THREE.BoxGeometry(0.08, 0.1, 2.6), trimM, sx * 0.86, 0.62, -0.2, false));
+  g.add(mesh(new THREE.BoxGeometry(1.65, 0.12, 0.5), woodM, 0, 0.62, -0.75, false)); // stern bench
+  g.add(mesh(new THREE.BoxGeometry(1.45, 0.1, 0.35), woodM, 0, 0.58, 0.25, false)); // rowing bench
+  g.add(mesh(new THREE.BoxGeometry(0.5, 0.35, 0.55), woodM, 0.55, 0.78, -1.1, false)); // fish crate
+  for (const sx of [-1, 1]) {
+    const oar = mesh(new THREE.CylinderGeometry(0.035, 0.045, 2.2, 5), woodM, sx * 1.05, 0.65, -0.25);
+    oar.rotation.z = sx * 0.25; oar.rotation.x = 0.12;
+    g.add(oar);
+    oar.add(mesh(new THREE.BoxGeometry(0.18, 0.04, 0.3), trimM, 0, -1.05, 0, false));
+  }
+  g.add(mesh(new THREE.CylinderGeometry(0.045, 0.07, 3.4, 6), woodM, 0, 2.15, -0.1)); // mast
+  g.add(mesh(new THREE.BoxGeometry(0.06, 0.06, 2.05), woodM, 0, 1.5, 0.7, false)); // boom
+  const sailShape = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(0, 2.1), new THREE.Vector2(1.45, 0)]);
+  const sail = mesh(new THREE.ShapeGeometry(sailShape), sailM, -0.72, 1.55, 0, false);
+  g.add(sail);
+  const flag = mesh(new THREE.BoxGeometry(0.5, 0.22, 0.02), mat(0xe0654a, { side: THREE.DoubleSide }), 0.25, 3.85, 0, false);
+  g.add(flag);
+  // stern lantern
+  const lantern = new THREE.Group(); lantern.position.set(-0.6, 0.85, -1.45); g.add(lantern);
+  lantern.add(mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.5, 5), darkM, 0, 0, 0, false));
+  lantern.add(mesh(new THREE.BoxGeometry(0.2, 0.28, 0.2), mat(0xffe9a3, { emissive: 0xffb35a, emissiveIntensity: 1.2 }), 0, 0.32, 0, false));
+  // fishing rod + line, shown while the line is cast
+  const rig = new THREE.Group(); rig.visible = false; g.add(rig);
+  const rodBase = V3(0.55, 0.72, -1.15), rodTip = V3(1.5, 2.45, -1.75);
+  const rod = mesh(new THREE.CylinderGeometry(0.025, 0.045, 1.9, 5), woodM);
+  rod.position.copy(rodBase).lerp(rodTip, 0.5);
+  rod.quaternion.setFromUnitVectors(UP, rodTip.clone().sub(rodBase).normalize());
+  rig.add(rod);
+  const bobberHome = V3(1.55, 0.12, -3.15);
+  const bobber = new THREE.Group(); bobber.position.copy(bobberHome); rig.add(bobber);
+  bobber.add(mesh(new THREE.SphereGeometry(0.11, 7, 6), mat(0xe04a3a), 0, 0, 0, false));
+  bobber.add(mesh(new THREE.SphereGeometry(0.11, 7, 6), mat(0xf3e9dc), 0, 0.09, 0, false));
+  const line = mesh(new THREE.CylinderGeometry(0.008, 0.008, 1, 4), mat(0xffffff, { transparent: true, opacity: 0.8 }), 0, 0, 0, false);
+  rig.add(line);
+  g.userData = { sail, flag, rig, bobber, bobberHome, rodTip, line };
+  return g;
+}
+
 function makeBush() {
   const g = new THREE.Group();
   g.add(mesh(new THREE.IcosahedronGeometry(0.7, 1), mat(0x2f9e5f), 0, 0.5, 0));
@@ -1239,6 +1337,15 @@ let cropSpots = [];
     const placed = put(tree, latC + ola, lonC + olo, 0, rand(3));
     addChoppableTree(placed, latC + ola, lonC + olo, 'Apple Tree');
   }
+  // pear and plum rows continue the orchard toward the south pasture
+  for (const [ola, olo, fruit] of [
+    [-6, -10, 0xe8c96a], [-7, -12, 0xe8c96a], [-2, -9, 0xd97a9a],
+    [-3, -11, 0xd97a9a], [-8, -7, 0xe8c96a], [-6, -5, 0xd97a9a],
+  ]) {
+    const tree = makeOrchardTree(fruit);
+    const placed = put(tree, latC + ola, lonC + olo, 0, rand(3));
+    addChoppableTree(placed, latC + ola, lonC + olo, fruit === 0xe8c96a ? 'Pear Tree' : 'Plum Tree');
+  }
 }
 
 // ---------- WHISPERING FOREST ----------
@@ -1471,7 +1578,7 @@ function bearSurfaceOrient(bear) {
   fm.add(mesh(new THREE.SphereGeometry(0.42, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xc93a3a), 0, 2.15, 0, false));
   put(fm, 57.5, 120, 0, -1.2);
   // pines at border
-  scatterOnSphere(g, 46, 135, 6, 14, () => makeTree(rand(2, 3.4)), addChoppableTree);
+  scatterOnSphere(g, 46, 135, 6, 22, () => makeTree(rand(2, 3.4)), addChoppableTree);
   steppingStones([[52, 92], [54, 96], [55, 100], [56, 104], [57, 108], [58, 112]], 0xdceef7, 0.4);
 }
 
@@ -1486,7 +1593,7 @@ const shellMeshes = [];
     g.add(obj); return obj;
   };
   // palms, but keep a clearing around the dune bell (14,279) + spawn view (13,277)
-  for (let i = 0, placed = 0; i < 40 && placed < 14; i++) {
+  for (let i = 0, placed = 0; i < 70 && placed < 20; i++) {
     const la = 14 + rand(-12, 12), lo = 285 + rand(-12, 12);
     if (Math.hypot(la - 14, lo - 279) < 6 || Math.hypot(la - 13, lo - 277) < 4) continue;
     const base = latLonToVec3(la, lo, 0);
@@ -1620,9 +1727,177 @@ const shellMeshes = [];
     });
   }
   lagoonCenter = latLonToVec3(-14, 288, 0.4);
-  // swimmer NPC marker (player goes here for lagoon wonder)
-  steppingStones([[10, 282], [8, 284], [6, 286], [4, 288], [0, 288], [-4, 288]], 0xffffff, 0.35);
+  // trail from the beach to the southern shore where the sea skiff is moored
+  steppingStones([[10, 282], [8, 284], [6, 286], [4, 288], [0, 288], [-4, 288], [-8, 288], [-12, 288], [-16, 288]], 0xffffff, 0.35);
 }
+
+// ---------- SEA SKIFF: a usable boat on the southern shore ----------
+const SKIFF_SPAWN = { lat: -20.2, lon: 290 };
+const SKIFF_SPAWN_N = latLonToVec3(SKIFF_SPAWN.lat, SKIFF_SPAWN.lon, 0).normalize();
+const SKIFF_SPAWN_HEADING = latLonToVec3(-23, SKIFF_SPAWN.lon, 0)
+  .sub(latLonToVec3(SKIFF_SPAWN.lat, SKIFF_SPAWN.lon, 0));
+SKIFF_SPAWN_HEADING.addScaledVector(SKIFF_SPAWN_N, -SKIFF_SPAWN_HEADING.dot(SKIFF_SPAWN_N)).normalize();
+let boatN = SKIFF_SPAWN_N.clone();
+let boatHeading = SKIFF_SPAWN_HEADING.clone();
+let inBoat = false;
+const boatGroup = makeSkiff();
+boatGroup.name = 'sea-skiff';
+scene.add(boatGroup);
+{
+  // wooden pier + sign guiding the player off the beach and onto the water
+  const dock = new THREE.Group();
+  const dockM = mat(0x9a6b42), dockDark = mat(0x6e4e2c);
+  for (let i = 0; i < 5; i++)
+    dock.add(mesh(new THREE.BoxGeometry(1.5, 0.12, 0.62), dockM, 0, 0, i * 0.68));
+  for (const sx of [-0.58, 0.58]) for (let i = 0; i < 5; i += 2)
+    dock.add(mesh(new THREE.BoxGeometry(0.14, 1.0, 0.14), dockDark, sx, -0.42, i * 0.68 + 0.15, false));
+  const dockN = latLonToVec3(-18.4, 288, 0).normalize();
+  const dockPos = dockN.clone().multiplyScalar(R + 0.34);
+  const dockDir = latLonToVec3(-22, 288, 0).sub(latLonToVec3(-18.4, 288, 0));
+  faceAlong(dock, dockPos, dockDir.normalize());
+  scene.add(dock);
+
+  const sign = new THREE.Group();
+  const cv = document.createElement('canvas'); cv.width = 256; cv.height = 112;
+  const cx = cv.getContext('2d');
+  cx.fillStyle = '#6e4e2c'; cx.fillRect(0, 0, 256, 112);
+  cx.strokeStyle = '#3d2a18'; cx.lineWidth = 10; cx.strokeRect(5, 5, 246, 102);
+  cx.fillStyle = '#f3e9dc'; cx.font = 'bold 31px Georgia, serif';
+  cx.textAlign = 'center'; cx.textBaseline = 'middle';
+  cx.fillText('SEA SKIFF', 128, 42); cx.font = 'bold 22px Inter, sans-serif'; cx.fillText('SOUTH SHORE', 128, 80);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  sign.add(mesh(new THREE.CylinderGeometry(0.08, 0.1, 1.7, 6), dockDark, 0, 0.85, 0));
+  sign.add(mesh(new THREE.BoxGeometry(2.1, 0.95, 0.1), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }), 0, 1.65, 0, false));
+  const signN = latLonToVec3(-15.2, 288, 0).normalize();
+  const signPos = signN.clone().multiplyScalar(R + heightFor(signN) + 0.08);
+  const signDir = latLonToVec3(-14, 288, 0).sub(latLonToVec3(-15.2, 288, 0));
+  faceAlong(sign, signPos, signDir.normalize());
+  scene.add(sign);
+}
+
+function nearestLand(posN, reach = 6.5) {
+  const n = posN.clone().normalize();
+  const east = V3(-n.z, 0, n.x);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(n, east).normalize();
+  let best = null, bestD = reach / R;
+  for (let i = 0; i < 20; i++) {
+    const a = (i / 20) * Math.PI * 2;
+    const dir = east.clone().multiplyScalar(Math.cos(a)).addScaledVector(north, Math.sin(a));
+    const p = n.clone().addScaledVector(dir, reach / R).normalize();
+    if (heightFor(p) >= 0.12) {
+      const d = n.angleTo(p);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+  }
+  if (!best) return null;
+  return best.multiplyScalar(R + heightFor(best) + 0.1);
+}
+function boatBob(t) {
+  return Math.sin(t * 1.3) * 0.045 + Math.sin(t * 0.7 + 1) * 0.02;
+}
+function updateBoatVisual(t) {
+  const bob = boatBob(t);
+  const pos = boatN.clone().multiplyScalar(R + 0.02 + bob);
+  boatGroup.position.copy(pos);
+  faceAlong(boatGroup, pos, boatHeading);
+  boatGroup.rotateZ(Math.sin(t * 1.1) * 0.025);
+  boatGroup.rotateX(Math.sin(t * 0.9 + 1) * 0.012);
+  const u = boatGroup.userData;
+  const fishing = inBoat && fishStage === 1;
+  if (u.rig) {
+    u.rig.visible = fishing;
+    if (fishing) {
+      const bobber = u.bobberHome.clone();
+      bobber.y += Math.sin(t * 5) * 0.04 - 0.02;
+      u.bobber.position.copy(bobber);
+      const a = u.rodTip, b = bobber;
+      u.line.position.copy(a).lerp(b, 0.5);
+      u.line.scale.y = Math.max(0.01, a.distanceTo(b));
+      u.line.quaternion.setFromUnitVectors(UP, b.clone().sub(a).normalize());
+    }
+  }
+  if (u.sail) u.sail.scale.x = 1 + Math.sin(t * 2.2) * 0.03;
+  if (u.flag) u.flag.rotation.y = Math.sin(t * 3.2) * 0.16;
+  boatInteract.pos.copy(pos);
+}
+function boardBoat() {
+  if (inBoat || playerDead) return;
+  inBoat = true;
+  fishStage = 0;
+  player.visible = false;
+  player.position.copy(boatN).multiplyScalar(R + 0.64 + boatBob(clock.elapsedTime));
+  playerPos.copy(player.position);
+  facing.copy(boatHeading);
+  moveDirSmooth.copy(boatHeading);
+  lastBehind.copy(boatHeading);
+  moveTargetN = null;
+  playerVel = 0; hopH = 0;
+  burst(player.position.clone(), 0x9fdcff, 12, 1.5);
+  chime(520);
+  toast('⛵ Aboard the skiff — WASD to sail, Q to trim, E to fish or dock.');
+}
+function leaveBoat() {
+  if (!inBoat) return;
+  const land = nearestLand(boatN);
+  if (!land) return toast('🌊 Too deep — sail closer to shore to step off.');
+  inBoat = false;
+  fishStage = 0;
+  player.visible = true;
+  const n = land.clone().normalize();
+  playerPos.copy(n).multiplyScalar(R + heightFor(n) + 0.1);
+  player.position.copy(playerPos);
+  const dir = land.clone().sub(boatGroup.position);
+  dir.addScaledVector(n, -dir.dot(n));
+  if (dir.lengthSq() > 1e-6) { facing.copy(dir.normalize()); moveDirSmooth.copy(facing); lastBehind.copy(facing); }
+  moveTargetN = null;
+  burst(player.position.clone(), 0x9fdcff, 10, 1.2);
+  chime(500);
+  toast('⛵ Tied up. The skiff waits by the shore.');
+}
+function boatUse() {
+  if (playerDead) return;
+  if (!inBoat) return boardBoat();
+  if (fishStage === 1) return fishFrom('sea');
+  if (nearestLand(boatN)) return leaveBoat();
+  fishFrom('sea');
+}
+function restoreBoatState(b) {
+  boatN.copy(SKIFF_SPAWN_N);
+  boatHeading.copy(SKIFF_SPAWN_HEADING);
+  if (b && Array.isArray(b.pos)) {
+    const n = V3().fromArray(b.pos);
+    if (Number.isFinite(n.x) && n.lengthSq() > 0.5) {
+      n.normalize();
+      if (heightFor(n) < 0.12) boatN.copy(n);
+    }
+  }
+  if (b && Array.isArray(b.heading)) {
+    const h = V3().fromArray(b.heading);
+    h.addScaledVector(boatN, -h.dot(boatN));
+    if (h.lengthSq() > 1e-6) boatHeading.copy(h.normalize());
+  }
+  inBoat = !!(b && b.inBoat);
+  if (b && b.fishSource) fishSource = b.fishSource;
+  player.visible = !inBoat;
+  if (inBoat) {
+    player.position.copy(boatN).multiplyScalar(R + 0.64 + boatBob(clock.elapsedTime));
+    playerPos.copy(player.position);
+    facing.copy(boatHeading); moveDirSmooth.copy(boatHeading); lastBehind.copy(boatHeading);
+  }
+}
+const boatInteract = {
+  id: 'skiff', pos: boatGroup.position.clone(), radius: 5.2, kind: '⛵ SEA SKIFF',
+  label: () => {
+    if (!inBoat) return 'Board the sea skiff';
+    if (fishStage === 1) return 'Reel in the line';
+    return nearestLand(boatN) ? 'Step ashore' : 'Cast a line';
+  },
+  onUse: boatUse,
+};
+addInteract(boatInteract);
 
 // ---------- SUNSTONE OASIS ----------
 let oasisPond;
@@ -1654,6 +1929,12 @@ const sunstoneMats = [];
     c.add(mesh(new THREE.CapsuleGeometry(0.18, 0.7, 3, 6), cactusM, 0.45, h * 0.55, 0));
     c.children[1].rotation.z = -0.5;
     put(c, latC + rand(-8, 8), lonC + rand(-15, 15), 0, rand(3));
+  }
+  // heat-hardy acacias around the green secret
+  for (const [la, lo] of [[16, 100], [13, 121], [7, 98], [5, 122], [17, 112], [2, 103]]) {
+    const tree = makeAcacia(rand(2.8, 4.0));
+    put(tree, la, lo, 0, rand(3));
+    addChoppableTree(tree, la, lo, 'Acacia', 0xd9b166);
   }
   // red tent
   put(mesh(new THREE.ConeGeometry(1.7, 2.0, 4), mat(0xc9573a), 0, 1.0, 0), latC + 2, lonC + 7, 0, 0.4);
@@ -1841,6 +2122,12 @@ let reefPivot, reefBeamM, reefLampM, reefLight;
   put(rb, -6, 220, 0.35, 0.7);
   const rbHome = rb.position.clone();
   tickers.push((t) => { rb.position.copy(rbHome); rb.position.y += Math.sin(t * 1.8) * 0.07; rb.rotation.x = Math.sin(t * 1.4) * 0.05; });
+  // salt-tolerant palms on the lighthouse island
+  for (const [la, lo] of [[6, 226], [0, 236], [-3, 228], [5, 232]]) {
+    const palm = makePalm();
+    put(palm, la, lo, 0, rand(3));
+    addChoppableTree(palm, la, lo, 'Palm', 0x2f9e5f);
+  }
   // pale sandbar stones
   for (let i = 0; i < 5; i++)
     put(mesh(new THREE.DodecahedronGeometry(rand(0.3, 0.6), 0), mat(0xefe0ae), 0, 0.15, 0, false), rand(5, 9), rand(205, 248), 0.1, rand(3));
@@ -2063,6 +2350,12 @@ for (const [la, lo] of [[13, 324], [14, 320], [11, 318]]) {
     roll.rotation.z = Math.PI / 2; camp.add(roll); // bedroll
     camp.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat(0x9a6b42), -1.5, 0.25, -0.6, false)); // supply crate
     put(camp, 6, 320, 0, 0.9);
+  }
+  // charred ember trees cling to the volcano's lower slopes
+  for (const [la, lo] of [[8, 318], [17, 312], [20, 344], [9, 345], [5, 325], [15, 306]]) {
+    const tree = makeEmberTree(rand(2.8, 4.2));
+    put(tree, la, lo, 0, rand(3));
+    addChoppableTree(tree, la, lo, 'Ember Tree', 0xd96a2f);
   }
   steppingStones([[2, 328], [5, 328], [8, 328], [11, 328], [14, 329]], 0x8a7a6a, 0.4);
 }
@@ -2443,7 +2736,8 @@ const wonders = [
   { id: 'scan', icon: '🌋', name: 'Scan the Volcano', world: 5, done: false, stage: 0 },
   { id: 'aurora', icon: '🌌', name: 'Wake the Aurora', world: 6, done: false },
 ];
-let fishStage = 0; // flavor minigame state (no longer a wonder)
+let fishStage = 0; // 0 = idle, 1 = line cast / waiting to reel
+let fishSource = 'ice'; // 'ice' at the arctic hole, 'sea' from the skiff
 let scanTimer = null;
 let scanPos = null; // assigned after anchor() is defined below
 function renderCollection() {
@@ -2488,13 +2782,13 @@ function toggleJournal(force) {
 renderCollection();
 
 // ---------- inventory + survival meters (step 1: food/energy/cold + health/remedy) ----------
-const inv = { wood: 0, stone: 0, gold: 0, food: 2, wool: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
+const inv = { wood: 0, stone: 0, gold: 0, food: 2, fish: 0, wool: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
 const meters = { energy: 100, cold: 0, health: 100, hunger: 100, warmth: 100, morale: 80 };
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
 let lastDamageT = -99; // last time the player took a hit (for slow recovery)
 const PACK_BASE = 10;
-function packSize() { return inv.wood + inv.stone + inv.gold + inv.food + inv.wool + inv.remedy + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0); }
+function packSize() { return inv.wood + inv.stone + inv.gold + inv.food + (inv.fish || 0) + inv.wool + inv.remedy + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0); }
 function packCap() { return PACK_BASE; } // +Big Pack research later
 function addItem(id, n = 1) {
   if (packSize() + n > packCap()) { toast('🎒 Pack full! (capacity ' + packCap() + ')'); return false; }
@@ -2516,6 +2810,7 @@ function eatFood() {
     { k: 'meal', hunger: 55, energy: 25 },
     { k: 'milk', hunger: 18, energy: 8 },
     { k: 'food', hunger: 22, energy: 12 },
+    { k: 'fish', hunger: 26, energy: 10 },
     { k: 'egg', hunger: 12, energy: 6 },
   ];
   const m = menu.find((x) => (inv[x.k] || 0) > 0);
@@ -2557,7 +2852,7 @@ function setText(id, v) {
 }
 function renderStats() {
   setText('inv-wood', inv.wood); setText('inv-stone', inv.stone); setText('inv-gold', inv.gold);
-  setText('inv-food', inv.food); setText('inv-wool', inv.wool); setText('inv-remedy', inv.remedy);
+  setText('inv-food', inv.food); setText('inv-fish', inv.fish || 0); setText('inv-wool', inv.wool); setText('inv-remedy', inv.remedy);
   setText('inv-egg', inv.egg || 0); setText('inv-milk', inv.milk || 0); setText('inv-meal', inv.meal || 0);
   setText('pack-count', packSize() + '/' + packCap());
   setText('home-tier', Home.build ? `Building ${HOUSE_BUILD_NAMES[Home.build.target] || 'home'}…` : (Home.house >= 2 ? `Farmhouse T${Home.house - 1}` : (Home.house === 1 ? 'Hut' : 'Tent')));
@@ -2578,6 +2873,11 @@ function renderStats() {
 }
 window.__lp = {
   inv, meters, tools, nodes, player, addItem, eatFood, packSize, packCap,
+  boat: {
+    get pos() { return boatGroup.position.toArray(); },
+    get inBoat() { return inBoat; },
+    board: boardBoat, leave: leaveBoat, use: boatUse, mesh: boatGroup,
+  },
   hasTarget: () => !!moveTargetN,
   goto(lat, lon, flat, flon) { // debug teleport (also the future fast-travel hook)
     playerPos = latLonToVec3(lat, lon, 0);
@@ -2642,6 +2942,33 @@ for (const [i, b] of bears.entries()) {
   addInteract(it);
 }
 addInteract({ id: 'fish', pos: anchor(57, 118), kind: 'ICE FISHING', label: () => (fishStage === 1 ? 'Pull! (E)' : 'Cast the line'), onUse });
+
+function fishFrom(source) {
+  if (playerDead) return;
+  if (fishStage === 0) {
+    fishSource = source;
+    fishStage = 1;
+    chime(440);
+    toast(source === 'sea' ? '🎣 Line cast into the blue — wait, then press E.' : '🎣 Line cast… wait… then press E again!');
+    setTimeout(() => {
+      if (fishStage === 1 && fishSource === source) toast('❗ Nibble! Press E now!');
+    }, 2200);
+  } else {
+    const sea = fishSource === 'sea';
+    fishStage = 0;
+    if (sea) {
+      if (!addItem('fish', 1)) return;
+      burst(player.position.clone(), 0x7ad9ff, 22, 2.6);
+      chime(660);
+      toast('🐟 A bright sea catch! (+1 fish — F to eat, or cook it)');
+    } else {
+      if (!addItem('food', 1)) return;
+      burst(player.position.clone(), 0x7ad9ff, 22, 2.6);
+      chime(660);
+      toast('🐟 A flashing little marvel! (+1 food)');
+    }
+  }
+}
 addInteract({ id: 'shell', pos: anchor(4, 284), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
 addInteract({ id: 'shell2', pos: anchor(2, 287), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
 addInteract({ id: 'shell3', pos: anchor(8, 290), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
@@ -2721,10 +3048,7 @@ function onUse(it) {
       burst(p, 0xffffff, 20, 2.2); chime(500); toast('The bear regards you with ancient calm.');
     }
   } else if (it.id === 'fish') {
-    if (fishStage === 0) {
-      fishStage = 1; chime(440); toast('🎣 Line cast… wait… then press E again!');
-      setTimeout(() => { if (fishStage === 1) toast('❗ Nibble! Press E now!'); }, 2200);
-    } else { fishStage = 0; addItem('food', 1); burst(p, 0x7ad9ff, 22, 2.6); chime(660); toast('🐟 A flashing little marvel! (+1 food)'); }
+    fishFrom('ice');
   } else if (it.id.startsWith('shell')) {
     const idx = { shell: 0, shell2: 1, shell3: 2 }[it.id];
     const sh = shellMeshes[idx];
@@ -2819,6 +3143,9 @@ function killBear(b) {
 function killPlayer() {
   if (playerDead) return;
   playerDead = true;
+  inBoat = false;
+  fishStage = 0;
+  player.visible = true;
   if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
   moveTargetN = null;
   burst(player.position.clone(), 0xe03131, 30, 3);
@@ -2989,7 +3316,7 @@ tickers.push((t, dt) => updateBears(t, dt));
 
 // ---------- villagers: one friendly face per zone, each happy to trade ----------
 // Gold has no wild source — villagers are how it enters the traveler's pack.
-const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', wool: '🐑', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
+const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fish: '🐟', wool: '🐑', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
 const fmtItems = (obj) => Object.entries(obj).map(([k, n]) => `${n} ${ITEM_ICON[k] || k}`).join(' + ') || '—';
 function makeVillager({ coat = 0xe8a33d, hat = 'straw', hatColor = 0xe8d27a, skin = 0xf2c49b } = {}) {
   const g = new THREE.Group();
@@ -3266,7 +3593,7 @@ const Life = {
   kids: [], workers: [], forecast: null, festival: false,
   nights: 0, lastGift: {}, kidSeq: 0,
   stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false },
-  rot: { food: 0, egg: 0, milk: 0, meal: 0 },
+  rot: { food: 0, fish: 0, egg: 0, milk: 0, meal: 0 },
   chronicle: [],
 };
 function seasonOf(day) { return Math.floor((day - 1) / DAYS_PER_SEASON) % 4; }
@@ -3456,7 +3783,7 @@ function overnightNeeds(rested) {
   let ate = 0;
   while (ate < need) {
     let took = false;
-    for (const k of ['egg', 'milk', 'food']) { if (inv[k] > 0) { inv[k]--; ate++; took = true; break; } }
+    for (const k of ['fish', 'egg', 'milk', 'food']) { if (inv[k] > 0) { inv[k]--; ate++; took = true; break; } }
     if (!took) break;
   }
   if (ate < need) {
@@ -3469,10 +3796,10 @@ function overnightNeeds(rested) {
 }
 function cookMeal() {
   if (playerDead) return;
-  const have = (inv.food || 0) + (inv.egg || 0) + (inv.milk || 0);
-  if (have < 2) return toast('🍲 Need 2 produce (🍎/🥚/🥛) to cook a meal.');
+  const have = (inv.food || 0) + (inv.fish || 0) + (inv.egg || 0) + (inv.milk || 0);
+  if (have < 2) return toast('🍲 Need 2 produce (🍎/🐟/🥚/🥛) to cook a meal.');
   let need = 2;
-  for (const k of ['food', 'egg', 'milk']) { while (need > 0 && inv[k] > 0) { inv[k]--; need--; } }
+  for (const k of ['fish', 'food', 'egg', 'milk']) { while (need > 0 && inv[k] > 0) { inv[k]--; need--; } }
   inv.meal = (inv.meal || 0) + 1; // net −1 pack, always fits
   meters.energy = Math.min(100, meters.energy + 5);
   burst(homeFirePos ? homeFirePos.clone() : player.position.clone(), 0xffb35a, 14, 2);
@@ -3488,7 +3815,7 @@ tickers.push((t, dt) => {
     meters.energy = Math.max(0, meters.energy - 3 * dt);
     if (!hungerWarned) { hungerWarned = true; toast('🍽️ Starving! Eat something (F).'); chime(200); }
   } else if (meters.hunger > 30) hungerWarned = false;
-  const stock = inv.food + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0);
+  const stock = inv.food + (inv.fish || 0) + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0);
   if (stock > Life.stats.maxFood) Life.stats.maxFood = stock;
   if (Life.grief > 0) Life.grief = Math.max(0, Life.grief - dt / 120);
   const mt = moraleTarget();
@@ -4235,6 +4562,198 @@ function makeCow() {
   };
   return g;
 }
+function makeDeer() {
+  const g = new THREE.Group();
+  const hideM = furM('deer', 0xa86f42, ['#8a5a33', '#d9a66a', '#f3e9dc'], { n: 95, rMin: 1, rMax: 3, aMax: 0.35 });
+  const creamM = mat(0xf3e9dc), darkM = mat(0x2a211b), antlerM = mat(0x6e543b);
+  const body = new THREE.Group(); body.position.set(0, 1.12, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.55, 12, 9), hideM, 0, 0, 0);
+  torso.scale.set(0.9, 0.9, 1.55); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.4, 10, 8), hideM, 0, 0.04, 0.58, false));
+  for (const [sx, sz] of [[-0.22, 0.1], [0.24, -0.25], [0, -0.6]])
+    body.add(mesh(new THREE.SphereGeometry(0.075, 6, 5), creamM, sx, 0.43, sz, false)); // fawn spots
+  const neck = new THREE.Group(); neck.position.set(0, 0.2, 0.55); neck.rotation.x = -0.38; body.add(neck);
+  neck.add(mesh(new THREE.CylinderGeometry(0.18, 0.25, 0.9, 7), hideM, 0, 0.42, 0));
+  const head = new THREE.Group(); head.position.set(0, 0.92, 0.02); neck.add(head);
+  const skull = mesh(new THREE.SphereGeometry(0.24, 10, 8), hideM, 0, 0, 0.06);
+  skull.scale.set(0.9, 0.95, 1.2); head.add(skull);
+  head.add(mesh(new THREE.SphereGeometry(0.16, 8, 6), creamM, 0, -0.05, 0.28, false));
+  head.add(mesh(new THREE.SphereGeometry(0.06, 6, 5), darkM, 0, -0.04, 0.41, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), darkM, sx * 0.13, 0.08, 0.22, false));
+    const ear = mesh(new THREE.ConeGeometry(0.1, 0.34, 6), hideM, sx * 0.2, 0.2, 0, false);
+    ear.rotation.z = sx * 0.7; ear.rotation.x = -0.25; head.add(ear);
+    const ant = new THREE.Group(); ant.position.set(sx * 0.11, 0.2, 0); head.add(ant);
+    ant.add(mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.52, 5), antlerM, 0, 0.24, 0, false));
+    const tine = mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.32, 5), antlerM, sx * 0.1, 0.36, 0, false);
+    tine.rotation.z = -sx * 0.65; ant.add(tine);
+    const tine2 = mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.26, 5), antlerM, -sx * 0.08, 0.12, 0, false);
+    tine2.rotation.z = sx * 0.8; ant.add(tine2);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.15, -0.82); body.add(tail);
+  tail.add(mesh(new THREE.ConeGeometry(0.1, 0.38, 6), creamM, 0, -0.15, -0.03, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.28, 0.52], [-0.28, 0.52], [0.28, -0.52], [-0.28, -0.52]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.72, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.62, 6), hideM, 0, -0.3, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.13, 0.1, 0.18), darkM, 0, -0.63, 0.02, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.userData.anim = {
+    legs, head, tail, body, bodyBob: 0.04, cadence: 5.5, amp: 0.5,
+    graze: 0.65, grazeSpeed: 0.3, headDrop: 0.16, tailAmp: 0.3, tailSpeed: 2.2,
+  };
+  return g;
+}
+function makeHare(base = 0xc9a070, tones = ['#b9885a', '#f3e9dc']) {
+  const g = new THREE.Group();
+  const fur = furM('hare' + base, base, tones, { n: 55, rMin: 1, rMax: 2.2, aMax: 0.25 });
+  const creamM = mat(0xf3e9dc), darkM = mat(0x2a211b), pinkM = mat(0xe8a9a0);
+  const body = new THREE.Group(); body.position.set(0, 0.5, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.28, 10, 8), fur, 0, 0, 0);
+  torso.scale.set(0.95, 0.9, 1.25); body.add(torso);
+  const head = new THREE.Group(); head.position.set(0, 0.22, 0.28); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.18, 9, 7), fur, 0, 0, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.1, 7, 6), creamM, 0, -0.04, 0.16, false));
+  head.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), pinkM, 0, -0.01, 0.25, false));
+  const ears = [], earBase = [];
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.03, 6, 5), darkM, sx * 0.1, 0.06, 0.12, false));
+    const ear = new THREE.Group(); ear.position.set(sx * 0.08, 0.13, -0.02); head.add(ear);
+    ear.add(mesh(new THREE.CapsuleGeometry(0.055, 0.32, 3, 6), fur, 0, 0.2, 0, false));
+    ear.add(mesh(new THREE.CapsuleGeometry(0.028, 0.26, 3, 5), pinkM, 0, 0.2, 0.03, false));
+    ear.rotation.z = sx * 0.15; ear.rotation.x = -0.12;
+    ears.push(ear); earBase.push(ear.rotation.z);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.08, -0.3); body.add(tail);
+  tail.add(mesh(new THREE.SphereGeometry(0.1, 7, 6), creamM, 0, 0, 0, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.14, 0.18], [-0.14, 0.18], [0.16, -0.2], [-0.16, -0.2]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.38, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.25, 5), fur, 0, -0.13, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.09, 0.06, 0.14), creamM, 0, -0.26, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.userData.anim = {
+    legs, head, tail, ears, earBase, body, bodyBob: 0.1, cadence: 8, amp: 0.65,
+    graze: 0.45, grazeSpeed: 1.4, headDrop: 0.06, tailAmp: 0.15, tailSpeed: 3.5,
+  };
+  return g;
+}
+function makeFennec() {
+  const g = new THREE.Group();
+  const fur = furM('fennec', 0xe3b77a, ['#c99758', '#f3e2b8', '#6e4e30'], { n: 70, rMin: 1, rMax: 2.4, aMax: 0.3 });
+  const creamM = mat(0xf3e9dc), darkM = mat(0x2a211b), pinkM = mat(0xd98f86);
+  const body = new THREE.Group(); body.position.set(0, 0.56, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.3, 10, 8), fur, 0, 0, 0);
+  torso.scale.set(0.85, 0.8, 1.3); body.add(torso);
+  const head = new THREE.Group(); head.position.set(0, 0.22, 0.33); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.22, 10, 8), fur, 0, 0, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.12, 8, 6), creamM, 0, -0.06, 0.18, false));
+  head.add(mesh(new THREE.SphereGeometry(0.04, 6, 5), darkM, 0, -0.035, 0.29, false));
+  const ears = [], earBase = [];
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), darkM, sx * 0.12, 0.07, 0.14, false));
+    const ear = new THREE.Group(); ear.position.set(sx * 0.14, 0.14, 0); head.add(ear);
+    const outer = mesh(new THREE.ConeGeometry(0.13, 0.55, 5), fur, 0, 0.25, 0, false);
+    outer.rotation.z = -sx * 0.12; ear.add(outer);
+    const inner = mesh(new THREE.ConeGeometry(0.075, 0.4, 5), pinkM, 0, 0.24, 0.035, false);
+    inner.rotation.z = -sx * 0.12; ear.add(inner);
+    ear.rotation.z = sx * 0.18;
+    ears.push(ear); earBase.push(ear.rotation.z);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.12, -0.35); body.add(tail);
+  tail.add(mesh(new THREE.CapsuleGeometry(0.085, 0.42, 3, 7), fur, 0, -0.22, -0.05, false));
+  tail.add(mesh(new THREE.SphereGeometry(0.09, 7, 6), creamM, 0, -0.45, -0.05, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.16, 0.2], [-0.16, 0.2], [0.16, -0.22], [-0.16, -0.22]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.42, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.045, 0.038, 0.34, 5), fur, 0, -0.17, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.1, 0.06, 0.15), darkM, 0, -0.35, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.userData.anim = {
+    legs, head, tail, ears, earBase, body, bodyBob: 0.035, cadence: 7, amp: 0.55,
+    graze: 0.4, grazeSpeed: 1.0, headDrop: 0.06, tailAmp: 0.35, tailSpeed: 2.8,
+  };
+  return g;
+}
+function makeEmberLizard() {
+  const g = new THREE.Group();
+  const hideM = furM('ember-lizard', 0x4a3a32, ['#2e2420', '#7a4a32', '#d96a2f'], { n: 65, rMin: 1, rMax: 2.2, aMax: 0.35 });
+  const emberM = mat(0xff7a3d, { emissive: 0xff4a1a, emissiveIntensity: 0.8 });
+  const darkM = mat(0x221a16);
+  const body = new THREE.Group(); body.position.set(0, 0.24, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.3, 10, 7), hideM, 0, 0, 0);
+  torso.scale.set(1.1, 0.52, 1.65); body.add(torso);
+  const head = new THREE.Group(); head.position.set(0, 0.03, 0.52); body.add(head);
+  const skull = mesh(new THREE.SphereGeometry(0.2, 9, 7), hideM, 0, 0, 0);
+  skull.scale.set(0.95, 0.7, 1.1); head.add(skull);
+  for (const sx of [-1, 1]) head.add(mesh(new THREE.SphereGeometry(0.038, 6, 5), emberM, sx * 0.11, 0.08, 0.12, false));
+  const tail = new THREE.Group(); tail.position.set(0, 0, -0.45); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.11, 0.04, 0.85, 6), hideM, 0, 0, -0.4, false));
+  for (let i = 0; i < 3; i++) body.add(mesh(new THREE.ConeGeometry(0.045, 0.18, 4), emberM, 0, 0.22, 0.25 - i * 0.24, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.38, 0.3], [-0.38, 0.3], [0.38, -0.28], [-0.38, -0.28]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.18, lz);
+    hip.add(mesh(new THREE.BoxGeometry(0.3, 0.07, 0.1), hideM, lx > 0 ? 0.13 : -0.13, 0, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.11, 0.055, 0.18), darkM, lx > 0 ? 0.28 : -0.28, 0, 0.04, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.userData.anim = {
+    legs, head, tail, body, legAxis: 'z', bodyBob: 0.02, cadence: 11, amp: 0.45,
+    graze: 0.1, grazeSpeed: 1.8, tailAmp: 0.65, tailSpeed: 4,
+  };
+  return g;
+}
+function makeSeaTurtle() {
+  const g = new THREE.Group();
+  const shellM = mat(0x3f9a6b, { roughness: 0.8 }), rimM = mat(0x2f6e4f), skinM = mat(0x7da88a);
+  const creamM = mat(0xd9e6c8);
+  const shell = mesh(new THREE.SphereGeometry(0.6, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2), shellM, 0, 0.18, 0);
+  shell.scale.set(1, 0.45, 1.25); g.add(shell);
+  const rim = mesh(new THREE.TorusGeometry(0.55, 0.06, 5, 12), rimM, 0, 0.18, 0, false);
+  rim.rotation.x = Math.PI / 2; rim.scale.z = 1.2; g.add(rim);
+  const belly = mesh(new THREE.SphereGeometry(0.5, 10, 6), creamM, 0, 0.14, 0, false);
+  belly.scale.set(1, 0.22, 1.2); g.add(belly);
+  for (const [x, z] of [[-0.2, 0.2], [0.2, 0.1], [-0.1, -0.3], [0.24, -0.35]])
+    g.add(mesh(new THREE.BoxGeometry(0.22, 0.035, 0.18), rimM, x, 0.42, z, false)); // shell scutes
+  const head = new THREE.Group(); head.position.set(0, 0.2, 0.62); g.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.18, 9, 7), skinM, 0, 0, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), mat(0x191512), 0.1, 0.06, 0.14, false));
+  head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), mat(0x191512), -0.1, 0.06, 0.14, false));
+  const flippers = [], bases = [], sides = [];
+  for (const [sx, z, ph] of [[1, 0.28, 1], [-1, 0.28, -1], [1, -0.35, 1], [-1, -0.35, -1]]) {
+    const pivot = new THREE.Group(); pivot.position.set(sx * 0.48, 0.14, z);
+    const fin = mesh(new THREE.BoxGeometry(0.48, 0.07, 0.22), skinM, sx * 0.24, 0, 0, false);
+    fin.scale.z = ph > 0 ? 1 : 0.7; pivot.add(fin);
+    pivot.rotation.z = sx * -0.12;
+    g.add(pivot); flippers.push(pivot); bases.push(pivot.rotation.z); sides.push(sx);
+  }
+  const tail = mesh(new THREE.ConeGeometry(0.09, 0.24, 5), skinM, 0, 0.14, -0.62, false);
+  tail.rotation.x = -Math.PI / 2; g.add(tail);
+  g.userData.turtle = { flippers, bases, sides, head };
+  return g;
+}
+function makeFish(color = 0x7ad9ff, s = 1) {
+  const g = new THREE.Group();
+  const bodyM = mat(color, { roughness: 0.45, emissive: color, emissiveIntensity: 0.12 });
+  const finM = mat(0xd9f2ff, { side: THREE.DoubleSide, roughness: 0.6 });
+  const body = mesh(new THREE.CapsuleGeometry(0.12, 0.34, 3, 7), bodyM, 0, 0, 0, false);
+  body.rotation.x = Math.PI / 2; g.add(body);
+  g.add(mesh(new THREE.ConeGeometry(0.075, 0.2, 4), finM, 0, 0.15, -0.02, false)); // dorsal fin
+  const tail = new THREE.Group(); tail.position.set(0, 0, -0.33); g.add(tail);
+  const fan = mesh(new THREE.ConeGeometry(0.16, 0.28, 4), finM, 0, 0, -0.12, false);
+  fan.rotation.x = -Math.PI / 2; fan.scale.z = 0.45; tail.add(fan);
+  for (const sx of [-1, 1]) {
+    g.add(mesh(new THREE.SphereGeometry(0.028, 6, 5), mat(0x191512), sx * 0.1, 0.05, 0.14, false));
+    const side = mesh(new THREE.ConeGeometry(0.06, 0.16, 4), finM, sx * 0.2, 0.01, 0.02, false);
+    side.rotation.z = sx * 0.8; g.add(side);
+  }
+  g.userData.tail = tail;
+  g.scale.setScalar(s);
+  return g;
+}
 function registerEntInteract(ent, id, kind, labelFn, onUse) {
   addInteract({ id, pos: ent.mesh.position.clone(), kind, label: labelFn, onUse, radius: 3.4 });
   ent.interact = interactables[interactables.length - 1];
@@ -4590,6 +5109,135 @@ tickers.push(() => { // forecast packs slink in after dark, never in daylight
     Life.wolfRaid = 0;
   }
 });
+
+// --- ambient wildlife: harmless wanderers that make each biome feel inhabited ---
+const ambientWanderers = [];
+function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase = rand(Math.PI * 2)) {
+  const home = latLonToVec3(lat, lon, 0).normalize();
+  const east = V3(-home.z, 0, home.x);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(home, east).normalize();
+  const start = home.clone().multiplyScalar(R + heightFor(home) + 0.06);
+  meshObj.position.copy(start);
+  scene.add(meshObj);
+  const entry = { mesh: meshObj, home, radius, speed, phase };
+  ambientWanderers.push(entry);
+  let prev = start.clone();
+  tickers.push((t, dt) => {
+    const a = t * speed + phase;
+    const n = home.clone()
+      .addScaledVector(east, Math.sin(a) * radius / R)
+      .addScaledVector(north, Math.sin(a * 0.73 + 1.3) * radius * 0.55 / R)
+      .normalize();
+    const p = n.clone().multiplyScalar(R + heightFor(n) + 0.05);
+    const step = p.clone().sub(prev);
+    if (step.lengthSq() > 1e-5) {
+      const dir = step.clone().addScaledVector(n, -step.dot(n));
+      if (dir.lengthSq() > 1e-6) faceAlong(meshObj, p, dir.normalize());
+    }
+    meshObj.position.copy(p);
+    const hop = meshObj.userData.ambientHop || 0;
+    if (hop) meshObj.position.addScaledVector(n, Math.abs(Math.sin(t * (meshObj.userData.hopSpeed || 5) + phase)) * hop);
+    prev.copy(p);
+    animateAnimal(meshObj, t, 0.4, dt);
+  });
+}
+const deerA = makeDeer(); addAmbientWanderer(deerA, 20, 148, 3.2, 0.16);
+const deerB = makeDeer(); addAmbientWanderer(deerB, 23, 164, 2.7, 0.13, 2.1);
+const deerC = makeDeer(); addAmbientWanderer(deerC, 25, 153, 2.4, 0.18, 4.4);
+for (const [la, lo, ph] of [[4, 32, 0.8], [8, 45, 2.6]]) {
+  const hare = makeHare(0xb9885a, ['#8a5a33', '#d9b988', '#f3e9dc']);
+  hare.userData.ambientHop = 0.1; hare.userData.hopSpeed = 4.6;
+  addAmbientWanderer(hare, la, lo, 1.7, 0.34, ph);
+}
+for (const [la, lo, ph] of [[53, 116, 1.2], [56, 142, 3.8], [58, 100, 5.2], [51, 151, 2.4]]) {
+  const hare = makeHare(0xe9e4d8, ['#f7f2e6', '#c9c2b4', '#ffffff']);
+  hare.userData.ambientHop = 0.13; hare.userData.hopSpeed = 4.2;
+  addAmbientWanderer(hare, la, lo, 1.8, 0.3, ph);
+}
+for (const [la, lo, ph] of [[7, 116, 0.4], [13, 103, 3.1], [15, 119, 5.5]]) {
+  const fennec = makeFennec();
+  addAmbientWanderer(fennec, la, lo, 1.9, 0.3, ph);
+}
+for (const [la, lo, ph] of [[18, 318, 1.1], [16, 340, 3.4], [12, 310, 5.8], [21, 335, 0.2]]) {
+  const lizard = makeEmberLizard();
+  addAmbientWanderer(lizard, la, lo, 1.25, 0.5, ph);
+}
+
+// sea turtles surface for air in the warm shallows
+function addSeaTurtle(lat, lon, phase = rand(Math.PI * 2)) {
+  const turtle = makeSeaTurtle();
+  const center = latLonToVec3(lat, lon, 0).normalize();
+  const east = V3(-center.z, 0, center.x);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(center, east).normalize();
+  turtle.position.copy(center).multiplyScalar(R + 0.11);
+  scene.add(turtle);
+  tickers.push((t) => {
+    const a = t * 0.14 + phase;
+    const n = center.clone()
+      .addScaledVector(east, Math.cos(a) * 3.2 / R)
+      .addScaledVector(north, Math.sin(a) * 2.4 / R)
+      .normalize();
+    const p = n.clone().multiplyScalar(R + 0.11 + Math.sin(t * 1.6 + phase) * 0.02);
+    const d = east.clone().multiplyScalar(-Math.sin(a) * 3.2)
+      .addScaledVector(north, Math.cos(a) * 2.4);
+    if (d.lengthSq() > 1e-6) faceAlong(turtle, p, d.normalize());
+    turtle.position.copy(p);
+    const rig = turtle.userData.turtle;
+    if (rig) {
+      rig.head.rotation.y = Math.sin(t * 0.7 + phase) * 0.24;
+      for (let i = 0; i < rig.flippers.length; i++)
+        rig.flippers[i].rotation.z = rig.bases[i] + Math.sin(t * 2.2 + phase + i * 1.4) * 0.24 * rig.sides[i];
+    }
+  });
+}
+addSeaTurtle(-22, 295, 0.7);
+addSeaTurtle(-1, 216, 2.9);
+addSeaTurtle(-6, 244, 4.6);
+
+// --- fish schools: bright surface shoals that make the sea feel alive ---
+function addFishSchool(lat, lon, count = 5, spread = 2.2, phase = rand(Math.PI * 2)) {
+  const center = latLonToVec3(lat, lon, 0).normalize();
+  const east = V3(-center.z, 0, center.x);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(center, east).normalize();
+  const colors = [0x7ad9ff, 0xffb35a, 0xd9f2ff, 0x6ae0c8];
+  const fish = [];
+  for (let i = 0; i < count; i++) {
+    const f = makeFish(colors[i % colors.length], rand(0.8, 1.35));
+    const n0 = center.clone().multiplyScalar(R + 0.13);
+    f.position.copy(n0);
+    f.userData.phase = rand(Math.PI * 2);
+    scene.add(f);
+    fish.push({ g: f, r: spread * rand(0.55, 1.0), off: rand(Math.PI * 2) });
+  }
+  tickers.push((t) => {
+    for (const f of fish) {
+      const a = t * 0.16 + phase + f.off * 0.18;
+      const n = center.clone()
+        .addScaledVector(east, Math.cos(a) * f.r / R)
+        .addScaledVector(north, Math.sin(a) * f.r * 0.72 / R)
+        .normalize();
+      const p = n.clone().multiplyScalar(R + 0.13 + Math.sin(t * 2.2 + f.g.userData.phase) * 0.015);
+      const d = east.clone().multiplyScalar(-Math.sin(a) * f.r)
+        .addScaledVector(north, Math.cos(a) * f.r * 0.72);
+      if (d.lengthSq() > 1e-6) faceAlong(f.g, p, d.normalize());
+      f.g.position.copy(p);
+      f.g.rotateZ(Math.sin(t * 2 + f.g.userData.phase) * 0.08);
+      if (f.g.userData.tail) f.g.userData.tail.rotation.y = Math.sin(t * 8 + f.g.userData.phase) * 0.55;
+    }
+  });
+}
+addFishSchool(-25, 291, 6, 2.4, 0.4);
+addFishSchool(-28, 302, 5, 2.1, 2.5);
+addFishSchool(-2, 216, 5, 1.9, 1.3);
+addFishSchool(5, 245, 6, 2.3, 3.8);
+addFishSchool(-9, 235, 4, 1.7, 5.4);
+
 // Maren sells livestock (cap enforced, refund on overflow)
 {
   const maren = NPCS.find((n) => n.id === 'maren');
@@ -4815,10 +5463,10 @@ function overnightWorkers() {
   }
   spawnWorkers();
 }
-const ROT_DAYS = { food: 4, egg: 3, milk: 2, meal: 8 };
+const ROT_DAYS = { food: 4, fish: 2, egg: 3, milk: 2, meal: 8 };
 function overnightSpoilage() {
   const cellar = Home.house >= 3 && !Home.dmg.house;
-  for (const k of ['food', 'egg', 'milk', 'meal']) {
+  for (const k of ['food', 'fish', 'egg', 'milk', 'meal']) {
     if ((inv[k] || 0) <= 0) { Life.rot[k] = 0; continue; }
     Life.rot[k] = (Life.rot[k] || 0) + (cellar ? 0.5 : 1);
     if (Life.rot[k] >= ROT_DAYS[k]) { Life.rot[k] = 0; inv[k]--; toast(`🤢 A ${ITEM_ICON[k]} spoiled!${cellar ? '' : ' (cellar slows rot)'}`); }
@@ -4987,7 +5635,7 @@ function retireToHeir() {
   if (!r.ok || playerDead) return;
   Life.gen++;
   Life.chronicle.push(`Gen ${Life.gen - 1} retired in comfort 🌅 (${Life.stats.goldEarned}🪙 earned, Day ${Life.day})`);
-  inv.wood = 0; inv.stone = 0; inv.gold = 2; inv.food = 4; inv.wool = 0; inv.remedy = 1;
+  inv.wood = 0; inv.stone = 0; inv.gold = 2; inv.food = 4; inv.fish = 0; inv.wool = 0; inv.remedy = 1;
   inv.egg = 0; inv.milk = 0; inv.meal = 1;
   meters.energy = 100; meters.health = 100; meters.cold = 0; meters.hunger = 90; meters.warmth = 100; meters.morale = 90;
   Home.dmg = {};
@@ -5513,7 +6161,11 @@ function makeBirch(h = 3) {
     orientOnSphere(obj, latLonToVec3(la, lo, heightFor(b.normalize()) + 0.05), yaw);
     grove.add(obj); return obj;
   };
-  for (let i = 0; i < 10; i++) put(makeBirch(rand(2.4, 3.6)), rand(19, 27), rand(148, 168), rand(3));
+  for (let i = 0; i < 18; i++) {
+    const la = rand(19, 27), lo = rand(148, 168);
+    const birch = put(makeBirch(rand(2.4, 3.6)), la, lo, rand(3));
+    addChoppableTree(birch, la, lo, 'Birch', 0x8fd06a);
+  }
 }
 // --- one graphics ticker to rule the ambience ---
 let emberT = 0;
@@ -5712,6 +6364,8 @@ function snapshot() {
     bridges: bridges.map((b) => b.fixed),
     bears: bears.map((b) => ({ hp: b.hp, dead: b.dead, pos: b.pos.toArray() })),
     fishStage,
+    fishSource,
+    boat: { pos: boatN.toArray(), heading: boatHeading.toArray(), inBoat, fishSource },
     quest: questSnapshot(),
     meta: {
       at: Date.now(), day: Life.day, season: SEASONS[seasonNow()], gen: Life.gen,
@@ -5737,7 +6391,7 @@ function applySave(s, respawn) {
   if (meters.hunger === undefined) meters.hunger = 100;
   if (meters.warmth === undefined) meters.warmth = 100;
   if (meters.morale === undefined) meters.morale = 80;
-  for (const k of ['egg', 'milk', 'meal']) if (inv[k] === undefined) inv[k] = 0;
+  for (const k of ['fish', 'egg', 'milk', 'meal']) if (inv[k] === undefined) inv[k] = 0;
   if (s.life) restoreLife(s.life);
   if (s.tools) Object.assign(tools, s.tools);
   for (const sn of s.npcs || []) {
@@ -5770,6 +6424,7 @@ function applySave(s, respawn) {
     if (b.dead && b.interact) b.interact.kind = '🏆 BEAR BESTED';
   });
   if (typeof s.fishStage === 'number') fishStage = s.fishStage;
+  if (s.fishSource) fishSource = s.fishSource;
   if (s.meta && typeof s.meta.playtime === 'number') playtime = s.meta.playtime;
   if (Array.isArray(s.pos)) {
     playerPos.fromArray(s.pos);
@@ -5778,6 +6433,7 @@ function applySave(s, respawn) {
   }
   if (Array.isArray(s.facing)) facing.fromArray(s.facing);
   if (Array.isArray(s.heading)) moveDirSmooth.fromArray(s.heading);
+  restoreBoatState(s.boat || null);
   questLoad(s.quest);
   renderCollection(); renderJournal(); renderStats();
   if (started) questResume();
@@ -6126,6 +6782,78 @@ const camUp = new THREE.Vector3(0, 1, 0); // smoothed up: world-Y in globe view,
 const lastBehind = new THREE.Vector3(0, 0, 1); // smoothed behind-the-back follow direction
 const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3(), tmpM = new THREE.Vector3(), axis = new THREE.Vector3();
 
+function updateBoatControl(dt) {
+  const n = boatN.clone().normalize();
+  tmpF.copy(boatHeading).addScaledVector(n, -boatHeading.dot(n));
+  if (tmpF.lengthSq() < 0.01) tmpF.copy(lastBehind);
+  else tmpF.normalize();
+  tmpF.applyAxisAngle(n, orbitYaw);
+  tmpR.crossVectors(tmpF, n).normalize();
+  let ix = 0, iz = 0;
+  if (keys.KeyW || keys.ArrowUp) iz += 1; if (keys.KeyS || keys.ArrowDown) iz -= 1;
+  if (keys.KeyA || keys.ArrowLeft) ix -= 1; if (keys.KeyD || keys.ArrowRight) ix += 1;
+  let jx = touchMove.x, jy = touchMove.y;
+  if (Math.hypot(jx, jy) < 0.15) { jx = 0; jy = 0; }
+  ix += jx; iz += -jy;
+  if (jx || jy) moveTargetN = null;
+  const trimmed = keys.KeyQ && meters.energy > 0;
+  let speed = 5.4 * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1);
+  if (meters.energy <= 0) speed *= 0.55;
+  let moved = false;
+  if (ix || iz) {
+    tmpM.set(0, 0, 0).addScaledVector(tmpF, iz).addScaledVector(tmpR, ix).normalize();
+    axis.crossVectors(n, tmpM).normalize();
+    const next = boatN.clone().applyAxisAngle(axis, (speed * dt) / R).normalize();
+    if (heightFor(next) < 0.12) { boatN.copy(next); moved = true; }
+    else moveTargetN = null; // keel scrapes the shallows: turn back to open water
+    boatHeading.lerp(tmpM, 1 - Math.exp(-4.5 * dt));
+    boatHeading.addScaledVector(n, -boatHeading.dot(n));
+    if (boatHeading.lengthSq() > 1e-6) boatHeading.normalize();
+    facing.lerp(tmpM, 1 - Math.exp(-10 * dt)).normalize();
+    moveDirSmooth.lerp(boatHeading, 1 - Math.exp(-6 * dt));
+    moveDirSmooth.addScaledVector(n, -moveDirSmooth.dot(n));
+    if (moveDirSmooth.lengthSq() > 1e-6) moveDirSmooth.normalize();
+  } else if (moveTargetN) {
+    if (heightFor(moveTargetN) >= 0.12) moveTargetN = null;
+    else {
+      const ang = n.angleTo(moveTargetN);
+      if (ang < 1.4 / R) moveTargetN = null;
+      else {
+        axis.crossVectors(n, moveTargetN);
+        if (axis.lengthSq() < 1e-8) moveTargetN = null;
+        else {
+          axis.normalize();
+          tmpM.crossVectors(axis, n).normalize();
+          const next = boatN.clone().applyAxisAngle(axis, Math.min((speed * dt) / R, ang)).normalize();
+          if (heightFor(next) < 0.12) { boatN.copy(next); moved = true; }
+          else moveTargetN = null;
+          boatHeading.lerp(tmpM, 1 - Math.exp(-4.5 * dt));
+          boatHeading.addScaledVector(n, -boatHeading.dot(n));
+          if (boatHeading.lengthSq() > 1e-6) boatHeading.normalize();
+          moveDirSmooth.lerp(boatHeading, 1 - Math.exp(-6 * dt));
+          moveDirSmooth.addScaledVector(n, -moveDirSmooth.dot(n));
+          if (moveDirSmooth.lengthSq() > 1e-6) moveDirSmooth.normalize();
+        }
+      }
+    }
+  }
+  const nn = boatN.clone();
+  const bob = boatBob(clock.elapsedTime);
+  playerPos.copy(nn).multiplyScalar(R + 0.64 + bob);
+  player.position.copy(playerPos);
+  if (trimmed && moved) meters.energy = Math.max(0, meters.energy - 3 * dt);
+  else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 4 * dt);
+  coldTick(dt, nn);
+  meterAlerts();
+  renderStats();
+  if (moved && clock.elapsedTime - (updateBoatControl._wakeT || 0) > 0.6) {
+    updateBoatControl._wakeT = clock.elapsedTime;
+    const wake = player.position.clone().addScaledVector(nn, -0.1);
+    burst(wake, 0x9fdcff, 5, 1.3);
+  }
+  return nn;
+}
+
 function updatePlayer(dt) {
   const n = playerPos.clone().normalize();
   if (playerDead) {
@@ -6135,6 +6863,7 @@ function updatePlayer(dt) {
     player.rotation.z += dt * 0.4; // crumple gently
     return nn0;
   }
+  if (inBoat) return updateBoatControl(dt);
   // Steer from the smoothed heading — never the live camera. Deriving the
   // basis from the swinging camera fed the swing back into steering, so a
   // 180° S reversal wobbled instead of turning and juddered the camera.
@@ -6321,6 +7050,7 @@ function animate() {
     b.right.rotation.x += (-target - b.right.rotation.x) * dt * 2;
   }
   const n = updatePlayer(dt);
+  updateBoatVisual(t);
   updateCamera(dt, n);
   updateInteract();
   updateBiomeLabel(n);
@@ -6344,4 +7074,5 @@ function pointInOccluder(p) {
   for (const b of occluderBoxes) if (b.containsPoint(p)) return true;
   return false;
 }
+updateBoatVisual(0);
 animate();
