@@ -35,8 +35,17 @@
     <span class="tracker-label">small wonders</span>
   </button>
 
+  <!-- Sequential trail objectives -->
+  <div id="objective-panel" class="hidden" aria-live="polite">
+    <div class="obj-eyebrow"><span>TRAIL OBJECTIVE</span><span id="obj-index">1 / 14</span></div>
+    <div class="obj-head"><span id="obj-check" class="obj-check"></span><span id="obj-title">Make Camp</span></div>
+    <div id="obj-hint" class="obj-hint"></div>
+    <div id="obj-list"></div>
+  </div>
+
   <!-- Top-right buttons -->
   <div id="top-right">
+    <button id="btn-pause" class="round-btn" title="Menu (Esc)">⏸️</button>
     <button id="btn-globe" class="round-btn" title="Globe view (M)">🌐</button>
     <button id="btn-sound" class="round-btn" title="Sound on/off">🔊</button>
     <button id="btn-help" class="round-btn" title="Help">⚙</button>
@@ -81,10 +90,9 @@
     <div class="gameover-card">
       <div class="gameover-eyebrow">NORTHLIGHT CLAIMED YOU</div>
       <h2 id="gameover-title">Mauled by a polar bear…</h2>
-      <p id="gameover-sub">Returning to the last checkpoint…</p>
+      <p id="gameover-sub">Returning to your last save…</p>
     </div>
   </div>
-  <div id="checkpoint-flag" class="hidden">📍 Checkpoint saved</div>
 
   <!-- Touch controls (shown only on touch devices) -->
   <div id="touch-ui">
@@ -117,6 +125,7 @@
       <h2>Little Planet — Pocket Adventure</h2>
       <p>Explore one tiny planet. Seven worlds, seven small moments — <b>7 Small Wonders</b>.</p>
       <ul>
+        <li><b>Trail objectives:</b> follow the checklist in the top-right corner. Finish each objective to reveal the next.</li>
         <li><b>Fernwood:</b> tend the eternal flame 3×.</li>
         <li><b>Clover Fields:</b> water and harvest the rows.</li>
         <li><b>Sunstone Oasis:</b> wake the oasis spring.</li>
@@ -124,14 +133,14 @@
         <li><b>Tideglass Reef:</b> light the lighthouse (you can swim!).</li>
         <li><b>Ember Heights:</b> scan the volcano — hold still.</li>
         <li><b>Northlight:</b> wake the aurora at the stones.</li>
-        <li><b>Gather:</b> the axe appears near trees — chop pines, split the fallen trunk, mine basalt, pick berries, shear sheep (E). Nodes regrow.</li>
+        <li><b>Gather:</b> your axe is always in hand — chop any pine, palm, or orchard tree, split the fallen trunk, mine basalt, pick berries, shear sheep (E). Nodes regrow.</li>
         <li><b>Move:</b> WASD, arrow keys, or click anywhere on the planet to walk there.</li>
         <li><b>Survive:</b> sprinting burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
         <li><b>Live:</b> hunger, warmth and morale drain daily — cook meals (campfire), sew clothes, sleep in a bed. Press <kbd>H</kbd> for the homestead board: build hut → farmhouse, dig a well, plant plots, raise animals.</li>
         <li><b>Family:</b> befriend Lena or Marina with gifts, craft a sunstone ring, marry, raise kids — every mouth adds upkeep. Hire hands, survive droughts, floods, tornadoes and wolf packs, then retire into your heir.</li>
-        <li><b>Bears:</b> adult polar bears attack up close — swing your axe (<kbd>E</kbd>) to fight back. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Cairns save checkpoints; death returns you to the last one.</li>
+        <li><b>Bears:</b> adult polar bears attack up close — swing your axe (<kbd>E</kbd>) to fight back. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Save anytime from the pause menu (<kbd>Esc</kbd> → Save Game); death returns you to your last save.</li>
       </ul>
-      <p class="muted">WASD/arrows move · click map to walk · Q run · Space hop · E interact/fight · F eat food · R remedy · M globe · J journal · drag mouse to orbit</p>
+      <p class="muted">WASD/arrows move · click map to walk · Q run · Space hop · E interact/fight · F eat food · R remedy · M globe · J journal · Esc menu · drag mouse to orbit</p>
       <button id="btn-close-help">Start exploring</button>
     </div>
   </div>
@@ -146,6 +155,55 @@
       <div id="build-goals"></div>
       <div id="build-list"></div>
       <button id="btn-build-leave">Back to work 👋</button>
+    </div>
+  </div>
+
+  <!-- Title screen -->
+  <div id="title-overlay">
+    <div class="title-inner">
+      <div class="title-eyebrow">A POCKET ADVENTURE</div>
+      <h1 class="title-logo">Little Planet</h1>
+      <div class="title-sub">Hearth &amp; Harvest — survive, settle, raise a family</div>
+      <div id="title-buttons">
+        <button id="btn-continue" class="menu-btn">Continue ▶</button>
+        <button id="btn-newgame" class="menu-btn">New Game 🌱</button>
+        <button id="btn-title-help" class="menu-btn">How to Play 📖</button>
+        <button id="btn-title-settings" class="menu-btn">Settings ⚙️</button>
+      </div>
+      <div id="slot-picker" class="hidden">
+        <div id="slot-title" class="journal-eyebrow">CHOOSE A SAVE SLOT</div>
+        <div id="slot-list"></div>
+        <button id="btn-slot-back" class="menu-btn menu-btn-small">← Back</button>
+      </div>
+      <div class="title-footer">WASD move · E talk/trade · H homestead · J journal · Esc menu</div>
+    </div>
+  </div>
+
+  <!-- Pause menu -->
+  <div id="pause-overlay" class="hidden">
+    <div class="help-card npc-card">
+      <div class="journal-eyebrow">PAUSED</div>
+      <h2 id="pause-title">Take a breath.</h2>
+      <p id="pause-sub" class="journal-sub"></p>
+      <div id="pause-buttons">
+        <button id="btn-resume" class="menu-btn">Resume ▶</button>
+        <button id="btn-save" class="menu-btn">Save Game 💾</button>
+        <button id="btn-pause-help" class="menu-btn">How to Play 📖</button>
+        <button id="btn-pause-settings" class="menu-btn">Settings ⚙️</button>
+        <button id="btn-quit-title" class="menu-btn">Quit to Title 🏠</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div id="settings-overlay" class="hidden">
+    <div class="help-card npc-card">
+      <button id="btn-close-settings" class="journal-close" title="Close (Esc)">×</button>
+      <div class="journal-eyebrow">SETTINGS</div>
+      <h2 id="settings-title">Tune the journey.</h2>
+      <div id="settings-list"></div>
+      <button id="btn-erase-saves" class="menu-btn menu-btn-danger">Erase ALL saves 🗑️</button>
+      <button id="btn-settings-back" class="menu-btn menu-btn-small">← Back</button>
     </div>
   </div>
 
