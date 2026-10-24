@@ -1755,6 +1755,7 @@ scene.add(boatGroup);
   const dockPos = dockN.clone().multiplyScalar(R + 0.34);
   const dockDir = latLonToVec3(-22, 288, 0).sub(latLonToVec3(-18.4, 288, 0));
   faceAlong(dock, dockPos, dockDir.normalize());
+  dock.position.copy(dockPos);
   scene.add(dock);
 
   const sign = new THREE.Group();
@@ -1773,6 +1774,7 @@ scene.add(boatGroup);
   const signPos = signN.clone().multiplyScalar(R + heightFor(signN) + 0.08);
   const signDir = latLonToVec3(-14, 288, 0).sub(latLonToVec3(-15.2, 288, 0));
   faceAlong(sign, signPos, signDir.normalize());
+  sign.position.copy(signPos);
   scene.add(sign);
 }
 
