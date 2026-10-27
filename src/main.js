@@ -6554,6 +6554,10 @@ function applySave(s, respawn) {
   if (started) questResume();
   return true;
 }
+// ---------- input state (declared early: boot/startGame touch orbitYaw) ----------
+let dragging = false, px = 0, py = 0, orbitYaw = 0, orbitPitch = 0;
+let downX = 0, downY = 0, downT = 0, downOnCanvas = false;
+let moveTargetN = null; // click-to-move destination (surface normal)
 // ---------- menus: title, pause, settings, save slots ----------
 let started = false, paused = true;
 function fmtPlaytime(sec) {
@@ -6576,6 +6580,7 @@ function startGame(fresh) {
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
   started = true; paused = false;
+  orbitYaw = 0; // title-vista drift must not lean the first walk into a curve
   renderStats();
   if (fresh) {
     questNew();
@@ -6665,6 +6670,7 @@ function resumeGame() {
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
   paused = false;
+  orbitYaw = 0; // pause-menu drift must not angle the next walk
   chime(520);
 }
 function manualSave() {
@@ -6770,9 +6776,6 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyJ') toggleJournal();
 });
 addEventListener('keyup', (e) => (keys[e.code] = false));
-let dragging = false, px = 0, py = 0, orbitYaw = 0, orbitPitch = 0;
-let downX = 0, downY = 0, downT = 0, downOnCanvas = false;
-let moveTargetN = null; // click-to-move destination (surface normal)
 const clickRay = new THREE.Raycaster();
 function clickToMove(x, y) {
   if (!planetMesh || globeMode || !started || paused) return;
@@ -6790,8 +6793,29 @@ addEventListener('pointerup', (e) => {
 });
 addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  orbitYaw += (e.clientX - px) * 0.005 * camFactor(); orbitPitch += (e.clientY - py) * 0.005 * camFactor();
+  const yawDelta = (e.clientX - px) * 0.005 * camFactor();
+  orbitPitch += (e.clientY - py) * 0.005 * camFactor();
   orbitPitch = THREE.MathUtils.clamp(orbitPitch, -0.5, 0.7);
+  // Drag turns the traveler (not just the camera): rotate the shared heading
+  // around the local surface normal so W stays straight-on-screen. Rotating
+  // only the camera offset would feed back into steering and spiral.
+  try {
+    const n0 = (inBoat ? boatN : playerPos).clone().normalize();
+    moveDirSmooth.applyAxisAngle(n0, yawDelta);
+    moveDirSmooth.addScaledVector(n0, -moveDirSmooth.dot(n0));
+    if (moveDirSmooth.lengthSq() > 1e-6) moveDirSmooth.normalize();
+    facing.applyAxisAngle(n0, yawDelta);
+    facing.addScaledVector(n0, -facing.dot(n0));
+    if (facing.lengthSq() > 1e-6) facing.normalize();
+    lastBehind.applyAxisAngle(n0, yawDelta);
+    lastBehind.addScaledVector(n0, -lastBehind.dot(n0));
+    if (lastBehind.lengthSq() > 1e-6) lastBehind.normalize();
+    if (inBoat) {
+      boatHeading.applyAxisAngle(n0, yawDelta);
+      boatHeading.addScaledVector(n0, -boatHeading.dot(n0));
+      if (boatHeading.lengthSq() > 1e-6) boatHeading.normalize();
+    }
+  } catch { /* heading not ready yet */ }
   px = e.clientX; py = e.clientY;
 });
 // ---------- touch controls (joystick + buttons, touch devices only) ----------
@@ -6899,10 +6923,12 @@ const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3(), tmpM = new THREE.V
 
 function updateBoatControl(dt) {
   const n = boatN.clone().normalize();
+  // Straight-line helm: derive the basis from the heading itself, never add a
+  // per-frame yaw offset here (that fed back into boatHeading and spiralled).
+  // Drag-to-turn rotates boatHeading directly in the pointer handler.
   tmpF.copy(boatHeading).addScaledVector(n, -boatHeading.dot(n));
   if (tmpF.lengthSq() < 0.01) tmpF.copy(lastBehind);
   else tmpF.normalize();
-  tmpF.applyAxisAngle(n, orbitYaw);
   tmpR.crossVectors(tmpF, n).normalize();
   let ix = 0, iz = 0;
   if (keys.KeyW || keys.ArrowUp) iz += 1; if (keys.KeyS || keys.ArrowDown) iz -= 1;
@@ -6979,13 +7005,14 @@ function updatePlayer(dt) {
     return nn0;
   }
   if (inBoat) return updateBoatControl(dt);
-  // Steer from the smoothed heading — never the live camera. Deriving the
-  // basis from the swinging camera fed the swing back into steering, so a
-  // 180° S reversal wobbled instead of turning and juddered the camera.
+  // Straight-line walk: steer from the heading itself with no per-frame yaw
+  // offset. The old code rotated the smoothed heading by orbitYaw every frame
+  // then lerped the heading toward that rotated vector — a feedback loop, so
+  // holding W with any camera offset walked you in a circle.
+  // Drag-to-turn rotates the heading directly (see pointermove).
   tmpF.copy(moveDirSmooth).addScaledVector(n, -moveDirSmooth.dot(n));
   if (tmpF.lengthSq() < 0.01) tmpF.copy(lastBehind); // mid-flip: hold last good heading
   else tmpF.normalize();
-  tmpF.applyAxisAngle(n, orbitYaw); // stay aligned with a drag-orbited camera
   tmpR.crossVectors(tmpF, n).normalize();
   let ix = 0, iz = 0;
   if (keys.KeyW || keys.ArrowUp) iz += 1; if (keys.KeyS || keys.ArrowDown) iz -= 1;
