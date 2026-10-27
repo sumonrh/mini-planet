@@ -14,7 +14,9 @@ One traversable sphere, 4 biomes, 7 Small Wonders, contextual `E` interactions, 
 
 - `W A S D` walk · `Q` run · `Space` hop · `E` interact · `M` globe view
 - Drag mouse to orbit the camera slightly.
-- **Sea skiff:** follow the trail south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals.
+- **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.
+- **Trail beacon:** the current objective shows a gold light in the world + distance (`➤ 12m`). Walk toward it — `✨ You are here` means press `E`.
+- **Homestead:** press `H` — Mud Hut now costs 3 wood, Big Pack (+8 slots) is buildable, cooking the same mix twice discovers recipes.
 - **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless.
 
 ## The 7 Worlds & Small Wonders

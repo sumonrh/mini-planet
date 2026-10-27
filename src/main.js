@@ -451,17 +451,21 @@ function nodeLabel(nd) {
 function gatherHit(nd) {
   const splitting = nd.depleted && nd.fallRoot && nd.trunkStock > 0;
   if (nd.depleted && !splitting) return toast('🌱 Regrowing… give it a moment.');
-  if (meters.energy < 2) return toast('😮‍💨 Too tired to work — eat (F) or rest.');
-  meters.energy = Math.max(0, meters.energy - 2);
+  if (meters.energy < 1) return toast('😮‍💨 Too tired to work — eat (F) or rest.');
+  meters.energy = Math.max(0, meters.energy - 1);
   if (nd.shakeRoot) {
     if (!nd.home) nd.home = nd.shakeRoot.position.clone();
     nd.shake = 1; // vibrate
   }
   if (nd.tool === 'axe') startChop(); // swing the axe
   nd.prog += nd.tool ? (tools[nd.tool] || 1) : 1;
-  burst(player.position.clone(), nd.color, 8, 1.5);
-  chime(nd.chime);
+  // juice: hits escalate — bigger shake, higher chime, brighter burst
   const th = splitting ? 2 : nd.need;
+  const heat = Math.min(1, nd.prog / th);
+  if (nd.shakeRoot) nd.shake = 0.6 + heat * 0.9;
+  burst(player.position.clone(), nd.color, Math.round(6 + heat * 10), 1.2 + heat * 1.2);
+  flyChunk(player.position.clone().add(V3(0, 1.2, 0)), nd.color === 0xffffff ? 0xcfd8dc : 0x7a5230);
+  chime(nd.chime + Math.round(heat * 160));
   if (nd.prog >= th) {
     if (!addItem(nd.item, 1)) { nd.prog = th; return; } // pack full: keep it ready
     nd.prog = 0;
@@ -2789,12 +2793,20 @@ const meters = { energy: 100, cold: 0, health: 100, hunger: 100, warmth: 100, mo
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
 let lastDamageT = -99; // last time the player took a hit (for slow recovery)
-const PACK_BASE = 10;
+const PACK_BASE = 16;
+let packBonus = 0;
 function packSize() { return inv.wood + inv.stone + inv.gold + inv.food + (inv.fish || 0) + inv.wool + inv.remedy + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0); }
-function packCap() { return PACK_BASE; } // +Big Pack research later
+function packCap() { return PACK_BASE + packBonus; } // Big Pack research adds room
+function earnGold(n = 1) {
+  if (n <= 0) return;
+  inv.gold += n;
+  Life.stats.goldEarned = (Life.stats.goldEarned || 0) + n;
+  renderStats();
+}
 function addItem(id, n = 1) {
   if (packSize() + n > packCap()) { toast('🎒 Pack full! (capacity ' + packCap() + ')'); return false; }
   inv[id] += n;
+  try { if (id === 'gold' && Life?.stats) Life.stats.goldEarned = (Life.stats.goldEarned || 0) + n; } catch { /* Life not ready */ }
   renderStats();
   return true;
 }
@@ -2945,29 +2957,63 @@ for (const [i, b] of bears.entries()) {
 }
 addInteract({ id: 'fish', pos: anchor(57, 118), kind: 'ICE FISHING', label: () => (fishStage === 1 ? 'Pull! (E)' : 'Cast the line'), onUse });
 
+const FISH_TYPES = [
+  { id: 'sunny-carp', name: 'Sunny Carp', icon: '🐟', w: 30, size: [0.4, 1.1] },
+  { id: 'reef-flutter', name: 'Reef Flutter', icon: '🐠', w: 22, size: [0.3, 0.8] },
+  { id: 'moon-eel', name: 'Moon Eel', icon: '🌙🐟', w: 12, size: [0.6, 1.4], night: true },
+  { id: 'lantern-fish', name: 'Lantern Fish', icon: '🏮🐟', w: 10, size: [0.4, 0.9], night: true },
+  { id: 'deep-king', name: 'Deep King', icon: '👑🐟', w: 5, size: [1.2, 2.0], sea: true },
+  { id: 'ice-glimmer', name: 'Ice Glimmer', icon: '✨🐟', w: 14, size: [0.3, 0.7], ice: true },
+  { id: 'golden-boot', name: 'Golden Boot', icon: '🥾✨', w: 1, size: [0.8, 0.8] },
+];
+function pickFish(sea) {
+  const night = isNight();
+  const pool = FISH_TYPES.filter((f) => {
+    if (f.night && !night) return false;
+    if (f.sea && !sea) return false;
+    if (f.ice && sea) return false;
+    return true;
+  });
+  const total = pool.reduce((a, b) => a + b.w, 0);
+  let r = Math.random() * total;
+  for (const f of pool) { r -= f.w; if (r <= 0) return f; }
+  return pool[0];
+}
 function fishFrom(source) {
   if (playerDead) return;
   if (fishStage === 0) {
     fishSource = source;
     fishStage = 1;
     chime(440);
+    const first = (Life.stats.fishCaught || 0) < 2;
     toast(source === 'sea' ? '🎣 Line cast into the blue — wait, then press E.' : '🎣 Line cast… wait… then press E again!');
     setTimeout(() => {
-      if (fishStage === 1 && fishSource === source) toast('❗ Nibble! Press E now!');
-    }, 2200);
+      if (fishStage === 1 && fishSource === source) {
+        burst(player.position.clone(), 0x7ad9ff, 14, 2);
+        chime(880);
+        toast('❗ Nibble! Press E now!');
+      }
+    }, first ? 1200 : 2200);
   } else {
     const sea = fishSource === 'sea';
     fishStage = 0;
+    const spec = pickFish(sea);
+    const sz = (spec.size[0] + Math.random() * (spec.size[1] - spec.size[0])).toFixed(1);
+    Life.stats.fishCaught = (Life.stats.fishCaught || 0) + 1;
+    Life.fishBook = Life.fishBook || {};
+    const prev = Life.fishBook[spec.id];
+    const isRecord = !prev || Number(sz) > prev.best;
+    Life.fishBook[spec.id] = { n: (prev?.n || 0) + 1, best: isRecord ? Number(sz) : prev.best, name: spec.name };
     if (sea) {
       if (!addItem('fish', 1)) return;
-      burst(player.position.clone(), 0x7ad9ff, 22, 2.6);
-      chime(660);
-      toast('🐟 A bright sea catch! (+1 fish — F to eat, or cook it)');
+      burst(player.position.clone(), 0x7ad9ff, 30, 3);
+      chime(660); setTimeout(() => chime(880), 120);
+      toast(`🐟 ${spec.name} ${sz}kg! (+1 fish${isRecord ? ' — NEW RECORD!' : ''})`);
     } else {
       if (!addItem('food', 1)) return;
-      burst(player.position.clone(), 0x7ad9ff, 22, 2.6);
-      chime(660);
-      toast('🐟 A flashing little marvel! (+1 food)');
+      burst(player.position.clone(), 0x7ad9ff, 30, 3);
+      chime(660); setTimeout(() => chime(880), 120);
+      toast(`🐟 ${spec.name} ${sz}kg! (+1 food${isRecord ? ' — NEW!' : ''})`);
     }
   }
 }
@@ -3159,6 +3205,8 @@ function killPlayer() {
   setTimeout(respawnAtSave, 2600);
 }
 function respawnAtSave() {
+  // soft death: keep your best axe and your fish — only lose half your loose food
+  const keepAxe = tools.axe || 1, keepFish = inv.fish || 0;
   const snap = loadSave();
   const g = document.getElementById('gameover');
   if (g) g.classList.add('hidden');
@@ -3170,10 +3218,13 @@ function respawnAtSave() {
     const n0 = playerPos.clone().normalize();
     playerPos = n0.clone().multiplyScalar(R + heightFor(n0) + 0.1);
   }
+  if ((tools.axe || 1) < keepAxe) tools.axe = keepAxe;
+  if ((inv.fish || 0) < keepFish) { inv.fish = keepFish; }
+  inv.food = Math.ceil((inv.food || 0) / 2); // half your berries spill, the rest stays
   playerDead = false;
   lastDamageT = combatNow;
   renderStats();
-  toast('🧭 Back on your feet. Mind the bears — axe ready (E).');
+  toast('🧭 Back on your feet. Axe and fish kept — only lost half your 🍎.');
 }
 // slow recovery: +2/s after 6s without taking a hit (also ticks while walking)
 function updateHealth(dt) {
@@ -3594,9 +3645,11 @@ const Life = {
   day: 1, t: 0.3, clothes: 0, gen: 1, ring: false, spouse: null,
   kids: [], workers: [], forecast: null, festival: false,
   nights: 0, lastGift: {}, kidSeq: 0,
-  stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false },
+  stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false, fishCaught: 0 },
   rot: { food: 0, fish: 0, egg: 0, milk: 0, meal: 0 },
   chronicle: [],
+  fishBook: {},
+  recipes: {},
 };
 function seasonOf(day) { return Math.floor((day - 1) / DAYS_PER_SEASON) % 4; }
 function seasonNow() { return seasonOf(Life.day); }
@@ -3656,6 +3709,7 @@ function dawnRoutine(rested) {
   Life.festival = (Life.day % DAYS_PER_SEASON === 0);
   Life.blizzard = false; Life.drought = false; Life.sheltered = false; // yesterday's weather ends
   const todayHit = Life.forecast; Life.forecast = null;
+  const before = { ...inv };
   if (todayHit) triggerDisaster(todayHit);
   rollForecast();
   overnightNeeds(rested);
@@ -3681,7 +3735,18 @@ function dawnRoutine(rested) {
   if (Life.bless?.aurora) addItem('food', 1); // sky blessing on the doorstep
   saveCheckpoint();
   renderStats();
+  // day-end card: closure for yesterday + a hook for tomorrow
+  const gains = [];
+  for (const k of ['food', 'fish', 'egg', 'milk', 'meal', 'wool', 'gold']) {
+    const d = (inv[k] || 0) - (before[k] || 0);
+    if (d > 0) gains.push(`+${d}${ITEM_ICON[k] || k}`);
+  }
+  const ripe = Home.plots.filter((p) => p.bought && p.crop && p.growth >= 3).length;
   let msg = `☀️ Day ${Life.day} · ${SEASONS[seasonNow()]}` + (rested ? '' : ' (nodded off outside 😴−⚡)') + (Life.festival ? ` · 🎉 ${SEASONS[seasonNow()]} festival!` : '');
+  if (gains.length) msg += ` — overnight: ${gains.join(' ')}`;
+  else msg += ' — herd ate, fields drank';
+  if (ripe > 0) msg += ` · ${ripe} plot${ripe > 1 ? 's' : ''} ripe!`;
+  else msg += ' · tomorrow: water + check traps';
   if (Life.forecast) msg += ` — ⚠️ ${DISASTER_ICON[Life.forecast]} tomorrow! Prepare!`;
   toast(msg);
   chime(520);
@@ -3695,6 +3760,7 @@ function saveLife() {
     forecast: Life.forecast, nights: Life.nights, lastGift: { ...Life.lastGift }, kidSeq: Life.kidSeq,
     stats: { ...Life.stats }, rot: { ...Life.rot }, chronicle: [...Life.chronicle],
     bless: { ...(Life.bless || {}) },
+    fishBook: { ...(Life.fishBook || {}) }, recipes: { ...(Life.recipes || {}) }, packBonus,
     home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
@@ -3710,6 +3776,10 @@ function restoreLife(s) {
   Life.chronicle = [...(s.chronicle || [])];
   Life.bless = { ...((s.bless) || {}) };
   Life.wolfRaid = s.wolfRaid || 0;
+  Life.fishBook = { ...(s.fishBook || {}) };
+  Life.recipes = { ...(s.recipes || {}) };
+  if (typeof s.packBonus === 'number') packBonus = Math.max(0, Math.min(24, s.packBonus | 0));
+  if (typeof s.stats?.fishCaught !== 'number') Life.stats.fishCaught = 0;
   Home.build = null;
   if (s.home) {
     Home.house = s.home.house ?? 0; Home.well = !!s.home.well; Home.barn = s.home.barn ?? 0;
@@ -3800,13 +3870,19 @@ function cookMeal() {
   if (playerDead) return;
   const have = (inv.food || 0) + (inv.fish || 0) + (inv.egg || 0) + (inv.milk || 0);
   if (have < 2) return toast('🍲 Need 2 produce (🍎/🐟/🥚/🥛) to cook a meal.');
+  const used = [];
   let need = 2;
-  for (const k of ['fish', 'food', 'egg', 'milk']) { while (need > 0 && inv[k] > 0) { inv[k]--; need--; } }
+  for (const k of ['fish', 'food', 'egg', 'milk']) { while (need > 0 && inv[k] > 0) { inv[k]--; used.push(k); need--; } }
   inv.meal = (inv.meal || 0) + 1; // net −1 pack, always fits
   meters.energy = Math.min(100, meters.energy + 5);
-  burst(homeFirePos ? homeFirePos.clone() : player.position.clone(), 0xffb35a, 14, 2);
-  chime(700);
-  toast('🍲 Cooked a hearty meal! (F to eat)');
+  // recipe discovery: first time you mix a combo, it is remembered
+  const key = [...used].sort().join('+');
+  Life.recipes = Life.recipes || {};
+  const isNew = key && !Life.recipes[key];
+  if (key) Life.recipes[key] = (Life.recipes[key] || 0) + 1;
+  burst(homeFirePos ? homeFirePos.clone() : player.position.clone(), 0xffb35a, isNew ? 26 : 14, isNew ? 3 : 2);
+  chime(700); if (isNew) setTimeout(() => chime(880), 140);
+  toast(isNew ? `🍲 New recipe! ${used.join(' + ')} → hearty meal!` : '🍲 Cooked a hearty meal! (F to eat)');
   renderStats();
 }
 tickers.push((t, dt) => {
@@ -4269,8 +4345,8 @@ function plotCycle(i) {
     chime(600); toast('🌾 Harvest! (+2🍎)');
   } else if (p.crop && !p.water) {
     const noWell = !Home.well || Home.dmg.well;
-    if (noWell && meters.energy < 5) return toast('😮‍💨 Too tired to haul water from the pond.');
-    if (noWell) meters.energy = Math.max(0, meters.energy - 5);
+    if (noWell && meters.energy < 3) return toast('😮‍💨 Too tired to haul water from the pond.');
+    if (noWell) meters.energy = Math.max(0, meters.energy - 3);
     p.water = true;
     chime(500); toast('💧 Watered.');
   } else if (!p.crop) {
@@ -4326,10 +4402,11 @@ function houseReq(target, missingWhy) {
   return { ok: false, why: missingWhy };
 }
 const BUILD_DEFS = [
-  { id: 'hut', name: 'Mud Hut', cost: { wood: 4 }, blurb: 'First real roof. Better sleep.', houseTier: 1, req: () => houseReq(1, '') },
+  { id: 'hut', name: 'Mud Hut', cost: { wood: 3 }, blurb: 'First real roof. Better sleep.', houseTier: 1, req: () => houseReq(1, '') },
   { id: 'house1', name: 'Farmhouse', cost: { wood: 8, stone: 4 }, blurb: '3 beds, cooking corner. Marriage-ready.', houseTier: 2, req: () => houseReq(2, 'Needs hut first') },
   { id: 'house2', name: 'Big Farmhouse + cellar', cost: { wood: 10, stone: 8, gold: 10 }, blurb: '4 beds. Cellar keeps food, shelters tornadoes.', houseTier: 3, req: () => houseReq(3, 'Needs farmhouse first') },
   { id: 'house3', name: 'Manor', cost: { wood: 12, stone: 10, gold: 25 }, blurb: '6 beds. The talk of the planet.', houseTier: 4, req: () => houseReq(4, 'Needs big farmhouse first') },
+  { id: 'pack', name: 'Big Pack', cost: { wood: 4, wool: 2 }, blurb: 'Stitched pockets. +8 pack room.', req: () => (packBonus >= 8 ? { ok: false, why: 'Roomy ✓' } : { ok: true }), apply: () => { packBonus += 8; } },
   { id: 'well', name: 'Stone Well', cost: { stone: 4 }, blurb: 'Free watering. Drought-proof crops.', req: () => (!Home.well ? { ok: true } : { ok: false, why: 'Dug ✓' }), apply: () => { Home.well = true; } },
   { id: 'barn1', name: 'Barn', cost: { wood: 8, stone: 4 }, blurb: 'Shelter for 4 animals.', req: () => (Home.barn === 0 ? { ok: true } : { ok: false, why: 'Built ✓' }), apply: () => { Home.barn = 1; } },
   { id: 'barn2', name: 'Big Barn', cost: { wood: 10, stone: 6, gold: 10 }, blurb: 'Room for 8 animals.', req: () => (Home.barn === 1 ? { ok: true } : { ok: false, why: Home.barn > 1 ? 'Built ✓' : 'Needs barn first' }), apply: () => { Home.barn = 2; } },
@@ -5678,9 +5755,9 @@ const qGold = (n) => () => `Earn ${Math.min(n, Life.stats.goldEarned || 0)}/${n}
 const QUESTS = [
   {
     id: 'camp', title: 'Make Camp',
-    hint: 'Clover Fields · your axe is in hand. Chop any tree for 4 wood, then press H.',
+    hint: 'Clover Fields · your axe is in hand. Chop any tree for 3 wood, then press H.',
     subs: [
-      { id: 'camp-wood', text: 'Gather 4 wood', done: () => inv.wood >= 4 },
+      { id: 'camp-wood', text: 'Gather 3 wood', done: () => inv.wood >= 3 },
       { id: 'camp-hut', text: 'Build a Mud Hut (H)', done: () => Home.house >= 1 },
     ],
     auto: () => Home.house >= 1,
@@ -6025,6 +6102,42 @@ function questTick() {
   if (q.subs.every((st) => questDone.has(st.id))) questCompleteActive(q);
 }
 tickers.push(questTick);
+// --- trail beacon: a golden marker + distance readout so you never feel lost ---
+const QUEST_SPOTS = {
+  camp: [2, 50], night: [-2, 56], roots: [8, 52], flame: [12, 158], harvest: [8, 52],
+  oasis: [4, 110], bell: [14, 279], light: [2, 230], scan: [8, 328], aurora: [60, 140],
+  prosper: [-2, 56], family: [5.5, 47], legacy: [-2, 56], retire: [-2, 56],
+};
+const questBeacon = new THREE.Group();
+{
+  const core = mesh(new THREE.OctahedronGeometry(0.5, 0), new THREE.MeshStandardMaterial({ color: 0xffd97a, emissive: 0xa86a00, emissiveIntensity: 1.2, flatShading: true }), 0, 0, 0, false);
+  core.name = 'beacon-core';
+  const beam = mesh(new THREE.CylinderGeometry(0.12, 0.35, 6, 6, 1, true), new THREE.MeshBasicMaterial({ color: 0xffd97a, transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }), 0, 3, 0, false);
+  questBeacon.add(core); questBeacon.add(beam);
+  questBeacon.visible = false;
+  scene.add(questBeacon);
+}
+let questDistEl = null;
+tickers.push((t) => {
+  if (!started || paused) { questBeacon.visible = false; return; }
+  const q = QUESTS[questIndex];
+  if (!q || !QUEST_SPOTS[q.id]) { questBeacon.visible = false; return; }
+  if (!questDistEl) {
+    questDistEl = document.createElement('div');
+    questDistEl.id = 'obj-dist';
+    questDistEl.style.cssText = 'margin-top:4px;font-size:12px;opacity:.85';
+    document.getElementById('objective-panel')?.appendChild(questDistEl);
+  }
+  const [la, lo] = QUEST_SPOTS[q.id];
+  const target = anchor(la, lo, 2.2);
+  questBeacon.visible = true;
+  questBeacon.position.copy(target);
+  questBeacon.position.addScaledVector(target.clone().normalize(), Math.sin(t * 2.4) * 0.3);
+  const core = questBeacon.getObjectByName('beacon-core');
+  if (core) { core.rotation.y = t * 1.8; core.position.y = Math.sin(t * 2.4) * 0.3; }
+  const d = player.position.distanceTo(target);
+  if (questDistEl) questDistEl.textContent = d < 4 ? '✨ You are here — press E!' : `➤ ${Math.round(d)}m ${d > 20 ? '— follow the gold light' : '— almost there'}`;
+});
 
 // ==================== GRAPHICS 3x pass ====================
 // --- denser ground detail: tall grass + meadow flowers ---
@@ -6843,8 +6956,8 @@ function updateBoatControl(dt) {
   const bob = boatBob(clock.elapsedTime);
   playerPos.copy(nn).multiplyScalar(R + 0.64 + bob);
   player.position.copy(playerPos);
-  if (trimmed && moved) meters.energy = Math.max(0, meters.energy - 3 * dt);
-  else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 4 * dt);
+  if (trimmed && moved) meters.energy = Math.max(0, meters.energy - 1.5 * dt);
+  else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 7 * dt);
   coldTick(dt, nn);
   meterAlerts();
   renderStats();
@@ -6922,8 +7035,15 @@ function updatePlayer(dt) {
   const surfH = heightFor(nn) + 0.1 + hopH + (inWater ? -0.35 : 0);
   // survival meters: sprinting burns energy, standing still restores, arctic chills
   const sprinting = !!(ix || iz) && keys.KeyQ && meters.energy > 0;
-  if (sprinting) meters.energy = Math.max(0, meters.energy - 8 * dt);
-  else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 5 * dt);
+  if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt);
+  else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 7 * dt);
+  // footstep dust / wading splash: the world answers every step
+  updatePlayer._dustT = (updatePlayer._dustT || 0) - dt;
+  if ((ix || iz || autoMove) && updatePlayer._dustT <= 0) {
+    updatePlayer._dustT = inWater ? 0.3 : 0.45;
+    const feet = player.position.clone().addScaledVector(nn, inWater ? 0.1 : 0.05);
+    burst(feet, inWater ? 0x9fdcff : 0xd9c9a8, inWater ? 6 : 3, inWater ? 1.2 : 0.6);
+  }
   coldTick(dt, nn); // warmth buffer + seasonal cold (life-sim)
   meterAlerts();
   renderStats();
