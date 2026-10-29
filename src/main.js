@@ -1965,56 +1965,95 @@ const sunstoneMats = [];
   // camel (living amble: loops the oasis, sways its neck, flicks ears and tail)
   const camel = new THREE.Group();
   camel.name = 'camel';
-  const camelM = mat(0xd9a95e);
-  const camelDark = mat(0x8a6238);
+  const camelM = furM('camel', 0xd9a95e, ['#d9a95e', '#e8c68c', '#c9974f'], { n: 180, rMin: 1.2, rMax: 3.2 });
+  const camelPale = furM('camelPale', 0xe8d2a8, ['#e8d2a8', '#f2e3c4', '#d8bd8f'], { n: 130, rMin: 1.2, rMax: 3 });
+  const camelDark = mat(0x7d5730);
+  const camelBlanket = mat(0xb7432f);
+  const camelTrim = mat(0x2f8f7c);
   const camelTorso = new THREE.Group(); camel.add(camelTorso);
-  const camelBody = mesh(new THREE.BoxGeometry(1.8, 0.9, 0.8), camelM, 0, 1.3, 0);
+  // barrel body with chest, rump and a soft belly (replaces the old box)
+  const camelBody = mesh(new THREE.SphereGeometry(1, 12, 9), camelM, 0, 1.42, 0);
+  camelBody.scale.set(0.95, 0.5, 0.44);
   camelTorso.add(camelBody);
-  camelTorso.add(mesh(new THREE.SphereGeometry(0.55, 8, 6), camelM, 0, 1.9, 0, false)); // hump
+  const camelChest = mesh(new THREE.SphereGeometry(0.5, 10, 8), camelM, 0.68, 1.32, 0);
+  camelChest.scale.set(0.9, 0.95, 0.85); camelTorso.add(camelChest);
+  const camelRump = mesh(new THREE.SphereGeometry(0.47, 10, 8), camelM, -0.74, 1.38, 0);
+  camelRump.scale.set(0.92, 0.9, 0.82); camelTorso.add(camelRump);
+  camelTorso.add(mesh(new THREE.SphereGeometry(0.32, 9, 7), camelPale, 0.1, 1.12, 0, false)); // belly
+  // dromedary hump under a draped saddle cloth with a woven girth band
+  const camelHump = mesh(new THREE.SphereGeometry(0.52, 12, 9), camelM, -0.15, 2.0, 0);
+  camelHump.scale.set(1.0, 1.05, 0.66); camelTorso.add(camelHump);
+  const camelBlanketMesh = mesh(new THREE.SphereGeometry(0.53, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.2), camelBlanket, -0.15, 1.99, 0, false);
+  camelBlanketMesh.scale.set(1.0, 1.04, 0.68); camelTorso.add(camelBlanketMesh);
+  const camelGirth = mesh(new THREE.TorusGeometry(0.36, 0.03, 5, 14), camelTrim, -0.15, 1.94, 0, false);
+  camelGirth.rotation.x = Math.PI / 2; camelGirth.scale.set(1.02, 0.66, 1); camelTorso.add(camelGirth);
+  // two-segment neck, curving up and forward like the real animal
   const camelNeck = new THREE.Group();
-  camelNeck.position.set(0.85, 1.6, 0);
+  camelNeck.position.set(0.98, 1.72, 0);
   camelTorso.add(camelNeck);
-  const camelNeckMesh = mesh(new THREE.BoxGeometry(0.35, 1.2, 0.35), camelM, 0, 0.58, 0);
-  camelNeckMesh.rotation.z = -0.45;
-  camelNeck.add(camelNeckMesh);
+  camelNeck.add(mesh(new THREE.CylinderGeometry(0.21, 0.27, 0.78, 8), camelM, 0, 0.39, 0));
+  camelNeck.add(mesh(new THREE.SphereGeometry(0.22, 9, 7), camelM, 0, 0.02, 0, false)); // shoulder ruff
+  const shag = mesh(new THREE.ConeGeometry(0.13, 0.34, 6), camelPale, 0.02, 0.18, 0, false); // throat mane
+  shag.rotation.z = Math.PI;
+  camelNeck.add(shag);
+  const camelNeckUp = new THREE.Group();
+  camelNeckUp.position.set(0, 0.76, 0);
+  camelNeckUp.rotation.z = -0.45;
+  camelNeck.add(camelNeckUp);
+  camelNeckUp.add(mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.56, 8), camelM, 0, 0.28, 0));
   const camelHead = new THREE.Group();
-  camelHead.position.set(0.62, 1.12, 0);
-  camelNeck.add(camelHead);
-  camelHead.add(mesh(new THREE.BoxGeometry(0.7, 0.35, 0.35), camelM, 0, 0, 0));
-  camelHead.add(mesh(new THREE.BoxGeometry(0.28, 0.22, 0.28), camelM, 0.38, -0.06, 0, false)); // muzzle
+  camelHead.position.set(0, 0.56, 0);
+  camelHead.rotation.z = 0.75; // level the skull after the neck lean
+  camelHead.scale.setScalar(1.12);
+  camelNeckUp.add(camelHead);
+  const camelSkull = mesh(new THREE.SphereGeometry(0.24, 10, 8), camelM, 0.02, 0.02, 0);
+  camelSkull.scale.set(1.35, 1.05, 0.95); camelHead.add(camelSkull);
+  camelHead.add(mesh(new THREE.BoxGeometry(0.4, 0.22, 0.24), camelM, 0.32, -0.04, 0)); // muzzle
+  camelHead.add(mesh(new THREE.BoxGeometry(0.34, 0.08, 0.22), camelPale, 0.35, -0.15, 0, false)); // lower lip
+  camelHead.add(mesh(new THREE.SphereGeometry(0.13, 8, 6), camelM, 0.5, -0.02, 0, false)); // soft nose
+  camelHead.add(mesh(new THREE.BoxGeometry(0.05, 0.28, 0.28), camelTrim, 0.36, -0.02, 0, false)); // halter
   const camelEyes = [];
-  for (const sz of [-1, 1]) {
-    const eye = mesh(new THREE.SphereGeometry(0.04, 6, 5), camelDark, 0.18, 0.1, sz * 0.18, false);
-    camelHead.add(eye); camelEyes.push(eye);
-    camelHead.add(mesh(new THREE.SphereGeometry(0.025, 5, 4), camelDark, 0.53, -0.1, sz * 0.08, false)); // nostril
-  }
   const camelEars = [];
   for (const sz of [-1, 1]) {
-    const ear = mesh(new THREE.ConeGeometry(0.07, 0.2, 5), camelM, -0.12, 0.27, sz * 0.13, false);
-    ear.rotation.z = sz * 0.25;
-    camelHead.add(ear);
-    camelEars.push(ear);
+    camelHead.add(mesh(new THREE.SphereGeometry(0.024, 6, 5), camelDark, 0.57, 0.0, sz * 0.11, false)); // nostril
+    const eye = mesh(new THREE.SphereGeometry(0.05, 8, 6), camelDark, 0.12, 0.13, sz * 0.2, false);
+    camelHead.add(eye); camelEyes.push(eye);
+    camelHead.add(mesh(new THREE.SphereGeometry(0.065, 7, 5), camelM, 0.12, 0.19, sz * 0.2, false)); // brow
+    const ear = mesh(new THREE.ConeGeometry(0.06, 0.19, 6), camelM, -0.17, 0.26, sz * 0.16, false);
+    ear.rotation.z = sz * 0.3; ear.rotation.x = sz * 0.35;
+    camelHead.add(ear); camelEars.push(ear);
   }
-  // two-segment legs make the amble read as a walk, not a jiggle
+  // jointed legs: thigh, knee callus, cannon, fetlock and a broad two-toed foot
   const camelLegs = [];
-  for (const [lx, lz] of [[-0.6, 0.25], [0.6, 0.25], [-0.6, -0.25], [0.6, -0.25]]) {
+  for (const [lx, lz] of [[0.68, 0.27], [-0.68, 0.27], [0.68, -0.27], [-0.68, -0.27]]) {
     const hip = new THREE.Group();
-    hip.position.set(lx, 1.0, lz);
-    hip.add(mesh(new THREE.CylinderGeometry(0.13, 0.12, 0.5, 6), camelM, 0, -0.25, 0));
+    hip.position.set(lx, 1.3, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.6, 7), camelM, 0, -0.3, 0));
+    hip.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), camelM, 0, -0.03, 0, false)); // haunch
     const knee = new THREE.Group();
-    knee.position.set(0, -0.5, 0);
+    knee.position.set(0, -0.6, 0);
     hip.add(knee);
-    knee.add(mesh(new THREE.CylinderGeometry(0.11, 0.09, 0.5, 6), camelM, 0, -0.25, 0));
-    knee.add(mesh(new THREE.BoxGeometry(0.2, 0.12, 0.22), camelDark, 0, -0.47, 0.02, false)); // hoof
+    knee.add(mesh(new THREE.SphereGeometry(0.085, 7, 5), camelDark, 0, 0, 0, false)); // knee callus
+    knee.add(mesh(new THREE.CylinderGeometry(0.075, 0.06, 0.58, 6), camelM, 0, -0.29, 0));
+    const ankle = new THREE.Group();
+    ankle.position.set(0, -0.58, 0);
+    knee.add(ankle);
+    ankle.add(mesh(new THREE.SphereGeometry(0.06, 6, 5), camelM, 0, 0, 0, false));
+    for (const s of [-1, 1]) {
+      ankle.add(mesh(new THREE.SphereGeometry(0.075, 7, 5), camelDark, 0.04, -0.06, s * 0.055, false));
+    }
     camel.add(hip);
-    camelLegs.push({ hip, knee });
+    hip.userData = { camelLeg: true, side: lz > 0 ? 0 : 1, knee, ankle };
+    camelLegs.push({ hip, knee, ankle, side: lz > 0 ? 0 : 1 });
   }
   const camelTail = new THREE.Group();
-  camelTail.position.set(-0.95, 1.45, 0);
+  camelTail.position.set(-0.98, 1.6, 0);
   camelTorso.add(camelTail);
-  camelTail.add(mesh(new THREE.CylinderGeometry(0.045, 0.035, 0.7, 5), camelM, 0, -0.32, 0, false));
-  camelTail.add(mesh(new THREE.SphereGeometry(0.08, 6, 5), camelDark, 0, -0.7, 0, false)); // tuft
+  camelTail.add(mesh(new THREE.CylinderGeometry(0.04, 0.055, 0.62, 6), camelM, 0, -0.3, 0, false));
+  camelTail.add(mesh(new THREE.SphereGeometry(0.075, 7, 5), camelDark, 0, -0.64, 0, false)); // tuft
+  const camelBodyScale = camelBody.scale.clone();
   put(camel, latC - 2, lonC - 6, 0, 1.2);
+  window.__camel = camel;
   // slow looping amble around the oasis
   const camelHome = camel.position.clone();
   const camelA = V3(1, 0, 0).applyQuaternion(camel.quaternion).normalize();
@@ -2039,22 +2078,23 @@ const sunstoneMats = [];
       camelM4.makeBasis(fwd, n, side);
       camel.quaternion.setFromRotationMatrix(camelM4);
     }
-    const gait = a * 12;
-    const step = Math.sin(gait);
-    const liftL = Math.max(0, Math.sin(gait + Math.PI * 0.5));
-    const liftR = Math.max(0, Math.sin(gait - Math.PI * 0.5));
-    for (let i = 0; i < camelLegs.length; i++) {
-      const L = camelLegs[i], right = i % 2 === 1;
-      L.hip.rotation.x = (right ? -step : step) * 0.42;
-      L.knee.rotation.x = (right ? liftR : liftL) * 0.35;
+    const gait = a * 11;
+    for (const L of camelLegs) {
+      const ph = gait + (L.side ? Math.PI : 0);
+      const stride = Math.sin(ph);
+      const swing = Math.max(0, Math.cos(ph));
+      // rotate about Z: the hoof strides forward along +X, never out sideways
+      L.hip.rotation.z = stride * 0.34;
+      L.knee.rotation.z = -swing * 0.55;
+      L.ankle.rotation.z = swing * 0.3;
     }
-    camelTorso.position.y = Math.abs(step) * 0.035;
-    camelTorso.rotation.x = Math.sin(a) * 0.02;
-    camelBody.scale.y = 1 + Math.sin(t * 1.4 + camelPh) * 0.015;
-    camelNeck.rotation.z = Math.sin(t * 0.9 + camelPh) * 0.055;
-    camelNeck.rotation.y = Math.sin(t * 0.55 + camelPh) * 0.16;
-    camelHead.rotation.y = Math.sin(t * 0.7 + camelPh * 1.7) * 0.22;
-    camelHead.rotation.z = Math.sin(t * 2.2 + camelPh) * 0.025;
+    camelTorso.position.y = Math.abs(Math.sin(gait)) * 0.035;
+    camelTorso.rotation.x = Math.sin(gait) * 0.022; // gentle roll with the pace
+    camelBody.scale.set(camelBodyScale.x, camelBodyScale.y * (1 + Math.sin(t * 1.4 + camelPh) * 0.02), camelBodyScale.z);
+    camelNeck.rotation.z = -0.5 + Math.sin(t * 0.9 + camelPh) * 0.05;
+    camelNeck.rotation.y = Math.sin(t * 0.55 + camelPh) * 0.14;
+    camelHead.rotation.y = Math.sin(t * 0.7 + camelPh * 1.7) * 0.2;
+    camelHead.rotation.z = 0.75 + Math.sin(t * 2.2 + camelPh) * 0.03;
     const blink = ((t * 0.35 + camelPh) % 1) < 0.035 ? 0.12 : 1;
     camelEyes.forEach((e, i) => (e.scale.y = camelEyeBase[i] * blink));
     camelEars.forEach((e, i) => (e.rotation.z = camelEarBase[i] + Math.max(0, Math.sin(t * 1.7 + camelPh + i * 2)) * 0.2));
