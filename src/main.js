@@ -341,45 +341,50 @@ function groundColor(n, out) {
   if (lon < 0) lon += Math.PI * 2;
   const lat = Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG;
   const wob = Math.sin(n.x * 12.9) * Math.sin(n.z * 7.7) * Math.sin(n.y * 9.1);
+  const micro = Math.sin(n.x * 31.3 + n.y * 19.7) * Math.cos(n.z * 27.1 - n.x * 14.2);
   if (n.y > 0.52) {
     const t = THREE.MathUtils.clamp((n.y - 0.52) * 4 + wob * 0.15, 0, 1);
-    out.setHex(0xe9f4fa).lerp(new THREE.Color(0xbfe0f2), t * 0.55);
-    if (wob > 0.55) out.setHex(0x9fd4ef);
+    out.setHex(0xeef6fc).lerp(new THREE.Color(0xb8dcf0), t * 0.58);
+    if (wob > 0.5) out.setHex(0x9ad0ee);
+    else if (micro > 0.45) out.setHex(0xf7fbff);
     return out;
   }
-  if (n.y < -0.32) { out.setHex(0x1d7fa8); return out; }
+  if (n.y < -0.32) { out.setHex(0x186e96); return out; }
   const b = biomeAt(n);
   if (b === 'farm') {
-    out.setHex(0x7cc25e);
-    if (Math.sin(lon * 9 + lat) > 0.4) out.setHex(0x8fd06a);
-    if (lat < 2 && lat > -12) out.setHex(0xe6c47c); // dirt belt
+    out.setHex(0x74be56);
+    if (Math.sin(lon * 9 + lat) > 0.35) out.setHex(0x8ad064);
+    if (micro > 0.45) out.setHex(0x64ad4a);
+    if (lat < 2 && lat > -12) out.setHex(micro > 0.2 ? 0xdec078 : 0xe8ca84); // dirt belt
   } else if (b === 'oasis') {
-    out.setHex(0xe6c47c); // golden dunes
-    if (Math.sin(lon * 7 - lat * 0.7) > 0.35) out.setHex(0xf0d68e);
-    if (wob > 0.55) out.setHex(0xd9b166);
-    if (lat < -6) out.setHex(0xead9a8); // pale flats
+    out.setHex(0xe8c578); // golden dunes
+    if (Math.sin(lon * 7 - lat * 0.7) > 0.3) out.setHex(0xf2d892);
+    if (wob > 0.48) out.setHex(0xd6a95c);
+    if (micro < -0.45) out.setHex(0xdfb86b);
+    if (lat < -6) out.setHex(0xecdcac); // pale flats
   } else if (b === 'forest') {
-    out.setHex(0x4da855);
-    if (wob > 0.2) out.setHex(0x3f9a4c);
-    if (wob < -0.5) out.setHex(0x63bd63);
+    out.setHex(0x469e50);
+    if (wob > 0.18) out.setHex(0x368844);
+    if (wob < -0.45) out.setHex(0x5eb85e);
+    if (micro > 0.5) out.setHex(0x2f773d);
   } else if (b === 'reef') {
-    out.setHex(0x8fd4c8); // shallow shelf under the water
-    if (wob > 0.3) out.setHex(0x6fbfae);
-    if (lat > 6) out.setHex(0xefe0ae); // sandy rim
+    out.setHex(0x84d0c4); // shallow shelf under the water
+    if (wob > 0.25) out.setHex(0x62b8a8);
+    if (lat > 6) out.setHex(0xf0e1b0); // sandy rim
     let dLonI = Math.abs(lon / DEG - 230);
     if (dLonI > 180) dLonI = 360 - dLonI;
-    if (Math.hypot(lat - 2, dLonI) < 8) out.setHex(0xefe0ae); // lighthouse island sand
+    if (Math.hypot(lat - 2, dLonI) < 8) out.setHex(0xf2e3b6); // lighthouse island sand
   } else if (b === 'volcano') {
-    out.setHex(0x4a4038); // dark basalt
-    if (wob > 0.25) out.setHex(0x5d4a38);
-    if (wob < -0.45) out.setHex(0x38302a);
-    if (Math.sin(lon * 13 + lat * 1.7) > 0.92) out.setHex(0xc25a30); // cooling lava flecks
+    out.setHex(0x463c35); // dark basalt
+    if (wob > 0.22) out.setHex(0x5b4837);
+    if (wob < -0.4) out.setHex(0x322b26);
+    if (Math.sin(lon * 13 + lat * 1.7) > 0.89 || micro > 0.72) out.setHex(0xc95c2e); // cooling lava flecks
   } else {
     out.setHex(0xf2dd9e); // cove sand
-    if (lat > 22) out.setHex(0x8cc86a);
-    if (wob > 0.6) out.setHex(0xead18e);
+    if (lat > 22) out.setHex(0x88c666);
+    if (wob > 0.5) out.setHex(0xe6cc86);
   }
-  out.offsetHSL(0, 0, rand(-0.015, 0.015));
+  out.offsetHSL(0, 0, rand(-0.016, 0.016));
   return out;
 }
 let planetMesh = null; // raycast target for click-to-move
@@ -389,7 +394,7 @@ scene.add(planetGroup);
   const geo = new THREE.IcosahedronGeometry(R, 49); // 4x polys: faces 20*50^2=50k (was 20*25^2=12.5k)
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color();
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color(), shoreSand = new THREE.Color(0xe5cf96);
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i);
     n.copy(v).normalize();
@@ -399,20 +404,186 @@ scene.add(planetGroup);
     // per-face jitter: same for each triangle
     const jitter = (i % 3 === 0) ? rand(-0.02, 0.02) : 0;
     groundColor(n, c);
+    // wet coastal sand transition near waterline (outside arctic/volcano)
+    if (n.y < 0.48 && h > 0.02 && h < 0.26 && biomeAt(n) !== 'volcano') {
+      c.lerp(shoreSand, THREE.MathUtils.clamp((0.26 - h) * 2.4, 0, 0.55));
+    }
     c.offsetHSL(0, 0, jitter);
     colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
-  const planet = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
+  const planet = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.92 }));
   planet.receiveShadow = true;
   planetGroup.add(planet);
   planetMesh = planet;
 }
-// ocean shell (denser shell keeps the larger silhouette smooth)
-const ocean = mesh(new THREE.SphereGeometry(R + 0.12, 160, 104), new THREE.MeshStandardMaterial({ color: 0x2ec4d8, transparent: true, opacity: 0.88, roughness: 0.35, flatShading: true }), 0, 0, 0, false);
-ocean.receiveShadow = true;
+// ocean shell: custom animated water shader with shoreline whitewater foam,
+// shallow-to-deep color gradient, and sun specular sparkles.
+const oceanUniforms = {
+  uTime: { value: 0 },
+  uSunDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
+  uDeep: { value: new THREE.Color(0x176d96) },
+  uMid: { value: new THREE.Color(0x28acc6) },
+  uShallow: { value: new THREE.Color(0x5ae2d4) },
+  uFoam: { value: new THREE.Color(0xf4fbff) },
+};
+const ocean = (() => {
+  const oGeo = new THREE.SphereGeometry(R + 0.12, 160, 104);
+  const oPos = oGeo.attributes.position;
+  const shoreAttr = new Float32Array(oPos.count);
+  const vn = new THREE.Vector3();
+  for (let i = 0; i < oPos.count; i++) {
+    vn.fromBufferAttribute(oPos, i).normalize();
+    shoreAttr[i] = heightFor(vn) - 0.12; // < 0 in water, ~0 right at the beach/shoreline
+  }
+  oGeo.setAttribute('aShore', new THREE.BufferAttribute(shoreAttr, 1));
+  const oMat = new THREE.ShaderMaterial({
+    uniforms: oceanUniforms,
+    vertexShader: `
+      attribute float aShore;
+      uniform float uTime;
+      varying float vShore;
+      varying vec3 vWorldPos;
+      varying vec3 vNormalW;
+      void main() {
+        vShore = aShore;
+        vec3 n = normalize(position);
+        float wave = sin(position.x * 0.45 + uTime * 1.9) * cos(position.z * 0.42 - uTime * 1.5) * 0.045
+                   + sin(position.y * 0.7 - uTime * 2.3) * 0.025;
+        vec3 displaced = position + n * wave;
+        vec4 wp = modelMatrix * vec4(displaced, 1.0);
+        vWorldPos = wp.xyz;
+        vNormalW = normalize(mat3(modelMatrix) * n);
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uSunDir, uDeep, uMid, uShallow, uFoam;
+      varying float vShore;
+      varying vec3 vWorldPos;
+      varying vec3 vNormalW;
+      void main() {
+        vec3 n = normalize(vNormalW);
+        vec3 viewDir = normalize(cameraPosition - vWorldPos);
+        // depth factor: 1 near shore/shallows, 0 in deep water
+        float shallowF = smoothstep(-0.65, -0.02, vShore);
+        vec3 waterCol = mix(uDeep, uMid, smoothstep(-1.1, -0.35, vShore));
+        waterCol = mix(waterCol, uShallow, shallowF * 0.78);
+        // animated wave ripple tint
+        float ripple = sin(vWorldPos.x * 1.3 + uTime * 2.2) * cos(vWorldPos.z * 1.3 - uTime * 1.8) * 0.5 + 0.5;
+        waterCol += vec3(0.04, 0.09, 0.11) * pow(ripple, 3.0) * (0.4 + 0.6 * shallowF);
+        // shoreline foam bands where land meets sea
+        float shoreProx = smoothstep(-0.32, 0.04, vShore) * (1.0 - smoothstep(0.05, 0.22, vShore));
+        float waveBand = sin(vShore * 36.0 + uTime * 3.2 + ripple * 2.2) * 0.5 + 0.5;
+        float foam = shoreProx * (smoothstep(0.42, 0.82, waveBand) * 0.75 + smoothstep(-0.08, 0.03, vShore) * 0.85);
+        // sun lighting + glittering specular
+        float ndl = max(0.22, dot(n, uSunDir) * 0.65 + 0.35);
+        vec3 halfV = normalize(uSunDir + viewDir);
+        vec3 pertN = normalize(n + vec3(sin(vWorldPos.x * 2.6 + uTime * 3.1), cos(vWorldPos.y * 2.4 - uTime * 2.5), sin(vWorldPos.z * 2.6 + uTime * 2.8)) * 0.055);
+        float spec = pow(max(0.0, dot(pertN, halfV)), 48.0) * 0.65;
+        vec3 col = waterCol * ndl + uFoam * (foam * 0.85 + spec);
+        float alpha = mix(0.91, 0.82, shallowF) + foam * 0.12;
+        gl_FragColor = vec4(col, clamp(alpha, 0.0, 0.98));
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+    transparent: true,
+  });
+  const m = new THREE.Mesh(oGeo, oMat);
+  m.receiveShadow = true;
+  return m;
+})();
 scene.add(ocean);
+
+// ---------- instanced ground clutter (lush meadow grass, wildflowers & pebbles in 3 draw calls) ----------
+{
+  const dummy = new THREE.Object3D();
+  const c = new THREE.Color();
+  // 1) 1,600 grass tuft clusters across farm, forest, and oasis rim
+  const grassGeo = new THREE.ConeGeometry(0.11, 0.46, 4);
+  grassGeo.translate(0, 0.22, 0);
+  const grassMat = mat(0xffffff, { roughness: 0.88 });
+  const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, 1600);
+  grassInst.receiveShadow = true;
+  let gi = 0;
+  for (let i = 0; i < 2600 && gi < 1600; i++) {
+    const la = rand(-22, 46), lo = rand(0, 360);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    const b = biomeAt(n);
+    if (b !== 'farm' && b !== 'forest' && !(b === 'cove' && la > 16)) continue;
+    const h = heightFor(n);
+    if (h < 0.2) continue;
+    const p = n.clone().multiplyScalar(R + h + 0.02);
+    orientOnSphere(dummy, p, rand(Math.PI * 2));
+    dummy.scale.set(rand(0.8, 1.35), rand(0.75, 1.55), rand(0.8, 1.35));
+    dummy.updateMatrix();
+    grassInst.setMatrixAt(gi, dummy.matrix);
+    c.setHex(b === 'forest' ? (i % 2 ? 0x3b9648 : 0x52b258) : (i % 2 ? 0x6ec052 : 0x88d464));
+    c.offsetHSL(0, 0, rand(-0.03, 0.03));
+    grassInst.setColorAt(gi, c);
+    gi++;
+  }
+  grassInst.count = gi;
+  grassInst.instanceMatrix.needsUpdate = true;
+  if (grassInst.instanceColor) grassInst.instanceColor.needsUpdate = true;
+  scene.add(grassInst);
+
+  // 2) 420 wildflower blooms (buttercups, pink clover, azure bells, lavender)
+  const flowerGeo = new THREE.DodecahedronGeometry(0.11, 0);
+  flowerGeo.translate(0, 0.16, 0);
+  const flowerMat = mat(0xffffff, { roughness: 0.7 });
+  const flowerInst = new THREE.InstancedMesh(flowerGeo, flowerMat, 420);
+  const flowerPalette = [0xffd94a, 0xff8fb3, 0x74c8ff, 0xc792ff, 0xfff4d2];
+  let fi = 0;
+  for (let i = 0; i < 900 && fi < 420; i++) {
+    const la = rand(-18, 42), lo = rand(0, 210);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    const b = biomeAt(n);
+    if (b !== 'farm' && b !== 'forest') continue;
+    const h = heightFor(n);
+    if (h < 0.24) continue;
+    orientOnSphere(dummy, n.clone().multiplyScalar(R + h + 0.03), rand(Math.PI * 2));
+    dummy.scale.setScalar(rand(0.8, 1.4));
+    dummy.updateMatrix();
+    flowerInst.setMatrixAt(fi, dummy.matrix);
+    c.setHex(flowerPalette[i % flowerPalette.length]);
+    flowerInst.setColorAt(fi, c);
+    fi++;
+  }
+  flowerInst.count = fi;
+  flowerInst.instanceMatrix.needsUpdate = true;
+  if (flowerInst.instanceColor) flowerInst.instanceColor.needsUpdate = true;
+  scene.add(flowerInst);
+
+  // 3) 360 natural pebbles & coastal/desert stones
+  const pebGeo = new THREE.DodecahedronGeometry(0.16, 0);
+  pebGeo.scale(1.2, 0.55, 1.0);
+  const pebMat = mat(0xffffff, { roughness: 0.92 });
+  const pebInst = new THREE.InstancedMesh(pebGeo, pebMat, 360);
+  let pi = 0;
+  for (let i = 0; i < 650 && pi < 360; i++) {
+    const la = rand(-24, 58), lo = rand(0, 360);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    const h = heightFor(n);
+    if (h < 0.14) continue;
+    orientOnSphere(dummy, n.clone().multiplyScalar(R + h + 0.03), rand(Math.PI * 2));
+    dummy.scale.setScalar(rand(0.65, 1.55));
+    dummy.updateMatrix();
+    pebInst.setMatrixAt(pi, dummy.matrix);
+    const b = biomeAt(n);
+    c.setHex(b === 'volcano' ? 0x52453d : (b === 'oasis' ? 0xcfa768 : (b === 'arctic' ? 0xaec8dc : 0x9aa4ab)));
+    c.offsetHSL(0, 0, rand(-0.04, 0.04));
+    pebInst.setColorAt(pi, c);
+    pi++;
+  }
+  pebInst.count = pi;
+  pebInst.instanceMatrix.needsUpdate = true;
+  if (pebInst.instanceColor) pebInst.instanceColor.needsUpdate = true;
+  scene.add(pebInst);
+}
 
 // atmosphere: a taller shell integrated per-pixel along the view ray. Density
 // falls off exponentially with altitude, so the haze is thick and hazy at the
@@ -506,15 +677,19 @@ scene.add(atmo);
 // Declared early: biome blocks call addNode() while the module evaluates.
 const nodes = [];
 const tools = { axe: 1, pick: 1 }; // speed multiplier per tool; research raises these
+let onGainXp = null, onPopup = null;
 function addNode(opt) {
   const nd = { prog: 0, need: 3, depleted: false, respawnT: 0, fall: 0, fallTarget: 0, shake: 0, trunkStock: 0, stock: opt.stock || 2, ...opt };
   nd.maxStock = nd.stock;
   nd.maxTrunk = nd.trunkStock;
   nodes.push(nd);
-  addInteract({
+  const it = {
     id: 'node' + nodes.length, pos: anchor(opt.lat, opt.lon, 1), node: nd,
     kind: 'GATHER', label: () => nodeLabel(nd), onUse: () => gatherHit(nd),
-  });
+  };
+  nd.interact = it;
+  if (nd.shakeRoot) nd.shakeRoot.userData.interact = it;
+  addInteract(it);
   return nd;
 }
 // Any pine, palm, or orchard tree can be chopped. Register it at its base so the
@@ -528,34 +703,38 @@ function addChoppableTree(tree, lat, lon, name = 'Pine', color = 0x8fd06a) {
 }
 function nodeLabel(nd) {
   if (nd.depleted) {
-    if (nd.fallRoot && nd.trunkStock > 0) return `Split Trunk ${Math.min(nd.prog, 2)}/2`;
+    if (nd.fallRoot && nd.trunkStock > 0) return `Split Trunk ${Math.min(Math.floor(nd.prog), 2)}/2`;
     return 'Regrowing…';
   }
-  const p = Math.min(nd.prog, nd.need);
+  const p = Math.min(Math.floor(nd.prog), nd.need);
   return `${nd.verb} ${nd.name}` + (p > 0 ? ` ${p}/${nd.need}` : '');
 }
 function gatherHit(nd) {
   const splitting = nd.depleted && nd.fallRoot && nd.trunkStock > 0;
   if (nd.depleted && !splitting) return toast('🌱 Regrowing… give it a moment.');
   if (meters.energy < 1) return toast('😮‍💨 Too tired to work — eat (F) or rest.');
-  meters.energy = Math.max(0, meters.energy - 1);
+  meters.energy = Math.max(0, meters.energy - 0.85);
   if (nd.shakeRoot) {
     if (!nd.home) nd.home = nd.shakeRoot.position.clone();
     nd.shake = 1; // vibrate
   }
-  if (nd.tool === 'axe') startChop(); // swing the axe
-  nd.prog += nd.tool ? (tools[nd.tool] || 1) : 1;
+  startChop(); // swing tool / hands
+  const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1);
+  nd.prog += power;
   // juice: hits escalate — bigger shake, higher chime, brighter burst
   const th = splitting ? 2 : nd.need;
   const heat = Math.min(1, nd.prog / th);
   if (nd.shakeRoot) nd.shake = 0.6 + heat * 0.9;
-  burst(player.position.clone(), nd.color, Math.round(6 + heat * 10), 1.2 + heat * 1.2);
+  const fxPos = nd.shakeRoot ? nd.shakeRoot.position.clone() : player.position.clone();
+  burst(fxPos, nd.color, Math.round(6 + heat * 10), 1.2 + heat * 1.2);
   flyChunk(player.position.clone().add(V3(0, 1.2, 0)), nd.color === 0xffffff ? 0xcfd8dc : 0x7a5230);
   chime(nd.chime + Math.round(heat * 160));
   if (nd.prog >= th) {
     if (!addItem(nd.item, 1)) { nd.prog = th; return; } // pack full: keep it ready
     nd.prog = 0;
     toast(`+1 ${nd.icon} ${nd.item}`);
+    if (onPopup) onPopup(fxPos, `+1 ${nd.icon}`, '#ffe596');
+    if (onGainXp) onGainXp(splitting ? 6 : 8, fxPos);
     if (splitting) {
       flyChunk(nd.fallRoot.position.clone()); // split piece flies to the pack
       if (--nd.trunkStock <= 0) nd.fallRoot.visible = false; // trunk fully cleared
@@ -659,13 +838,50 @@ function steppingStones(pts, colorHex = 0xf7e8bd, size = 0.55) {
   scene.add(g);
   return g;
 }
+const _pineBarkM = furM('pine-bark', 0x6b4628, ['#4e311a', '#825634', '#5c3b20'], { n: 140, rMin: 1, rMax: 2.8 });
+const _pineGreens = [
+  furM('pine-g0', 0x1d6e35, ['#145226', '#288443', '#23753b'], { n: 120, rMin: 1.2, rMax: 3 }),
+  furM('pine-g1', 0x268544, ['#1c6934', '#359c54', '#2d8e4b'], { n: 120, rMin: 1.2, rMax: 3 }),
+  furM('pine-g2', 0x329c52, ['#257a3e', '#46b565', '#38a658'], { n: 120, rMin: 1.2, rMax: 3 }),
+  mat(0x45b864),
+];
+const _aoDiscGeo = new THREE.CircleGeometry(1.15, 12).rotateX(-Math.PI / 2);
+const _aoDiscMat = new THREE.MeshBasicMaterial({ color: 0x0d1f14, transparent: true, opacity: 0.22, depthWrite: false });
 function makeTree(h = 3) {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(0.22, 0.3, 1.2, 6), mat(0x7a5230), 0, 0.6, 0));
-  const greens = [0x1f7a3a, 0x2fa055, 0x26854a];
-  for (let i = 0; i < 3; i++) {
-    const cone = mesh(new THREE.ConeGeometry(1.5 - i * 0.35, 1.5, 7), mat(greens[i % 3]), 0, 1.6 + i * 1.0, 0);
+  // soft ground contact shadow disc + flared roots + tapered bark trunk
+  const ao = mesh(_aoDiscGeo, _aoDiscMat, 0, 0.03, 0, false);
+  g.add(ao);
+  g.add(mesh(new THREE.CylinderGeometry(0.26, 0.44, 0.42, 7), _pineBarkM, 0, 0.2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.16, 0.28, 1.45, 7), _pineBarkM, 0, 0.85, 0));
+  for (let r = 0; r < 3; r++) {
+    const a = (r / 3) * Math.PI * 2 + 0.4;
+    const root = mesh(new THREE.BoxGeometry(0.14, 0.16, 0.48), _pineBarkM, Math.cos(a) * 0.26, 0.1, Math.sin(a) * 0.26, false);
+    root.rotation.y = -a;
+    g.add(root);
+  }
+  // 5 layered bough tiers with subtle rotation + side bough tufts
+  const tiers = [
+    { r: 1.62, ch: 1.35, y: 1.45, m: 0 },
+    { r: 1.38, ch: 1.28, y: 2.15, m: 1 },
+    { r: 1.12, ch: 1.18, y: 2.82, m: 1 },
+    { r: 0.84, ch: 1.05, y: 3.42, m: 2 },
+    { r: 0.52, ch: 0.88, y: 3.95, m: 3 },
+  ];
+  for (let i = 0; i < tiers.length; i++) {
+    const t = tiers[i];
+    const cone = mesh(new THREE.ConeGeometry(t.r, t.ch, 8), _pineGreens[t.m], 0, t.y, 0);
+    cone.rotation.y = i * 0.42;
+    cone.rotation.z = (i % 2 ? 1 : -1) * 0.025;
     g.add(cone);
+    if (i < 3) {
+      const a = i * 2.1 + 0.5;
+      const side = mesh(new THREE.ConeGeometry(t.r * 0.46, t.ch * 0.62, 6), _pineGreens[(t.m + 1) % 3],
+        Math.cos(a) * (t.r * 0.48), t.y - 0.18, Math.sin(a) * (t.r * 0.48), false);
+      side.rotation.z = -Math.cos(a) * 0.25;
+      side.rotation.x = Math.sin(a) * 0.25;
+      g.add(side);
+    }
   }
   g.scale.setScalar(h / 3);
   return g;
@@ -919,49 +1135,89 @@ function makeCrystal(s = 1) {
 
 function makeOrchardTree(fruitColor = 0xe8c96a) {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.6, 7), mat(0x7a5230), 0, 0.8, 0));
-  g.add(mesh(new THREE.IcosahedronGeometry(1.15, 1), mat(0x3f9a4c), 0, 2.2, 0));
-  g.add(mesh(new THREE.IcosahedronGeometry(0.75, 1), mat(0x4da855), 0.7, 1.7, 0.3, false));
-  const fruitM = mat(fruitColor);
-  for (let a = 0; a < 6; a++) {
-    const aa = (a / 6) * Math.PI * 2;
-    g.add(mesh(new THREE.SphereGeometry(0.11, 6, 5), fruitM,
-      Math.cos(aa) * 0.95, 2.1 + Math.sin(aa * 2) * 0.35, Math.sin(aa) * 0.95, false));
+  const bark = _pineBarkM;
+  const leafDark = furM('orch-d', 0x358c42, ['#287033', '#46a352', '#2f7d3b'], { n: 110, rMin: 1.2, rMax: 3 });
+  const leafMid = furM('orch-m', 0x48a854, ['#389143', '#5ec268', '#429c4d'], { n: 110, rMin: 1.2, rMax: 3 });
+  const leafLight = mat(0x66c96c);
+  g.add(mesh(_aoDiscGeo, _aoDiscMat, 0, 0.03, 0, false));
+  g.add(mesh(new THREE.CylinderGeometry(0.24, 0.38, 0.4, 7), bark, 0, 0.2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.18, 0.26, 1.55, 7), bark, 0, 0.85, 0));
+  // 3 forked wooden boughs
+  for (let b = 0; b < 3; b++) {
+    const ba = (b / 3) * Math.PI * 2 + 0.3;
+    const limb = mesh(new THREE.CylinderGeometry(0.08, 0.13, 0.95, 6), bark, Math.cos(ba) * 0.28, 1.65, Math.sin(ba) * 0.28);
+    limb.rotation.z = -Math.cos(ba) * 0.52;
+    limb.rotation.x = Math.sin(ba) * 0.52;
+    g.add(limb);
+  }
+  // multi-puff billowy canopy
+  g.add(mesh(new THREE.IcosahedronGeometry(1.18, 2), leafDark, 0, 2.28, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.82, 2), leafMid, 0.68, 1.95, 0.32, false));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.78, 2), leafMid, -0.62, 2.02, -0.35, false));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.72, 2), leafMid, -0.18, 2.08, 0.68, false));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.66, 1), leafLight, 0.12, 2.88, -0.08, false));
+  const fruitM = mat(fruitColor, { roughness: 0.45 });
+  const blossomM = mat(0xfff0f5);
+  for (let a = 0; a < 9; a++) {
+    const aa = (a / 9) * Math.PI * 2;
+    const r = 0.88 + (a % 2) * 0.22;
+    g.add(mesh(new THREE.SphereGeometry(0.13, 7, 6), fruitM,
+      Math.cos(aa) * r, 1.85 + (a % 3) * 0.28, Math.sin(aa) * r, false));
+    if (a % 3 === 0) {
+      g.add(mesh(new THREE.DodecahedronGeometry(0.08, 0), blossomM,
+        Math.cos(aa + 0.3) * 0.95, 2.45 + (a % 2) * 0.2, Math.sin(aa + 0.3) * 0.95, false));
+    }
   }
   return g;
 }
 function makeAcacia(h = 3.2) {
   const g = new THREE.Group();
-  const bark = mat(0x8a6238), leafM = mat(0x7da84a), leafL = mat(0x93b957);
-  g.add(mesh(new THREE.CylinderGeometry(0.18, 0.28, h, 6), bark, 0, h / 2, 0));
-  for (let i = 0; i < 3; i++) {
-    const branch = mesh(new THREE.CylinderGeometry(0.06, 0.1, h * 0.62, 5), bark, 0, h * 0.8, 0);
-    branch.rotation.z = (i - 1) * 0.42; branch.rotation.y = i * 2.1;
+  const bark = furM('acacia-bark', 0x7d5630, ['#634222', '#966b40', '#52351a'], { n: 110, rMin: 1.2, rMax: 2.8 });
+  const leafM = furM('acacia-leaf', 0x76a444, ['#5e8832', '#8ebb56', '#6b963c'], { n: 110, rMin: 1.2, rMax: 3 });
+  const leafL = mat(0x98c25c);
+  g.add(mesh(_aoDiscGeo, _aoDiscMat, 0, 0.03, 0, false));
+  g.add(mesh(new THREE.CylinderGeometry(0.22, 0.38, 0.45, 7), bark, 0, 0.22, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.16, 0.26, h, 7), bark, 0, h / 2, 0));
+  for (let i = 0; i < 4; i++) {
+    const ba = (i / 4) * Math.PI * 2 + 0.4;
+    const branch = mesh(new THREE.CylinderGeometry(0.055, 0.11, h * 0.62, 6), bark, Math.cos(ba) * 0.24, h * 0.78, Math.sin(ba) * 0.24);
+    branch.rotation.z = -Math.cos(ba) * 0.52; branch.rotation.x = Math.sin(ba) * 0.52;
     g.add(branch);
   }
-  for (let i = 0; i < 3; i++) {
-    const crown = mesh(new THREE.SphereGeometry(i ? 0.95 : 1.35, 8, 5), i ? leafL : leafM,
-      (i - 1) * 0.75, h + 0.2 + (i === 0 ? 0.18 : 0), (i % 2 ? 0.35 : -0.3), false);
-    crown.scale.set(1.3, 0.32, 1.1);
+  const pads = [
+    [0, h + 0.36, 0, 1.48, 0.32, 1.32, false],
+    [-0.85, h + 0.16, 0.35, 1.05, 0.28, 0.95, true],
+    [0.85, h + 0.18, -0.32, 1.08, 0.28, 0.98, true],
+    [0.15, h + 0.54, 0.1, 0.92, 0.24, 0.85, true],
+  ];
+  for (const [px, py, pz, sx, sy, sz, lt] of pads) {
+    const crown = mesh(new THREE.IcosahedronGeometry(1, 2), lt ? leafL : leafM, px, py, pz, false);
+    crown.scale.set(sx, sy, sz);
     g.add(crown);
   }
   return g;
 }
 function makeEmberTree(h = 3.4) {
   const g = new THREE.Group();
-  const bark = mat(0x3a2a22), leafM = mat(0x7a3a24, { emissive: 0x5a1c08, emissiveIntensity: 0.35 });
-  g.add(mesh(new THREE.CylinderGeometry(0.16, 0.28, h, 6), bark, 0, h / 2, 0));
-  for (let i = 0; i < 3; i++) {
-    const aa = i * 2.1;
-    const branch = mesh(new THREE.CylinderGeometry(0.04, 0.08, 1.15, 5), bark,
+  const bark = mat(0x32241d), emberBark = mat(0x523122, { emissive: 0x3d1204, emissiveIntensity: 0.25 });
+  const leafM = mat(0x8c3b20, { emissive: 0x6e2008, emissiveIntensity: 0.42 });
+  const leafGold = mat(0xd96b27, { emissive: 0x9c3806, emissiveIntensity: 0.55 });
+  g.add(mesh(new THREE.CylinderGeometry(0.24, 0.4, 0.42, 7), bark, 0, 0.2, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.15, 0.27, h, 7), emberBark, 0, h / 2, 0));
+  for (let i = 0; i < 4; i++) {
+    const aa = (i / 4) * Math.PI * 2 + 0.3;
+    const branch = mesh(new THREE.CylinderGeometry(0.045, 0.09, 1.25, 6), bark,
       Math.cos(aa) * 0.36, h * 0.78, Math.sin(aa) * 0.36);
-    branch.rotation.z = 0.55 * (i - 1); branch.rotation.y = aa;
+    branch.rotation.z = -Math.cos(aa) * 0.56; branch.rotation.x = Math.sin(aa) * 0.56;
     g.add(branch);
-    const crown = mesh(new THREE.IcosahedronGeometry(0.62, 0), leafM,
-      Math.cos(aa) * 0.62, h * 0.95 + 0.22, Math.sin(aa) * 0.62, false);
-    crown.scale.set(1, 0.72, 1);
+    const crown = mesh(new THREE.IcosahedronGeometry(0.68, 1), i % 2 ? leafGold : leafM,
+      Math.cos(aa) * 0.68, h * 0.96 + 0.22, Math.sin(aa) * 0.68, false);
+    crown.scale.set(1.1, 0.72, 1.1);
     g.add(crown);
   }
+  const topCrown = mesh(new THREE.IcosahedronGeometry(0.76, 1), leafGold, 0, h + 0.42, 0, false);
+  topCrown.scale.set(1.15, 0.68, 1.15);
+  g.add(topCrown);
   return g;
 }
 function makeSkiff() {
@@ -1017,11 +1273,20 @@ function makeSkiff() {
 
 function makeBush() {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.IcosahedronGeometry(0.7, 1), mat(0x2f9e5f), 0, 0.5, 0));
+  const leafDark = furM('bush-d', 0x26854c, ['#1c693a', '#359c5c', '#207542'], { n: 100, rMin: 1.2, rMax: 3 });
+  const leafLight = mat(0x3cb568);
+  g.add(mesh(new THREE.IcosahedronGeometry(0.68, 2), leafDark, 0, 0.48, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.5, 2), leafLight, 0.38, 0.4, 0.25, false));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.46, 2), leafDark, -0.35, 0.38, -0.22, false));
   const berries = new THREE.Group();
-  const bm = mat(0xe04a5a);
-  for (let k = 0; k < 5; k++)
-    berries.add(mesh(new THREE.SphereGeometry(0.14, 6, 5), bm, rand(-0.5, 0.5), rand(0.3, 0.9), rand(-0.5, 0.5), false));
+  const bm = mat(0xe63e52, { roughness: 0.35 });
+  const flM = mat(0xfff4f8);
+  for (let k = 0; k < 9; k++) {
+    const a = (k / 9) * Math.PI * 2;
+    const r = 0.46 + (k % 2) * 0.14;
+    berries.add(mesh(new THREE.SphereGeometry(0.11, 7, 6), bm, Math.cos(a) * r, 0.36 + (k % 3) * 0.18, Math.sin(a) * r, false));
+    if (k % 3 === 0) berries.add(mesh(new THREE.DodecahedronGeometry(0.06, 0), flM, Math.cos(a + 0.4) * 0.55, 0.68, Math.sin(a + 0.4) * 0.55, false));
+  }
   g.add(berries);
   return { g, berries };
 }
@@ -1370,7 +1635,7 @@ let cropSpots = [];
     put(bush, 5, 38, 0, 1);
     addNode({
       type: 'food', item: 'food', name: 'Berries', verb: 'Pick', icon: '🍎', color: 0xe04a5a, chime: 560,
-      lat: 5, lon: 38, kind: 'GATHER', tool: null, stock: 2, respawn: 60,
+      lat: 5, lon: 38, kind: 'GATHER', tool: null, stock: 2, respawn: 60, shakeRoot: bush,
       onDeplete: () => (berries.visible = false), onRegrow: () => (berries.visible = true),
     });
   }
@@ -1415,15 +1680,7 @@ let cropSpots = [];
   }
   // little orchard south of the farmhouse
   for (const [ola, olo] of [[-4, -13], [-2, -15], [-4, -14]]) {
-    const tree = new THREE.Group();
-    tree.add(mesh(new THREE.CylinderGeometry(0.2, 0.28, 1.6, 7), mat(0x7a5230), 0, 0.8, 0));
-    tree.add(mesh(new THREE.IcosahedronGeometry(1.15, 1), mat(0x3f9a4c), 0, 2.2, 0));
-    tree.add(mesh(new THREE.IcosahedronGeometry(0.75, 1), mat(0x4da855), 0.7, 1.7, 0.3, false));
-    for (let a = 0; a < 6; a++) {
-      const aa = (a / 6) * Math.PI * 2;
-      tree.add(mesh(new THREE.SphereGeometry(0.11, 6, 5), mat(0xe04a3a),
-        Math.cos(aa) * 0.95, 2.1 + Math.sin(aa * 2) * 0.35, Math.sin(aa) * 0.95, false));
-    }
+    const tree = makeOrchardTree(0xe04a3a);
     const placed = put(tree, latC + ola, lonC + olo, 0, rand(3));
     addChoppableTree(placed, latC + ola, lonC + olo, 'Apple Tree');
   }
@@ -3016,6 +3273,24 @@ function renderStats() {
   setText('home-tier', Home.build ? `Building ${HOUSE_BUILD_NAMES[Home.build.target] || 'home'}…` : (Home.house >= 2 ? `Farmhouse T${Home.house - 1}` : (Home.house === 1 ? 'Hut' : 'Tent')));
   setText('clothes-tier', CLOTHES[Life.clothes] || 'Rags');
   setText('upkeep', `👪 ${familyUpkeep()}🍎/day`);
+  // RPG header: level, weapon tier, XP progress
+  try {
+    updateHeroGear();
+    setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
+    setText('rpg-weapon', rpgWeaponDef().name);
+    setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
+    const xf = document.getElementById('xp-fill');
+    if (xf) xf.style.width = `${Math.min(100, (RPG.xp / RPG.xpNext) * 100)}%`;
+    // compact status conditions instead of full meter bars
+    const badges = [];
+    if ((meters.hunger ?? 100) <= 25) badges.push('🍽️ Hungry');
+    if ((meters.cold ?? 0) >= 60) badges.push('🥶 Freezing');
+    if ((meters.energy ?? 100) <= 15) badges.push('😮‍💨 Tired');
+    if ((meters.morale ?? 80) >= 85) badges.push('✨ Inspired');
+    if (critBuff > 0) badges.push('💥 Crit x2');
+    const bb = document.getElementById('status-badges');
+    if (bb) bb.innerHTML = badges.map((b) => `<span class="status-pill">${b}</span>`).join('');
+  } catch { /* headless */ }
   const e = Math.round(meters.energy), c = Math.round(meters.cold), h = Math.round(meters.health);
   if (statsCache.e !== e) { statsCache.e = e; document.getElementById('energy-fill').style.width = e + '%'; }
   if (statsCache.c !== c) { statsCache.c = c; document.getElementById('cold-fill').style.width = c + '%'; }
@@ -3036,8 +3311,15 @@ window.__lp = {
     get inBoat() { return inBoat; },
     board: boardBoat, leave: leaveBoat, use: boatUse, mesh: boatGroup,
   },
-  hasTarget: () => !!moveTargetN,
-  goto(lat, lon, flat, flon) { // debug teleport (also the future fast-travel hook)
+  hasTarget: () => !!moveTargetN || !!activeTask,
+  task: () => (activeTask ? { kind: activeTask.interact?.kind, id: activeTask.interact?.id } : null),
+  autoAct: (id) => {
+    const it = interactables.find((x) => x.id === id) || currentTarget;
+    return it ? setAutoTask(it) : false;
+  },
+  dash: () => tryDash(),
+  get rpg() { try { return RPG; } catch { return null; } },
+  goto(lat, lon, flat, flon) { // fast-travel hook (also used by globe clicks)
     playerPos = latLonToVec3(lat, lon, 0);
     const n0 = playerPos.clone().normalize();
     playerPos = n0.clone().multiplyScalar(R + heightFor(n0) + 0.1);
@@ -3045,6 +3327,7 @@ window.__lp = {
     moveDirSmooth.addScaledVector(n0, -moveDirSmooth.dot(n0)).normalize();
     facing.copy(moveDirSmooth);
     lastBehind.copy(moveDirSmooth);
+    clearAutoTask();
   },
 };
 function completeWonder(id) {
@@ -3056,6 +3339,8 @@ function completeWonder(id) {
   burst(player.position.clone(), 0xffd97a, 26, 3);
   chime(740);
   toast(`🌟 Small Wonder — ${w.name}! (${wonders.filter((x) => x.done).length}/7)`);
+  if (activeTask?.interact?.id === id) clearAutoTask();
+  if (onGainXp) onGainXp(60, player.position.clone());
   const n = wonders.filter((x) => x.done).length;
   if (n === 2) repairBridge(0);
   if (n === 4) repairBridge(1);
@@ -3153,11 +3438,13 @@ function fishFrom(source) {
       burst(player.position.clone(), 0x7ad9ff, 30, 3);
       chime(660); setTimeout(() => chime(880), 120);
       toast(`🐟 ${spec.name} ${sz}kg! (+1 fish${isRecord ? ' — NEW RECORD!' : ''})`);
+      if (onGainXp) onGainXp(isRecord ? 25 : 14, player.position.clone());
     } else {
       if (!addItem('food', 1)) return;
       burst(player.position.clone(), 0x7ad9ff, 30, 3);
       chime(660); setTimeout(() => chime(880), 120);
       toast(`🐟 ${spec.name} ${sz}kg! (+1 food${isRecord ? ' — NEW!' : ''})`);
+      if (onGainXp) onGainXp(isRecord ? 22 : 12, player.position.clone());
     }
   }
 }
@@ -3253,15 +3540,16 @@ function onUse(it) {
 
 // ---------- polar-bear combat + health ----------
 // Adults (scale >= 0.9) guard their ground: wander home, chase inside 7u,
-// swipe inside 3u for 10–16 damage. Cubs never attack — they flee.
-// The axe (E on a bear) deals 12–20 × axe level with a 0.55s swing cooldown.
+// telegraph a heavy swipe inside 3u (dodge with Shift!), swipe for 10–16 damage.
+// Cubs never attack — they flee.
+// One click/E locks the bear: the hero pursues and auto-swings until it falls.
 // Health regens slowly out of combat; 🌿 remedy heals fast.
 const BEAR_AGGRO = 7, BEAR_STRIKE = 3.1, BEAR_LEASH = 14;
 let playerAttackCd = 0;
 function bearLabel(b) {
   if (b.dead) return 'The bear is still… (victory)';
-  if (b.cub) return `Cub ${Math.ceil(b.hp)}/${b.maxHp} — it means no harm`;
-  return `Bear ❤ ${Math.ceil(b.hp)}/${b.maxHp} — strike! (E)`;
+  if (b.cub) return `Cub ${Math.ceil(b.hp)}/${b.maxHp} — tap to shoo`;
+  return `Bear ❤ ${Math.ceil(b.hp)}/${b.maxHp} — tap to fight`;
 }
 function flashDamage() {
   const f = document.getElementById('damage-flash');
@@ -3271,9 +3559,17 @@ function flashDamage() {
 }
 function damagePlayer(amount, from) {
   if (playerDead || meters.health <= 0) return;
+  // dash i-frames: a well-timed roll avoids the hit entirely and empowers the riposte
+  if (dashIFrames > 0) {
+    critBuff = 2;
+    spawnPopup(player.position.clone(), 'Clean Dodge! 💨', '#9fdcff', true);
+    chime(990);
+    return;
+  }
   meters.health = Math.max(0, meters.health - amount);
   lastDamageT = combatNow;
   flashDamage();
+  spawnPopup(player.position.clone(), `-${amount}`, '#ff8787');
   burst(player.position.clone(), 0xe03131, 12, 2.2);
   chime(160);
   // knockback: shove the traveler a step away from the swipe
@@ -3294,16 +3590,18 @@ function attackBear(b) {
   const d = player.position.distanceTo(b.mesh.position);
   if (d > 4.6) { toast(b.adult ? '⚠️ Too far — step closer to strike.' : 'The cub scampers just out of reach.'); return; }
   if (playerAttackCd > 0) return;
-  playerAttackCd = 0.55;
+  playerAttackCd = Math.max(0.3, window.__rpgSwing || 0.55);
   startChop(); // axe swing
   // damage lands mid-swing so the hit matches the axe visually
   setTimeout(() => {
     if (b.dead || playerDead) return;
     if (player.position.distanceTo(b.mesh.position) > 5.2) return; // whiffed: bear moved away
-    const dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1));
+    let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * (window.__rpgDmgMult || 1));
+    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical strike!'); }
     b.hp -= dmg;
     b.hitFlash = 1;
     burst(b.mesh.position.clone(), 0xffd97a, 14, 2.4);
+    spawnPopup(b.mesh.position.clone(), `-${dmg}`, dmg >= 30 ? '#ffb35a' : '#ffffff');
     chime(300);
     toast(b.cub ? `You shoo the cub (${dmg} dmg) — it flees!` : `🪓 You strike the bear for ${dmg}! (${Math.max(0, Math.ceil(b.hp))}/${b.maxHp})`);
     if (b.hp <= 0) killBear(b);
@@ -3325,10 +3623,13 @@ function killBear(b) {
   burst(b.mesh.position.clone(), 0xe03131, 14, 2);
   chime(240);
   if (b.interact) b.interact.kind = '🏆 BEAR BESTED';
-  if (b.cub) toast('The cub yelps and plays dead… it will scamper off soon.');
+  if (activeTask?.interact?.bear === b) clearAutoTask();
+  if (b.cub) { toast('The cub yelps and plays dead… it will scamper off soon.'); if (onGainXp) onGainXp(10, b.mesh.position.clone()); }
   else {
     toast('🐻‍❄️ You bested the polar bear! Rest — health recovers slowly. (+2 food)');
     addItem('food', 2);
+    if (onGainXp) onGainXp(45, b.mesh.position.clone());
+    spawnPopup(b.mesh.position.clone(), '❄️ Frost Pelt +2🍎', '#9fdcff');
   }
   saveCheckpoint(); // a victory is worth remembering quietly
 }
@@ -3340,6 +3641,7 @@ function killPlayer() {
   player.visible = true;
   if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
   moveTargetN = null;
+  clearAutoTask();
   burst(player.position.clone(), 0xe03131, 30, 3);
   chime(110);
   const g = document.getElementById('gameover');
@@ -3405,22 +3707,39 @@ function updateBears(t, dt) {
     const n = b.pos.clone().normalize();
     const toPlayer = player.position.clone().sub(b.mesh.position);
     const dist = toPlayer.length();
-    let moveDir = null, speed = 0;
+    let moveDir = null, speed = 0, engaged = false;
     if (!playerDead && b.adult) {
       const homeD = b.pos.distanceTo(b.home);
       if (dist < BEAR_STRIKE) {
-        // strike range: face the traveler, rear up and swipe on cooldown
+        // strike range: plant the feet and fight. Facing is handled here alone
+        // (one capped pivot per frame) — the wander below stands down while
+        // engaged so the bear can't double-turn and snap.
+        engaged = true;
+        // strike range: face the traveler, telegraph the heavy swipe (red flash +
+        // rear-up), then land it — dash (Shift) through the flash for a Clean Dodge.
+        // Committed aim: track fast while open, barely track mid-windup so a
+        // late dash actually dodges (and bears can't snap-turn mid-swing).
         const flat = toPlayer.addScaledVector(n, -toPlayer.dot(n));
-        if (flat.lengthSq() > 1e-6) bearTurnToward(b, flat.normalize(), dt, 2.4);
-        if (b.attackCd <= 0) {
-          b.attackCd = 1.3;
-          b.attackT = 0.65;
-          setTimeout(() => {
-            if (!b.dead && !playerDead && player.position.distanceTo(b.mesh.position) < BEAR_STRIKE + 0.6) {
-              damagePlayer(Math.round(10 + Math.random() * 6), b.mesh.position);
-              toast('🐻‍❄️ The bear swipes you! Fight back (E) or run!');
-            }
-          }, 280);
+        if (flat.lengthSq() > 1e-6) bearTurnToward(b, flat.normalize(), dt, b.windup > 0 ? 0.6 : 2.4);
+        if (b.windup > 0) {
+          b.windup -= dt;
+          b.attackT = 0.65; // hold the rear-up through the telegraph
+          if (b.windup <= 0) {
+            b.attackCd = 1.35;
+            b.attackT = 0.65;
+            setTimeout(() => {
+              if (!b.dead && !playerDead && player.position.distanceTo(b.mesh.position) < BEAR_STRIKE + 0.6) {
+                damagePlayer(Math.round(10 + Math.random() * 6), b.mesh.position);
+                toast('🐻‍❄️ The bear swipes you! Tap the bear to fight back — or dodge (Shift)!');
+              }
+            }, 140);
+          }
+        } else if (b.attackCd <= 0) {
+          b.windup = 0.7;
+          b.hitFlash = Math.max(b.hitFlash, 0.25);
+          burst(b.mesh.position.clone().addScaledVector(n, 1.2), 0xe03131, 8, 1.6);
+          spawnPopup(b.mesh.position.clone(), '❗', '#ff6b6b', true);
+          chime(140);
         }
       } else if (dist < BEAR_AGGRO && homeD < BEAR_LEASH) {
         // chase the traveler across the ice
@@ -3441,7 +3760,7 @@ function updateBears(t, dt) {
         if (flat.lengthSq() > 1e-6) { moveDir = flat.normalize(); speed = 3.4; }
       }
     }
-    if (!moveDir) {
+    if (!moveDir && !engaged) {
       // idle wander: pick a new nearby heading every few seconds
       b.wanderT -= dt;
       if (b.wanderT <= 0 || !b.target) {
@@ -3469,7 +3788,7 @@ function updateBears(t, dt) {
         if (flat.lengthSq() > 1e-6) { moveDir = flat.normalize(); speed = 1.4; }
       }
     }
-    if (moveDir && speed > 0) {
+    if (moveDir && speed > 0 && !engaged) {
       bearTurnToward(b, moveDir, dt, b.cub ? 3.4 : 1.9);
       const axis = new THREE.Vector3().crossVectors(n, b.facing);
       if (axis.lengthSq() > 1e-6) {
@@ -3914,6 +4233,7 @@ function saveLife() {
     stats: { ...Life.stats }, rot: { ...Life.rot }, chronicle: [...Life.chronicle],
     bless: { ...(Life.bless || {}) },
     fishBook: { ...(Life.fishBook || {}) }, recipes: { ...(Life.recipes || {}) }, packBonus,
+    rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
     home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
@@ -3931,6 +4251,14 @@ function restoreLife(s) {
   Life.wolfRaid = s.wolfRaid || 0;
   Life.fishBook = { ...(s.fishBook || {}) };
   Life.recipes = { ...(s.recipes || {}) };
+  if (s.rpg) {
+    RPG.level = Math.max(1, Math.min(20, s.rpg.level | 0 || 1));
+    RPG.xp = Math.max(0, s.rpg.xp || 0);
+    RPG.xpNext = s.rpg.xpNext || (35 + (RPG.level - 1) * 28);
+    RPG.weapon = Math.max(0, Math.min(3, s.rpg.weapon | 0 || 0));
+    RPG.perkChop = s.rpg.perkChop || 1; RPG.perkRun = s.rpg.perkRun || 1; RPG.perkTame = s.rpg.perkTame || 1;
+    rpgRefreshMults();
+  }
   if (typeof s.packBonus === 'number') packBonus = Math.max(0, Math.min(24, s.packBonus | 0));
   if (typeof s.stats?.fishCaught !== 'number') Life.stats.fishCaught = 0;
   Home.build = null;
@@ -4016,7 +4344,7 @@ function overnightNeeds(rested) {
     meters.morale = Math.max(0, meters.morale - 15);
     Life.grief = Math.min(1.5, (Life.grief || 0) + 0.6);
   }
-  meters.hunger = Math.max(0, meters.hunger - 15);
+  meters.hunger = Math.max(0, meters.hunger - 5);
   renderStats();
 }
 function cookMeal() {
@@ -4036,11 +4364,13 @@ function cookMeal() {
   burst(homeFirePos ? homeFirePos.clone() : player.position.clone(), 0xffb35a, isNew ? 26 : 14, isNew ? 3 : 2);
   chime(700); if (isNew) setTimeout(() => chime(880), 140);
   toast(isNew ? `🍲 New recipe! ${used.join(' + ')} → hearty meal!` : '🍲 Cooked a hearty meal! (F to eat)');
+  if (onGainXp) onGainXp(isNew ? 18 : 10, (homeFirePos ? homeFirePos.clone() : player.position.clone()));
   renderStats();
 }
 tickers.push((t, dt) => {
   if (playerDead || sleeping) return;
-  meters.hunger = Math.max(0, (meters.hunger ?? 100) - dt * (100 / 300));
+  // RPG pacing: hunger drains ~3x slower so exploring beats eating on schedule.
+  meters.hunger = Math.max(0, (meters.hunger ?? 100) - dt * (100 / 900));
   if (meters.hunger <= 0) {
     meters.health = Math.max(1, meters.health - 2 * dt); // starving aches but won't finish you
     meters.energy = Math.max(0, meters.energy - 3 * dt);
@@ -4259,6 +4589,7 @@ function completeHouseConstruction() {
   burst(c, 0xffd97a, 10, 1.6);
   chime(760);
   toast(`🏠 ${name} complete!`);
+  if (onGainXp) onGainXp(30, c);
   renderBuild();
   saveCheckpoint();
 }
@@ -4496,6 +4827,7 @@ function plotCycle(i) {
     Life.stats.harvests++;
     burst(plotMesh[i].g.position.clone(), 0x8fd06a, 12, 1.6);
     chime(600); toast('🌾 Harvest! (+2🍎)');
+    if (onGainXp) onGainXp(12, plotMesh[i].g.position.clone());
   } else if (p.crop && !p.water) {
     const noWell = !Home.well || Home.dmg.well;
     if (noWell && meters.energy < 3) return toast('😮‍💨 Too tired to haul water from the pond.');
@@ -4605,6 +4937,7 @@ function doBuild(b) {
   burst(homeSpot(HOME.lat, HOME.lon, 1.5), 0x9df0a8, 18, 2.4);
   chime(700);
   toast(`🔨 ${b.name} done!`);
+  if (onGainXp) onGainXp(20, homeSpot(HOME.lat, HOME.lon, 1.5));
   renderBuild();
   saveCheckpoint();
   renderStats();
@@ -5208,7 +5541,7 @@ function spawnWolves(n) {
     scene.add(m);
     wolves.push(w);
     registerEntInteract(w, 'wolf' + Date.now() % 100000 + k, '🐺 WOLF',
-      () => `Wolf ❤ ${Math.max(0, Math.ceil(w.hp))} — strike! (E)`,
+      () => `Wolf ❤ ${Math.max(0, Math.ceil(w.hp))} — tap to fight`,
       () => attackWolf(w));
   }
   toast('🐺 Wolves stalk your herd! (axe, lanterns, dog, fences)');
@@ -5223,14 +5556,16 @@ function attackWolf(w) {
   if (!w || playerDead || w.hp <= 0) return;
   if (player.position.distanceTo(w.mesh.position) > 4.6) return toast('⚠️ Too far — step closer to strike.');
   if (playerAttackCd > 0) return;
-  playerAttackCd = 0.55;
+  playerAttackCd = Math.max(0.3, window.__rpgSwing || 0.55);
   startChop();
   setTimeout(() => {
     if (w.hp <= 0 || playerDead) return;
     if (player.position.distanceTo(w.mesh.position) > 5.2) return;
-    const dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1));
+    let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * (window.__rpgDmgMult || 1));
+    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical strike!'); }
     w.hp -= dmg;
     burst(w.mesh.position.clone(), 0xffd97a, 12, 2);
+    spawnPopup(w.mesh.position.clone(), `-${dmg}`, '#ffffff');
     chime(300);
     toast(`🪓 You strike the wolf for ${dmg}!`);
     if (w.hp <= 0) killWolf(w);
@@ -5248,6 +5583,9 @@ function killWolf(w) {
   Life.grief = Math.max(0, (Life.grief || 0) - 0.3);
   chime(240);
   toast('🐺 Wolf driven off! (+2🍎 meat)');
+  if (activeTask?.interact?.wolf === w) clearAutoTask();
+  if (onGainXp) onGainXp(30, w.mesh.position.clone());
+  spawnPopup(w.mesh.position.clone(), '🐺 Fang +2🍎', '#ffd97a');
   saveCheckpoint();
   renderStats();
 }
@@ -5301,8 +5639,17 @@ function updateWolves(t, dt) {
         const stepped = tangentStep(w.pos, goalDir, dt * speed);
         if (stepped) w.facing.lerp(stepped, 0.2).normalize();
       }
-      // strike
-      if (w.atkCd <= 0) {
+      // strike: livestock instantly, but the traveler gets a dodgeable telegraph
+      if (w.windup > 0) {
+        w.windup -= dt;
+        if (w.windup <= 0) {
+          w.atkCd = 1.5;
+          if (w.huntsPlayer && !playerDead && w.pos.distanceTo(player.position) < 2.6) {
+            damagePlayer(Math.round(6 + Math.random() * 5), w.mesh.position);
+            toast('🐺 The wolf snaps at you! Tap it to fight back — or dodge (Shift)!');
+          }
+        }
+      } else if (w.atkCd <= 0) {
         if (w.prey && animals.includes(w.prey) && w.pos.distanceTo(w.prey.mesh.position) < 1.8) {
           w.atkCd = 1.4;
           if (Math.random() < 0.22 * Home.fences) {
@@ -5317,9 +5664,10 @@ function updateWolves(t, dt) {
             if (w.prey.hp <= 0) killAnimal(w.prey, true);
           }
         } else if (w.huntsPlayer && w.pos.distanceTo(player.position) < 2.2) {
-          w.atkCd = 1.4;
-          damagePlayer(Math.round(6 + Math.random() * 5), w.mesh.position);
-          toast('🐺 The wolf snaps at you! Fight back (E)!');
+          w.windup = 0.6;
+          burst(w.mesh.position.clone(), 0xe03131, 6, 1.2);
+          spawnPopup(w.mesh.position.clone(), '❗', '#ff6b6b', true);
+          chime(140);
         }
       }
     }
@@ -6711,6 +7059,252 @@ function applySave(s, respawn) {
 let dragging = false, px = 0, py = 0, orbitYaw = 0, orbitPitch = 0;
 let downX = 0, downY = 0, downT = 0, downOnCanvas = false;
 let moveTargetN = null; // click-to-move destination (surface normal)
+
+// ---------- Pocket-RPG engine: click/E-once auto-act, dash, levels, telegraphs ----------
+// One click (or one E press) locks a target; the hero walks over and performs the
+// whole job automatically: chop → fell → split → loot, or pursue → auto-swing.
+let activeTask = null; // { interact, timer, kind }
+let dashT = 0, dashCd = 0, dashIFrames = 0;
+let dashDir = new THREE.Vector3(1, 0, 0);
+let critBuff = 0; // next N auto-swings crit after a Clean Dodge
+const RPG_WEAPONS = [
+  { name: 'Rusty Hatchet', chop: 1, dmg: 1, swing: 0.62 },
+  { name: 'Iron Broadaxe', chop: 1.4, dmg: 1.35, swing: 0.55 },
+  { name: 'Sunstone Greataxe', chop: 1.8, dmg: 1.7, swing: 0.48 },
+  { name: 'Starforged Blade', chop: 2.2, dmg: 2.1, swing: 0.4 },
+];
+const RPG = { level: 1, xp: 0, xpNext: 35, weapon: 0, perkChop: 1, perkRun: 1, perkTame: 1 };
+window.__rpgChopMult = 1;
+window.__rpgDmgMult = 1;
+window.__rpgSwing = 0.62;
+function rpgWeaponDef() { return RPG_WEAPONS[Math.min(RPG.weapon, RPG_WEAPONS.length - 1)]; }
+function rpgRefreshMults() {
+  const w = rpgWeaponDef();
+  window.__rpgChopMult = w.chop * (RPG.perkChop || 1);
+  window.__rpgDmgMult = w.dmg;
+  window.__rpgSwing = w.swing;
+}
+rpgRefreshMults();
+function spawnPopup(worldPos, text, color = '#ffe596', big = false) {
+  try {
+    const box = document.getElementById('popups');
+    if (!box || !worldPos || !worldPos.clone) return;
+    const v = worldPos.clone().project(camera);
+    if (v.z > 1) return;
+    const el = document.createElement('div');
+    el.className = 'rpg-popup';
+    el.textContent = text;
+    el.style.color = color;
+    if (big) el.style.fontSize = '19px';
+    el.style.left = `${((v.x * 0.5 + 0.5) * innerWidth + (Math.random() * 36 - 18)) | 0}px`;
+    el.style.top = `${((-v.y * 0.5 + 0.5) * innerHeight - 30) | 0}px`;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), 1150);
+    while (box.children.length > 24) box.firstChild.remove();
+  } catch { /* headless */ }
+}
+onPopup = (pos, text, color) => spawnPopup(pos, text, color || '#ffe596');
+const RPG_PERKS = [
+  { id: 'chop', name: "Lumberjack's Rhythm", desc: '+30% work speed', apply: () => { RPG.perkChop = (RPG.perkChop || 1) * 1.3; } },
+  { id: 'run', name: 'Fleetfoot', desc: '+12% move speed, faster dash', apply: () => { RPG.perkRun = (RPG.perkRun || 1) * 1.12; } },
+  { id: 'tame', name: 'Beast Friend', desc: 'dog + battles, +25 max HP', apply: () => { RPG.perkTame = (RPG.perkTame || 1) + 1; meters.health = Math.min(150, meters.health + 25); } },
+];
+onGainXp = (amount, pos) => {
+  if (!amount || playerDead) return;
+  RPG.xp += amount;
+  if (pos) spawnPopup(pos, `+${Math.round(amount)} XP`, '#9df0a8');
+  let leveled = false;
+  while (RPG.xp >= RPG.xpNext && RPG.level < 20) {
+    RPG.xp -= RPG.xpNext;
+    RPG.level++;
+    RPG.xpNext = Math.round(35 + (RPG.level - 1) * 28);
+    leveled = true;
+    const perk = RPG_PERKS[(RPG.level - 2) % RPG_PERKS.length];
+    try { perk.apply(); } catch { /* noop */ }
+    rpgRefreshMults();
+    const wBefore = RPG.weapon;
+    if (RPG.level >= 10) RPG.weapon = 3;
+    else if (RPG.level >= 6) RPG.weapon = 2;
+    else if (RPG.level >= 3) RPG.weapon = 1;
+    rpgRefreshMults();
+    meters.health = Math.min(150, meters.health + 40);
+    meters.energy = Math.min(100, meters.energy + 40);
+    burst(player.position.clone(), 0xffd97a, 30, 3);
+    chime(880); setTimeout(() => chime(1170), 150);
+    toast(`⭐ Level ${RPG.level}! Perk: ${perk.name} (${perk.desc})${RPG.weapon > wBefore ? ` + NEW WEAPON: ${rpgWeaponDef().name}!` : ''}`);
+    if (player.position) spawnPopup(player.position.clone(), `LEVEL ${RPG.level}!`, '#ffd97a', true);
+    try { renderStats(); } catch { /* noop */ }
+    try { saveCheckpoint(); } catch { /* noop */ }
+  }
+  if (!leveled) { try { renderStats(); } catch { /* noop */ } }
+};
+// glowing target ring under the locked RPG target
+const targetRing = new THREE.Mesh(
+  new THREE.RingGeometry(1.15, 1.5, 40).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x7dff9a, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide })
+);
+targetRing.visible = false;
+scene.add(targetRing);
+function taskColor(kind) {
+  if (kind === 'BEAR' || kind === 'WOLF' || (kind || '').includes('BEAR') || (kind || '').includes('WOLF')) return 0xff6b6b;
+  if ((kind || '').includes('WONDER') || (kind || '').includes('HOMESTEAD') || (kind || '').includes('BUILD')) return 0xffd97a;
+  return 0x7dff9a;
+}
+function setAutoTask(it) {
+  if (!it || playerDead) return false;
+  if (activeTask && activeTask.interact === it) { clearAutoTask(); return true; } // toggle off
+  activeTask = { interact: it, timer: 0.35, kind: it.kind || '' };
+  moveTargetN = it.pos.clone().normalize();
+  try {
+    targetRing.visible = true;
+    targetRing.material.color.setHex(taskColor(it.kind));
+    const n = it.pos.clone().normalize();
+    targetRing.position.copy(n).multiplyScalar(R + heightFor(n) + 0.25);
+    targetRing.lookAt(0, 0, 0);
+    targetRing.rotateX(Math.PI / 2);
+  } catch { /* noop */ }
+  return true;
+}
+function clearAutoTask() {
+  activeTask = null;
+  try { targetRing.visible = false; } catch { /* noop */ }
+}
+function taskIsCombat(it) {
+  if (!it) return false;
+  if (it.bear || it.wolf) return true;
+  const k = (it.kind || '');
+  return k.includes('BEAR') || k.includes('WOLF');
+}
+function taskIsGather(it) { return !!(it && it.node); }
+function taskIsWonder(it) { return !!(it && it.id && ['flame', 'harvest', 'oasis', 'bell', 'light', 'scan', 'aurora', 'plant'].includes(it.id)); }
+// per-frame auto-action driver (called from updatePlayer when in range)
+function updateAutoTask(dt) {
+  if (!activeTask || playerDead || inBoat) return;
+  const it = activeTask.interact;
+  // target went away: node fully cleared + regrowing, bear dead + looted, etc.
+  if (!it || !interactables.includes(it)) { clearAutoTask(); return; }
+  if (it.node && it.node.depleted && !(it.node.fallRoot && it.node.trunkStock > 0)) {
+    // let regrow nodes release the hero; trunk-splitting keeps going
+    if (it.node.respawnT > 0) { clearAutoTask(); return; }
+  }
+  if ((it.bear && it.bear.dead) || (it.wolf && it.wolf.hp <= 0)) { clearAutoTask(); return; }
+  if (taskIsWonder(it) && byId(it.id)?.done && it.id !== 'plant') { clearAutoTask(); return; }
+  const d = player.position.distanceTo(it.pos);
+  const reach = (it.radius || 3.6) + 0.6;
+  if (d > reach) {
+    // walk into range
+    moveTargetN = it.pos.clone().normalize();
+    try {
+      const n = it.pos.clone().normalize();
+      targetRing.position.copy(n).multiplyScalar(R + heightFor(n) + 0.25);
+    } catch { /* noop */ }
+    return;
+  }
+  // in range: face the target and work it on cooldown
+  try {
+    const n = playerPos.clone().normalize();
+    const want = it.pos.clone().sub(player.position).addScaledVector(n, -it.pos.clone().sub(player.position).dot(n));
+    if (want.lengthSq() > 1e-6) {
+      facing.lerp(want.normalize(), 1 - Math.exp(-10 * dt)).normalize();
+      moveDirSmooth.lerp(facing, 1 - Math.exp(-8 * dt));
+    }
+  } catch { /* noop */ }
+  moveTargetN = null;
+  activeTask.timer -= dt;
+  if (activeTask.timer > 0) return;
+  if (taskIsCombat(it)) {
+    activeTask.timer = Math.max(0.3, window.__rpgSwing || 0.55);
+    if (it.bear) attackBear(it.bear);
+    else if (it.wolf) attackWolf(it.wolf);
+  } else if (taskIsGather(it)) {
+    activeTask.timer = Math.max(0.3, 0.62 / (window.__rpgChopMult || 1));
+    gatherHit(it.node);
+    if (it.node.depleted && !(it.node.fallRoot && it.node.trunkStock > 0)) clearAutoTask();
+  } else if (taskIsWonder(it)) {
+    activeTask.timer = 1.0;
+    (it.onUse || onUse)(it);
+  } else {
+    // talk / cook / plot / build / board: single interaction, then release
+    try { (it.onUse || onUse)(it); } catch { /* noop */ }
+    clearAutoTask();
+  }
+}
+function tryDash() {
+  if (playerDead || inBoat || dashCd > 0 || meters.energy < 6) return false;
+  const n = playerPos.clone().normalize();
+  const dir = facing.clone().addScaledVector(n, -facing.dot(n));
+  if (dir.lengthSq() < 1e-6) return false;
+  dir.normalize();
+  dashDir.copy(dir);
+  dashT = 0.2; dashCd = 1.1 / (RPG.perkRun || 1); dashIFrames = 0.32;
+  meters.energy = Math.max(0, meters.energy - 6);
+  burst(player.position.clone(), 0xffffff, 8, 1.4);
+  chime(900);
+  return true;
+}
+// soft blob shadow to ground the hero + weapon visuals that grow with RPG tier
+const heroShadow = new THREE.Mesh(
+  new THREE.CircleGeometry(0.85, 16).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0x0d1f14, transparent: true, opacity: 0.3, depthWrite: false })
+);
+scene.add(heroShadow);
+function updateHeroGear() {
+  try {
+    const axe = player?.userData?.axe;
+    if (axe) {
+      const tier = Math.min(RPG.weapon, 3);
+      axe.scale.setScalar(0.8 + tier * 0.18);
+      axe.traverse((o) => {
+        if (o.isMesh && o.material && o.material.metalness > 0.3) {
+          o.material.emissive = o.material.emissive || new THREE.Color(0);
+          o.material.emissive.setHex([0x000000, 0x1a0d00, 0x6b3a00, 0x3a6bff][tier]);
+          o.material.emissiveIntensity = tier * 0.35;
+        }
+      });
+    }
+  } catch { /* noop */ }
+}
+tickers.push(() => {
+  try {
+    const n = playerPos.clone().normalize();
+    heroShadow.position.copy(n).multiplyScalar(R + heightFor(n) + 0.06);
+    heroShadow.lookAt(0, 0, 0);
+    heroShadow.rotateX(Math.PI / 2);
+    const air = THREE.MathUtils.clamp(hopH * 2, 0, 1);
+    heroShadow.material.opacity = 0.3 * (1 - air * 0.6);
+    heroShadow.scale.setScalar(1 + air * 0.4);
+  } catch { /* noop */ }
+});
+// drifting ambient motes: dandelion seeds over the farm, heat dust over the oasis
+{
+  const moteGeo = new THREE.BufferGeometry();
+  const MN = 90;
+  const mp = new Float32Array(MN * 3), mSeed = [];
+  for (let i = 0; i < MN; i++) {
+    const farm = i < 55;
+    const la = farm ? rand(-6, 20) : rand(-2, 18), lo = farm ? rand(28, 66) : rand(94, 124);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    const p = n.clone().multiplyScalar(R + heightFor(n) + rand(0.8, 3.2));
+    mp[i * 3] = p.x; mp[i * 3 + 1] = p.y; mp[i * 3 + 2] = p.z;
+    mSeed.push({ la, lo, ph: rand(6), sp: rand(0.2, 0.7), farm });
+  }
+  moteGeo.setAttribute('position', new THREE.BufferAttribute(mp, 3));
+  const moteMat = new THREE.PointsMaterial({ color: 0xfff6d8, size: 0.32, transparent: true, opacity: 0.55, depthWrite: false });
+  const motes = new THREE.Points(moteGeo, moteMat);
+  motes.frustumCulled = false;
+  scene.add(motes);
+  tickers.push((t) => {
+    const arr = moteGeo.attributes.position;
+    for (let i = 0; i < MN; i++) {
+      const s = mSeed[i];
+      const n = latLonToVec3(s.la + Math.sin(t * s.sp + s.ph) * 1.2, s.lo + t * s.sp * 0.6, 0).normalize();
+      const p = n.clone().multiplyScalar(R + heightFor(n) + 1.6 + Math.sin(t * 0.9 + s.ph) * 1.1);
+      arr.array[i * 3] = p.x; arr.array[i * 3 + 1] = p.y; arr.array[i * 3 + 2] = p.z;
+    }
+    arr.needsUpdate = true;
+    moteMat.opacity = 0.4 + Math.sin(t * 0.7) * 0.12;
+  });
+}
 // ---------- menus: title, pause, settings, save slots ----------
 let started = false, paused = true;
 function fmtPlaytime(sec) {
@@ -6918,10 +7512,19 @@ const keys = {};
 addEventListener('keydown', (e) => {
   if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
-  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) moveTargetN = null; // manual steering cancels click-to-move
+  if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
+    moveTargetN = null; // manual steering cancels click-to-move
+    if (activeTask && !taskIsCombat(activeTask.interact)) clearAutoTask();
+  }
   if (e.code === 'Escape') { handleEscape(); return; }
   if (!started || paused) return;
-  if (e.code === 'KeyE' && currentTarget && !playerDead && !npcOpen && !buildOpen) (currentTarget.onUse || onUse)(currentTarget);
+  if (e.code === 'KeyE' && !playerDead && !npcOpen && !buildOpen) {
+    // RPG style: one press locks the nearby target and the hero does the whole job.
+    const t = currentTarget || activeTask?.interact;
+    if (t && setAutoTask(t)) return;
+    if (currentTarget) (currentTarget.onUse || onUse)(currentTarget);
+  }
+  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { if (!playerDead) tryDash(); return; }
   if (e.code === 'KeyF' && !playerDead) eatFood();
   if (e.code === 'KeyR' && !playerDead) useRemedy();
   if (e.code === 'KeyH' && !playerDead && !npcOpen) { buildOpen ? closeBuild() : openBuild(); }
@@ -6931,8 +7534,47 @@ addEventListener('keydown', (e) => {
 addEventListener('keyup', (e) => (keys[e.code] = false));
 const clickRay = new THREE.Raycaster();
 function clickToMove(x, y) {
-  if (!planetMesh || globeMode || !started || paused) return;
+  if (!planetMesh || !started || paused) return;
   clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
+  // globe view: click a far shore to fast-travel there (the debug goto, now a feature)
+  if (globeMode) {
+    const hits = clickRay.intersectObjects([planetMesh, ocean], false);
+    if (!hits.length) return;
+    const p = hits[0].point.clone().normalize();
+    const lat = Math.asin(THREE.MathUtils.clamp(p.y, -1, 1)) / DEG;
+    let lon = Math.atan2(p.z, p.x) / DEG;
+    if (lon < 0) lon += 360;
+    playerPos = p.clone().multiplyScalar(R + heightFor(p) + 0.1);
+    moveDirSmooth.copy(latLonToVec3(lat, lon + 8, 0)).sub(playerPos);
+    moveDirSmooth.addScaledVector(p, -moveDirSmooth.dot(p)).normalize();
+    facing.copy(moveDirSmooth);
+    lastBehind.copy(moveDirSmooth);
+    burst(player.position.clone(), 0x9fdcff, 18, 2);
+    chime(760);
+    toast('🧭 Fast travel — the planet turns beneath you.');
+    toggleGlobe();
+    renderStats();
+    return;
+  }
+  // RPG priority: clicking near a person, tree, beast, or wonder locks it as a task.
+  let best = null, bestAlong = 1e9;
+  const origin = clickRay.ray.origin, dir = clickRay.ray.direction;
+  for (const it of interactables) {
+    if (!it.pos) continue;
+    const to = it.pos.clone().sub(origin);
+    const along = to.dot(dir);
+    if (along < 0) continue;
+    const perp = to.addScaledVector(dir, -along).length();
+    const tol = (it.radius || 3.6) + 1.6;
+    if (perp < tol && along < bestAlong) { best = it; bestAlong = along; }
+  }
+  if (best) {
+    if (setAutoTask(best)) {
+      burst(best.pos.clone(), 0x7dff9a, 6, 1.0);
+      return;
+    }
+  }
+  clearAutoTask();
   const hits = clickRay.intersectObjects([planetMesh, ocean], false);
   if (!hits.length) return; // clicked the sky
   moveTargetN = hits[0].point.clone().normalize();
@@ -6997,7 +7639,12 @@ if ('ontouchstart' in window) {
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); down(); });
     if (up) { b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); }
   };
-  hold('btn-act', () => { if (started && !paused && !npcOpen && !buildOpen && currentTarget) (currentTarget.onUse || onUse)(currentTarget); });
+  hold('btn-act', () => {
+    if (!started || paused || npcOpen || buildOpen) return;
+    const t = currentTarget || activeTask?.interact;
+    if (t && setAutoTask(t)) return;
+    if (currentTarget) (currentTarget.onUse || onUse)(currentTarget);
+  });
   hold('btn-hop', () => { if (started && !paused) keys.Space = true; }, () => (keys.Space = false));
   hold('btn-eat', () => { if (started && !paused) eatFood(); });
   hold('btn-heal', () => { if (started && !paused) useRemedy(); });
@@ -7175,10 +7822,23 @@ function updatePlayer(dt) {
   if (Math.hypot(jx, jy) < 0.15) { jx = 0; jy = 0; }
   ix += jx; iz += -jy;
   if (jx || jy) moveTargetN = null; // joystick steers, cancels click-to-move
+  if (jx || jy) { if (activeTask && !taskIsCombat(activeTask.interact)) clearAutoTask(); }
   const running = keys.KeyQ && meters.energy > 0 ? 1.7 : 1;
   const inWater = heightFor(n) < 0.12; // lagoon floor + reef shelf lie below the ocean skin
-  let speed = (inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1);
+  let speed = (inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1);
   if (meters.energy <= 0) speed *= 0.5; // exhausted: trudge; eat (F) or stand still to recover
+  // dash: a short Fleetfoot tumble with i-frames, on a cooldown
+  if (dashCd > 0) dashCd -= dt;
+  if (dashIFrames > 0) dashIFrames -= dt;
+  if (critBuff < 0) critBuff = 0;
+  if (dashT > 0) {
+    dashT -= dt;
+    axis.crossVectors(n, dashDir).normalize();
+    if (axis.lengthSq() > 1e-6) playerPos.applyAxisAngle(axis, ((speed * 2.6 + 6) * dt) / R);
+    facing.lerp(dashDir, 1 - Math.exp(-14 * dt)).normalize();
+    moveDirSmooth.lerp(dashDir, 1 - Math.exp(-10 * dt));
+    if ((dashT * 10 | 0) % 2 === 0) burst(player.position.clone(), 0xffffff, 2, 0.8);
+  }
   let autoMove = false;
   if (ix || iz) {
     tmpM.set(0, 0, 0).addScaledVector(tmpF, iz).addScaledVector(tmpR, ix).normalize();
@@ -7211,6 +7871,15 @@ function updatePlayer(dt) {
   playerVel -= 14 * dt;
   hopH += playerVel * dt;
   if (hopH < 0) { hopH = 0; playerVel = 0; }
+  // RPG auto-action: walk into range, then work/fight on cooldown
+  try { updateAutoTask(dt); } catch { /* noop */ }
+  // target ring pulse
+  try {
+    if (targetRing.visible) {
+      const s = 1 + Math.sin(performance.now() * 0.006) * 0.12;
+      targetRing.scale.set(s, 1, s);
+    }
+  } catch { /* noop */ }
   const nn = playerPos.clone().normalize();
   const surfH = heightFor(nn) + 0.1 + hopH + (inWater ? -0.35 : 0);
   // survival meters: sprinting burns energy, standing still restores, arctic chills
@@ -7312,11 +7981,16 @@ function updateInteract() {
     const d = player.position.distanceTo(it.pos);
     if (d < (it.radius || 3.6) && d < bestD) { best = it; bestD = d; }
   }
+  // an active auto-task keeps its bar pinned even at the edge of range
+  const show = (activeTask && interactables.includes(activeTask.interact)) ? activeTask.interact : best;
   currentTarget = best;
-  if (best) {
+  if (show) {
     interactBar.classList.remove('hidden');
-    interactKind.textContent = best.kind || 'INTERACT';
-    interactLabel.textContent = typeof best.label === 'function' ? best.label() : best.label;
+    const auto = activeTask && activeTask.interact === show;
+    interactKind.textContent = (auto ? '⚙️ AUTO · ' : '') + (show.kind || 'INTERACT');
+    try {
+      interactLabel.textContent = (typeof show.label === 'function' ? show.label() : show.label) + (auto ? ' — working…' : ' — click / E to auto');
+    } catch { interactLabel.textContent = show.label || ''; }
   } else interactBar.classList.add('hidden');
 }
 
@@ -7356,8 +8030,11 @@ function animate() {
   updateCamera(dt, n);
   updateInteract();
   updateBiomeLabel(n);
-  // ocean shimmer
-  ocean.position.y = Math.sin(t * 0.8) * 0.08;
+  // ocean shader clock + sun; old shimmer bob removed (waves live in the vertex shader)
+  try {
+    oceanUniforms.uTime.value = t;
+    oceanUniforms.uSunDir.value.copy(sun.position).normalize();
+  } catch { /* headless */ }
   renderer.render(scene, camera);
 }
 {

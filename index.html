@@ -66,19 +66,22 @@
     <span id="interact-arrow">›</span>
   </div>
 
-  <!-- Toast -->
+  <!-- Toast & Floating RPG Popups -->
   <div id="toast" class="hidden"></div>
+  <div id="popups"></div>
 
-  <!-- Survival + inventory panel bottom-right -->
+  <!-- Survival + RPG + inventory panel bottom-right -->
   <div id="stats" class="pill-dark">
+    <div id="rpg-row"><span id="rpg-lvl">⚔️ Lv 1</span> <span id="rpg-weapon">Rusty Hatchet</span> <span id="rpg-xp-text">0/35 XP</span></div>
+    <div class="meter rpg-xp-meter"><span>✦</span><div class="bar"><span id="xp-fill"></span></div></div>
     <div id="inv-row">🪵<span id="inv-wood">0</span> 🪨<span id="inv-stone">0</span> 🪙<span id="inv-gold">0</span> 🍎<span id="inv-food">2</span> 🐟<span id="inv-fish">0</span> 🐑<span id="inv-wool">0</span> 🌿<span id="inv-remedy">0</span> 🥚<span id="inv-egg">0</span> 🥛<span id="inv-milk">0</span> 🍲<span id="inv-meal">0</span> <span id="pack-count">2/16</span></div>
-    <div id="home-row">🏠<span id="home-tier">Tent</span> 👕<span id="clothes-tier">Rags</span> <span id="upkeep">👪 1🍎/day</span></div>
+    <div id="home-row">🏠<span id="home-tier">Tent</span> 👕<span id="clothes-tier">Rags</span> <span id="upkeep">👪 1🍎/day</span> <span id="status-badges"></span></div>
     <div class="meter"><span>❤️</span><div class="bar"><span id="health-fill"></span></div></div>
-    <div class="meter"><span>🍽️</span><div class="bar"><span id="hunger-fill"></span></div></div>
-    <div class="meter"><span>🧥</span><div class="bar"><span id="warmth-fill"></span></div></div>
-    <div class="meter"><span>😊</span><div class="bar"><span id="morale-fill"></span></div></div>
     <div class="meter"><span>⚡</span><div class="bar"><span id="energy-fill"></span></div></div>
-    <div class="meter"><span>❄️</span><div class="bar"><span id="cold-fill"></span></div></div>
+    <div class="meter"><span>🍽️</span><div class="bar"><span id="hunger-fill"></span></div></div>
+    <div class="meter meter-sub"><span>🧥</span><div class="bar"><span id="warmth-fill"></span></div></div>
+    <div class="meter meter-sub"><span>😊</span><div class="bar"><span id="morale-fill"></span></div></div>
+    <div class="meter meter-sub"><span>❄️</span><div class="bar"><span id="cold-fill"></span></div></div>
   </div>
 
   <!-- Sleep fade -->
@@ -108,24 +111,26 @@
 
   <!-- Controls hint -->
   <div id="controls-hint" class="pill-dark">
-    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>/<kbd>←↑↓→</kbd> walk</span>
-    <span><kbd>Q</kbd> run</span>
-    <span><kbd>space</kbd> hop</span>
-    <span><kbd>E</kbd> talk · fish · board</span>
+    <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
+    <span><kbd>Shift</kbd> dash</span>
+    <span><kbd>Q</kbd> sprint</span>
+    <span>click / <kbd>E</kbd> auto-act &amp; fight</span>
     <span><kbd>F</kbd> eat</span>
-    <span><kbd>R</kbd> remedy</span>
-    <span><kbd>H</kbd> homestead</span>
-    <span>click map = walk</span>
-    <span><kbd>M</kbd> globe</span>
+    <span><kbd>R</kbd> heal</span>
+    <span><kbd>H</kbd> build</span>
+    <span><kbd>M</kbd> globe travel</span>
   </div>
 
   <!-- Help overlay -->
-  <div id="help-overlay" class="hidden">
-    <div class="help-card">
+    <div id="help-overlay" class="hidden">
+    <div class="help-card" style="max-height: 84vh; overflow-y: auto;">
       <h2>Little Planet — Pocket Adventure</h2>
-      <p>Explore one tiny planet. Seven worlds, seven small moments — <b>7 Small Wonders</b>.</p>
+      <p>Explore one tiny planet. Seven worlds, seven small moments — <b>7 Small Wonders</b>. <b>Click anything (or press E once)</b> and your hero walks over and does the whole job — chopping, foraging, building, even fighting.</p>
       <ul>
-        <li><b>Trail objectives:</b> follow the checklist in the top-right corner. Finish each objective to reveal the next.</li>
+        <li><b>Act:</b> click a tree, rock, bush, beast, person or wonder — or press <kbd>E</kbd> once nearby. The hero auto-works it until done. Manual steering (WASD) cancels non-combat jobs.</li>
+        <li><b>Dash:</b> <kbd>Shift</kbd> rolls through danger (brief invulnerability). Dodging a swipe at the last moment triggers a <b>Clean Dodge</b> + critical hits.</li>
+        <li><b>Levels:</b> chopping, fighting, fishing, cooking and wonders earn XP. Level up for perks and better weapons (Rusty Hatchet → Starforged Blade).</li>
+        <li><b>Fast travel:</b> press <kbd>M</kbd> for the globe, then click any shore to teleport there.</li>
         <li><b>Fernwood:</b> tend the eternal flame 3×.</li>
         <li><b>Clover Fields:</b> water and harvest the rows.</li>
         <li><b>Sunstone Oasis:</b> wake the oasis spring.</li>
@@ -133,15 +138,15 @@
         <li><b>Tideglass Reef:</b> light the lighthouse (you can swim!).</li>
         <li><b>Ember Heights:</b> scan the volcano — hold still.</li>
         <li><b>Northlight:</b> wake the aurora at the stones.</li>
-        <li><b>Gather:</b> your axe is always in hand — chop any pine, palm, or orchard tree, split the fallen trunk, mine basalt, pick berries, shear sheep (E). Nodes regrow.</li>
-        <li><b>Sea skiff:</b> follow the trail south from Shell Cove to the shore skiff. Board with <kbd>E</kbd>, sail with WASD, and press <kbd>E</kbd> in open water to cast and again to reel in a 🐟. Return to shore and press <kbd>E</kbd> to step off.</li>
+        <li><b>Gather:</b> your axe is always in hand — click any pine, palm, or orchard tree and the hero fells it and splits the trunk automatically. Nodes regrow.</li>
+        <li><b>Sea skiff:</b> follow the trail south from Shell Cove to the shore skiff. Click it (or <kbd>E</kbd>) to board, sail with WASD, and click/press <kbd>E</kbd> in open water to cast and again to reel in a 🐟. Click shore (or <kbd>E</kbd>) to step off.</li>
         <li><b>Move:</b> WASD, arrow keys, or click anywhere on the planet to walk there.</li>
         <li><b>Survive:</b> sprinting burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
-        <li><b>Live:</b> hunger, warmth and morale drain daily — cook meals (campfire), sew clothes, sleep in a bed. Press <kbd>H</kbd> for the homestead board: build hut → farmhouse, dig a well, plant plots, raise animals.</li>
+        <li><b>Live:</b> hunger drains slowly now — explore first, eat later. Press <kbd>H</kbd> for the homestead board: build hut → farmhouse, dig a well, plant plots, raise animals.</li>
         <li><b>Family:</b> befriend Lena or Marina with gifts, craft a sunstone ring, marry, raise kids — every mouth adds upkeep. Hire hands, survive droughts, floods, tornadoes and wolf packs, then retire into your heir.</li>
-        <li><b>Bears:</b> adult polar bears attack up close — swing your axe (<kbd>E</kbd>) to fight back. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Save anytime from the pause menu (<kbd>Esc</kbd> → Save Game); death returns you to your last save.</li>
+        <li><b>Bears & wolves:</b> adults flash ❗ before a heavy swipe — dash away or take the hit. Click a predator once and your hero fights automatically. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Save anytime from the pause menu (<kbd>Esc</kbd> → Save Game); death returns you to your last save.</li>
       </ul>
-      <p class="muted">WASD/arrows move · click map to walk · Q run/trim · Space hop · E interact/fight/fish · F eat food · R remedy · M globe · J journal · Esc menu · drag mouse to orbit</p>
+      <p class="muted">WASD/arrows move · click map to walk · click target to auto-act · Shift dash · Q sprint · space hop · E auto-act/fight · F eat food · R remedy · M globe travel · J journal · Esc menu · drag mouse to orbit</p>
       <button id="btn-close-help">Start exploring</button>
     </div>
   </div>
@@ -176,7 +181,7 @@
         <div id="slot-list"></div>
         <button id="btn-slot-back" class="menu-btn menu-btn-small">← Back</button>
       </div>
-      <div class="title-footer">WASD move · E talk/trade · H homestead · J journal · Esc menu</div>
+      <div class="title-footer">click / E once to auto-act · Shift dash · M globe travel · H build · J journal · Esc menu</div>
     </div>
   </div>
 
