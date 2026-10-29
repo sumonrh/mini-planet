@@ -414,6 +414,64 @@ const ocean = mesh(new THREE.SphereGeometry(R + 0.12, 160, 104), new THREE.MeshS
 ocean.receiveShadow = true;
 scene.add(ocean);
 
+// atmospheric shell: a hair-thin Fresnel haze sitting just above the surface.
+// BackSide + additive means we only see the far interior, so the glow gathers on
+// the limb and fades out overhead — the planet reads as Earth, not a moon.
+const atmoUniforms = {
+  uDay: { value: new THREE.Color(0x5aa6e8) },
+  uNight: { value: new THREE.Color(0x1e3a5e) },
+  uDusk: { value: new THREE.Color(0xff9c5a) },
+  uSunDir: { value: new THREE.Vector3(1, 0, 0) },
+  uGlow: { value: 1.15 },
+};
+const atmo = new THREE.Mesh(
+  new THREE.SphereGeometry(R * 1.055, 72, 48),
+  new THREE.ShaderMaterial({
+    uniforms: atmoUniforms,
+    vertexShader: `
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        vWorldNormal = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uDay, uNight, uDusk, uSunDir;
+      uniform float uGlow;
+      varying vec3 vWorldNormal;
+      varying vec3 vWorldPos;
+      void main() {
+        vec3 n = normalize(vWorldNormal);
+        vec3 toCam = normalize(cameraPosition - vWorldPos);
+        // 1 at the limb, 0 face-on: a thin bright edge over a wide, faint halo
+        float f = 1.0 - abs(dot(n, toCam));
+        float rim = pow(f, 3.0) * 1.0 + pow(f, 1.6) * 0.22;
+        vec3 up = normalize(vWorldPos);
+        float sun = dot(up, uSunDir);
+        float day = smoothstep(-0.22, 0.3, sun);
+        vec3 col = mix(uNight, uDay, day);
+        // warm scatter along the sunrise/sunset terminator
+        float dusk = (1.0 - smoothstep(0.0, 0.3, abs(sun))) * (0.25 + day * 0.75);
+        col = mix(col, uDusk, dusk * 0.6);
+        gl_FragColor = vec4(col * uGlow * (0.3 + day * 0.9), rim);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+  })
+);
+atmo.frustumCulled = false;
+atmo.renderOrder = 2;
+scene.add(atmo);
+
 // ---------- animated registries (declared up top, before the stars block) ----------
 
 // ---------- gather nodes (step 2: wood/stone/food/wool + tools) ----------
@@ -3731,6 +3789,7 @@ function updateSky() {
   if (scene.fog) scene.fog.color.copy(scene.background);
   const ang = t * Math.PI * 2 - Math.PI / 2;
   sun.position.set(Math.cos(ang) * 60 * S, Math.sin(ang) * 60 * S + 8 * S, 25 * S);
+  atmoUniforms.uSunDir.value.copy(sun.position).normalize();
   sun.intensity = 0.3 + dayF * 2.0;
   if (hemiL) hemiL.intensity = 0.35 + dayF * 0.75;
   if (starPts) starPts.material.opacity = 0.75 * (1 - dayF) + 0.08;
