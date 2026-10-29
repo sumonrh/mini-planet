@@ -718,15 +718,26 @@ function gatherHit(nd) {
     if (!nd.home) nd.home = nd.shakeRoot.position.clone();
     nd.shake = 1; // vibrate
   }
-  startChop(); // swing tool / hands
-  const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1);
-  nd.prog += power;
+  if (chopT <= 0) startChop(); // swing tool / hands (impact-queued hits keep their swing)
+  const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1);  nd.prog += power;
   // juice: hits escalate — bigger shake, higher chime, brighter burst
   const th = splitting ? 2 : nd.need;
   const heat = Math.min(1, nd.prog / th);
   if (nd.shakeRoot) nd.shake = 0.6 + heat * 0.9;
-  const fxPos = nd.shakeRoot ? nd.shakeRoot.position.clone() : player.position.clone();
+  // contact point: about chest height on the trunk, on the side facing the hero
+  let fxPos = nd.shakeRoot ? nd.shakeRoot.position.clone() : player.position.clone();
+  if (nd.shakeRoot) {
+    const up = fxPos.clone().normalize();
+    const toward = player.position.clone().sub(fxPos);
+    toward.addScaledVector(up, -toward.dot(up));
+    if (toward.lengthSq() > 1e-6) fxPos.addScaledVector(toward.normalize(), 0.35);
+    fxPos.addScaledVector(up, 0.95);
+    addShake(0.13 + heat * 0.06);
+    chime(95); // low thunk under the wood crack
+  }
   burst(fxPos, nd.color, Math.round(6 + heat * 10), 1.2 + heat * 1.2);
+  // bark chips fly off the cut line
+  for (let i = 0; i < 2; i++) flyChunk(fxPos.clone().add(V3(rand(-0.2, 0.2), rand(-0.1, 0.2), rand(-0.2, 0.2))), 0x8a6238);
   flyChunk(player.position.clone().add(V3(0, 1.2, 0)), nd.color === 0xffffff ? 0xcfd8dc : 0x7a5230);
   chime(nd.chime + Math.round(heat * 160));
   if (nd.prog >= th) {
@@ -773,28 +784,94 @@ tickers.push((t, dt) => {
     if (c.life <= 0) { scene.remove(c.m); c.m.geometry.dispose(); chunks.splice(i, 1); }
   }
 });
-// axe chop swing: raise overhead and strike, ~0.5s, rides on top of the walk swing
+// axe chop: a real over-the-shoulder, angled chop authored as keyframed poses.
+// chopT runs 0..1 over CHOP_DUR; the wood hit lands at CHOP_IMPACT.
+const CHOP_DUR = 0.72, CHOP_IMPACT = 0.5;
 let chopT = 0;
+let chopQueue = null; // { nd, fired } — logic fires on the contact frame
+let attackT = 0; // separate diagonal combat slash
+let camShake = 0; // impact kick
+function addShake(a) { camShake = Math.min(0.45, camShake + a); }
 let gripBlend = 0; // 0 = arms free, 1 = both hands closed on the axe handle
 let wadeBlend = 0; // 0 = dry stride, 1 = high-stepping wade
-function startChop() { chopT = 0.0001; }
-function chopOffset() {
-  // flat strike: the shoulder only dips — the elbow does the snapping
-  if (chopT <= 0) return 0;
-  return -0.9 * Math.sin(Math.PI * Math.min(chopT, 1));
+function startChop(nd) {
+  chopT = 0.0001;
+  chopQueue = nd ? { nd, fired: false } : null;
 }
-function elbowChop() {
-  // cock the forearm back, snap it through flat, settle
-  if (chopT <= 0) return 0;
-  const t = Math.min(chopT, 1);
-  if (t < 0.3) return -1.3 * (t / 0.3);
-  if (t < 0.55) { const u = (t - 0.3) / 0.25; return -1.3 * (1 - u) + 0.15 * u; }
-  return 0.15 * (1 - (t - 0.55) / 0.45);
+function swingChop(nd) { if (nd) startChop(nd); }
+function startAttack() { attackT = 0.0001; }
+// keyframe sampler: [[t, value], ...] with smoothstep easing between keys
+function kfAt(keys, t) {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    if (t <= keys[i][0]) {
+      const [t0, v0] = keys[i - 1], [t1, v1] = keys[i];
+      const u = t1 > t0 ? THREE.MathUtils.smoothstep((t - t0) / (t1 - t0), 0, 1) : 1;
+      return v0 + (v1 - v0) * u;
+    }
+  }
+  return keys[keys.length - 1][1];
 }
+const CHOP = {
+  yaw: [[0, 0], [0.16, 0.34], [0.34, 0.38], [0.48, -0.30], [0.56, -0.36], [0.76, -0.08], [1, 0]],
+  pitch: [[0, 0], [0.18, -0.13], [0.34, -0.17], [0.48, 0.26], [0.56, 0.30], [0.76, 0.08], [1, 0]],
+  roll: [[0, 0], [0.2, -0.26], [0.34, -0.31], [0.48, 0.30], [0.56, 0.34], [0.78, 0.06], [1, 0]],
+  shR: [[0, 0], [0.18, 1.95], [0.34, 2.12], [0.48, -0.70], [0.56, -0.62], [0.78, -0.20], [1, 0]],
+  shL: [[0, 0], [0.18, 1.78], [0.34, 1.94], [0.48, -0.62], [0.56, -0.55], [0.78, -0.16], [1, 0]],
+  elR: [[0, -0.35], [0.18, -1.15], [0.34, -1.25], [0.48, -0.30], [0.56, -0.24], [0.78, -0.30], [1, -0.35]],
+  elL: [[0, -0.4], [0.18, -1.25], [0.34, -1.35], [0.48, -0.28], [0.56, -0.22], [0.78, -0.32], [1, -0.4]],
+  wrist: [[0, 0], [0.2, 1.45], [0.34, 1.60], [0.48, -0.35], [0.56, -0.30], [0.78, 0.10], [1, 0]],
+  grip: [[0, 0], [0.1, 1], [0.62, 1], [0.86, 0], [1, 0]],
+  lunge: [[0, 0], [0.34, 0], [0.48, -0.12], [0.6, -0.07], [1, 0]],
+  headYaw: [[0, 0], [0.2, -0.18], [0.36, -0.2], [0.48, 0.16], [0.6, 0.2], [0.8, 0.04], [1, 0]],
+  headPitch: [[0, 0], [0.2, 0.08], [0.34, 0.1], [0.48, -0.12], [0.56, -0.14], [0.78, 0], [1, 0]],
+};
+const _idlePose = {
+  active: false, t: 0, yaw: 0, pitch: 0, roll: 0, shR: 0, shL: 0, elR: -0.35, elL: -0.4,
+  wrist: 0, grip: 0, lunge: 0, headYaw: 0, headPitch: 0,
+};
+function currentChopPose() {
+  if (chopT <= 0) return _idlePose;
+  const t = Math.min(1, chopT);
+  return {
+    active: true, t,
+    yaw: kfAt(CHOP.yaw, t), pitch: kfAt(CHOP.pitch, t), roll: kfAt(CHOP.roll, t),
+    shR: kfAt(CHOP.shR, t), shL: kfAt(CHOP.shL, t),
+    elR: kfAt(CHOP.elR, t), elL: kfAt(CHOP.elL, t),
+    wrist: kfAt(CHOP.wrist, t), grip: kfAt(CHOP.grip, t),
+    lunge: kfAt(CHOP.lunge, t), headYaw: kfAt(CHOP.headYaw, t), headPitch: kfAt(CHOP.headPitch, t),
+  };
+}
+// combat: a flatter diagonal slash, separate from the wood chop
+const ATK = {
+  yaw: [[0, 0], [0.2, -0.35], [0.42, 0.42], [0.6, 0.38], [1, 0]],
+  shR: [[0, 0], [0.2, -1.5], [0.42, -0.5], [0.6, -0.6], [1, 0]],
+  shL: [[0, 0], [0.2, -0.9], [0.42, -0.35], [0.6, -0.45], [1, 0]],
+  elR: [[0, -0.35], [0.2, -1.1], [0.42, -0.15], [0.6, -0.25], [1, -0.35]],
+  wrist: [[0, 0], [0.2, -0.5], [0.42, 0.7], [0.6, 0.5], [1, 0]],
+};
+function currentAttackPose() {
+  if (attackT <= 0) return null;
+  const t = Math.min(1, attackT);
+  return {
+    t, yaw: kfAt(ATK.yaw, t), shR: kfAt(ATK.shR, t), shL: kfAt(ATK.shL, t),
+    elR: kfAt(ATK.elR, t), wrist: kfAt(ATK.wrist, t),
+  };
+}
+
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion();
 const _X = new THREE.Vector3(1, 0, 0);
 tickers.push((t, dt) => {
-  if (chopT > 0) { chopT += dt / 0.5; if (chopT >= 1) chopT = 0; }
+  if (chopT > 0) {
+    const prev = chopT;
+    chopT += dt / CHOP_DUR;
+    if (chopQueue && !chopQueue.fired && prev < CHOP_IMPACT && chopT >= CHOP_IMPACT) {
+      chopQueue.fired = true;
+      try { gatherHit(chopQueue.nd); } catch { /* node vanished */ }
+    }
+    if (chopT >= 1) { chopT = 0; chopQueue = null; }
+  }
+  if (attackT > 0) { attackT += dt / 0.55; if (attackT >= 1) attackT = 0; }
   for (const nd of nodes) {
     if (nd.depleted) { nd.respawnT -= dt; if (nd.respawnT <= 0) regrowNode(nd); }
     if (nd.shakeRoot && nd.shake > 0) {
@@ -2946,80 +3023,218 @@ scatterInstanced(new THREE.OctahedronGeometry(0.5, 0),
   new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.2, emissive: 0x0b5f8a, emissiveIntensity: 0.45 }),
   46, ['arctic'], 0.6, 1.6, [0x9fe4ff, 0x5ecdf5, 0xd6f2ff], { lift: 0.35 });
 
-// ---------- player (detailed traveler: boots, belt, arms with hands, face) ----------
+// ---------- player: hand-built traveler with a full joint hierarchy ----------
+// hips/legs → knees → ankles, torso → chest → shoulders → elbows → wrists → axe.
+// Origin stays at the soles so playerPos/camera maths are unchanged.
 const player = new THREE.Group();
 {
-  const coat = mat(0xf2b63a), skin = mat(0xf2c49b), dark = mat(0x33414e);
-  const pants = mat(0x6b4a2f), packM = mat(0x2e8b8b);
-  // legs with boots (pivot at hip for walk swing)
+  const skin = mat(0xf0c39a), skinDark = mat(0xdfae86);
+  const coat = mat(0xd9a13c), coatDark = mat(0xb9812a), coatLight = mat(0xe7b653);
+  const fur = mat(0xeadfc8, { roughness: 1 });
+  const pants = mat(0x5a4632), leather = mat(0x4a3320), leatherL = mat(0x7a5230);
+  const scarfM = mat(0xc0392b), scarfDark = mat(0x9c2f24);
+  const packM = mat(0x2e8b8b), packDark = mat(0x1f6b6b), bedM = mat(0xe8d9a8);
+  const gold = mat(0xe8c33d, { metalness: 0.45, roughness: 0.35 });
+  const steel = mat(0xb9c2c9, { metalness: 0.55, roughness: 0.3 });
+  const steelDark = mat(0x7d848c, { metalness: 0.5, roughness: 0.42 });
+  const handleM = mat(0x7a5230), wrapM = mat(0x3a2a20);
+  const hairM = mat(0x4a3020);
+  const eyeW = mat(0xfdfbf5), irisM = mat(0x2f6b8a), pupilM = mat(0x1b2a33);
+  const mouthM = mat(0x8a4a42), blushM = mat(0xef9a8a);
+  const capM = mat(0xc0392b), capDark = mat(0x8f2a20);
+
+  // ---- legs: tapered thigh, knee joint, shin, ankle, layered boot ----
   for (const s of [-1, 1]) {
-    const leg = new THREE.Group();
-    leg.position.set(s * 0.17, 0.66, 0);
-    leg.add(mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.5, 7), pants, 0, -0.22, 0));
-    leg.add(mesh(new THREE.BoxGeometry(0.2, 0.16, 0.32), mat(0x4a3320), 0, -0.52, 0.04));
-    player.add(leg);
-    player.userData[s < 0 ? 'legL' : 'legR'] = leg;
+    const hip = new THREE.Group();
+    hip.position.set(s * 0.16, 1.02, 0);
+    hip.add(mesh(new THREE.CylinderGeometry(0.135, 0.115, 0.44, 10), pants, 0, -0.23, 0));
+    hip.add(mesh(new THREE.SphereGeometry(0.115, 10, 8), pants, 0, -0.46, 0, false)); // knee cap
+    const knee = new THREE.Group();
+    knee.position.y = -0.46;
+    hip.add(knee);
+    knee.add(mesh(new THREE.CylinderGeometry(0.10, 0.085, 0.40, 9), pants, 0, -0.21, 0));
+    knee.add(mesh(new THREE.SphereGeometry(0.095, 9, 7), pants, 0, -0.05, 0.02, false)); // calf
+    const ankle = new THREE.Group();
+    ankle.position.y = -0.42;
+    knee.add(ankle);
+    ankle.add(mesh(new THREE.CylinderGeometry(0.13, 0.14, 0.14, 9), leather, 0, 0.02, 0));
+    ankle.add(mesh(new THREE.BoxGeometry(0.21, 0.15, 0.30), leather, 0, -0.055, 0.03));
+    ankle.add(mesh(new THREE.BoxGeometry(0.19, 0.09, 0.18), leatherL, 0, -0.07, 0.21)); // toe
+    ankle.add(mesh(new THREE.BoxGeometry(0.22, 0.05, 0.36), leatherL, 0, -0.125, 0.06)); // sole
+    ankle.add(mesh(new THREE.BoxGeometry(0.21, 0.04, 0.10), wrapM, 0, -0.14, -0.07)); // heel
+    ankle.add(mesh(new THREE.BoxGeometry(0.05, 0.02, 0.05), gold, s * 0.07, -0.02, 0.11, false)); // eyelet
+    player.add(hip);
+    player.userData[s < 0 ? 'legL' : 'legR'] = hip;
+    player.userData[s < 0 ? 'kneeL' : 'kneeR'] = knee;
+    player.userData[s < 0 ? 'ankleL' : 'ankleR'] = ankle;
   }
-  // torso: tunic + belt + buckle + buttons
-  player.add(mesh(new THREE.CylinderGeometry(0.4, 0.5, 0.95, 8), coat, 0, 1.12, 0));
-  player.add(mesh(new THREE.CylinderGeometry(0.51, 0.51, 0.13, 8), mat(0x4a3320), 0, 0.78, 0));
-  player.add(mesh(new THREE.BoxGeometry(0.16, 0.12, 0.06), mat(0xe8c33d, { metalness: 0.4, roughness: 0.4 }), 0, 0.78, 0.5, false));
-  player.add(mesh(new THREE.SphereGeometry(0.05, 6, 5), dark, 0.12, 1.2, 0.42, false));
-  player.add(mesh(new THREE.SphereGeometry(0.05, 6, 5), dark, 0.12, 1.02, 0.45, false));
-  // scarf collar + tail
-  player.add(mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.2, 8), mat(0xd93a3a), 0, 1.64, 0));
-  player.add(mesh(new THREE.BoxGeometry(0.16, 0.4, 0.06), mat(0xd93a3a), 0.12, 1.4, -0.42));
-  // arms: left swings simple; right is jointed (shoulder + elbow) for flat chops
+  // pelvis wrap (stays with the hips; torso pivots above it)
+  player.add(mesh(new THREE.CylinderGeometry(0.33, 0.35, 0.24, 10), pants, 0, 1.02, 0));
+  player.add(mesh(new THREE.CylinderGeometry(0.40, 0.44, 0.14, 10), coatDark, 0, 1.14, 0));
+
+  // ---- torso: pivots at the waist so the upper body can coil and lean ----
+  const torso = new THREE.Group();
+  torso.position.y = 1.02;
+  player.add(torso);
+  player.userData.torso = torso;
+  // tapered tunic: broad chest, pinched waist, flared skirt
+  torso.add(mesh(new THREE.CylinderGeometry(0.30, 0.355, 0.52, 12), coat, 0, 0.42, 0));
+  torso.add(mesh(new THREE.CylinderGeometry(0.355, 0.40, 0.16, 12), coat, 0, 0.15, 0)); // skirt
+  torso.add(mesh(new THREE.CylinderGeometry(0.365, 0.365, 0.10, 12), leather, 0, 0.22, 0)); // belt
+  torso.add(mesh(new THREE.BoxGeometry(0.14, 0.10, 0.05), gold, 0, 0.22, 0.35)); // buckle
+  torso.add(mesh(new THREE.BoxGeometry(0.14, 0.15, 0.10), leatherL, 0.24, 0.15, 0.25)); // pouch
+  torso.add(mesh(new THREE.BoxGeometry(0.12, 0.13, 0.09), leatherL, -0.25, 0.16, 0.21)); // pouch
+  // overcoat lapels + collar in a darker tone breaks up the yellow mass
+  for (const s of [-1, 1]) {
+    const lapel = mesh(new THREE.BoxGeometry(0.10, 0.34, 0.03), coatDark, s * 0.12, 0.44, 0.305, false);
+    lapel.rotation.z = s * 0.18;
+    torso.add(lapel);
+  }
+  torso.add(mesh(new THREE.BoxGeometry(0.20, 0.05, 0.03), coatDark, 0, 0.27, 0.315, false)); // hem stitch
+  torso.add(mesh(new THREE.BoxGeometry(0.05, 0.28, 0.02), coatDark, 0.02, 0.42, 0.312, false)); // centre seam
+  for (let i = 0; i < 2; i++)
+    torso.add(mesh(new THREE.SphereGeometry(0.024, 6, 5), gold, 0.02, 0.34 + i * 0.12, 0.325, false));
+  torso.add(mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.10, 12), coatDark, 0, 0.685, 0)); // collar
+  const chest = new THREE.Group();
+  torso.add(chest);
+  player.userData.chest = chest;
+
+  // ---- arms: shoulder → elbow → wrist, both jointed; axe in the right hand ----
   for (const s of [-1, 1]) {
     const arm = new THREE.Group();
-    arm.position.set(s * 0.5, 1.48, 0);
-    arm.rotation.z = s * -0.1;
-    arm.userData.baseZ = s * -0.1;
-    arm.add(mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.5, 7), coat, 0, -0.24, 0));
+    arm.position.set(s * 0.355, 0.56, 0);
+    arm.rotation.z = s * -0.10;
+    arm.userData.baseZ = s * -0.10;
+    arm.add(mesh(new THREE.SphereGeometry(0.135, 10, 8), coat, 0, 0, 0, false)); // shoulder
+    arm.add(mesh(new THREE.CylinderGeometry(0.095, 0.085, 0.32, 9), coat, 0, -0.16, 0));
+    const elbow = new THREE.Group();
+    elbow.position.y = -0.32;
+    arm.add(elbow);
+    elbow.add(mesh(new THREE.CylinderGeometry(0.082, 0.075, 0.27, 9), coat, 0, -0.135, 0));
+    elbow.add(mesh(new THREE.TorusGeometry(0.082, 0.028, 5, 10).rotateX(Math.PI / 2), fur, 0, -0.03, 0, false)); // cuff
+    elbow.add(mesh(new THREE.SphereGeometry(0.078, 8, 6), fur, 0, -0.28, 0, false)); // fur cuff
+    const wrist = new THREE.Group();
+    wrist.position.y = -0.28;
+    elbow.add(wrist);
+    wrist.add(mesh(new THREE.SphereGeometry(0.09, 9, 7), leatherL, 0, -0.02, 0.01));
+    wrist.add(mesh(new THREE.BoxGeometry(0.10, 0.10, 0.13), leatherL, 0, -0.07, 0.04));
+    wrist.add(mesh(new THREE.SphereGeometry(0.033, 6, 5), leatherL, s * 0.055, -0.03, 0.07, false));
     if (s > 0) {
-      // elbow joint: forearm + hand + axe ride on it
-      const elbow = new THREE.Group();
-      elbow.position.set(0, -0.32, 0);
-      elbow.add(mesh(new THREE.CylinderGeometry(0.09, 0.1, 0.34, 7), coat, 0, -0.13, 0));
-      elbow.add(mesh(new THREE.SphereGeometry(0.14, 7, 6), skin, 0, -0.3, 0)); // hand
-      // trusty axe: always carried in the right hand; both hands close on it mid-swing
+      // trusty axe: carved handle, leather grip, bearded steel head
       const axe = new THREE.Group();
-      axe.position.set(-0.08, -0.24, 0.1);
-      axe.rotation.x = 0.5;
-      axe.scale.setScalar(0.8);
-      axe.add(mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.0, 6), mat(0x7a5230), 0, -0.5, 0));
-      axe.add(mesh(new THREE.BoxGeometry(0.1, 0.24, 0.42), mat(0x9aa0a6, { metalness: 0.5, roughness: 0.4 }), 0, -0.95, 0.12));
-      elbow.add(axe);
-      arm.add(elbow);
+      axe.position.set(0.03, -0.08, 0.06);
+      axe.rotation.x = 0.18;
+      wrist.add(axe);
+      axe.add(mesh(new THREE.CylinderGeometry(0.032, 0.04, 0.80, 7), handleM, 0, -0.40, 0));
+      axe.add(mesh(new THREE.CylinderGeometry(0.046, 0.046, 0.17, 7), wrapM, 0, -0.16, 0));
+      axe.add(mesh(new THREE.CylinderGeometry(0.047, 0.043, 0.035, 7), steelDark, 0, -0.805, 0));
+      const sh = new THREE.Shape();
+      sh.moveTo(-0.05, -0.10); sh.lineTo(0.09, -0.135); sh.lineTo(0.25, -0.06);
+      sh.lineTo(0.30, 0.05); sh.lineTo(0.20, 0.15); sh.lineTo(0.04, 0.12);
+      sh.lineTo(-0.05, 0.03); sh.closePath();
+      const headGeo = new THREE.ExtrudeGeometry(sh, { depth: 0.075, bevelEnabled: false });
+      headGeo.translate(0, 0, -0.0375);
+      headGeo.rotateY(-Math.PI / 2); // shape x → +z (blade points forward)
+      const axeHead = mesh(headGeo, steel, 0, -0.75, 0);
+      axe.add(axeHead);
+      axe.add(mesh(new THREE.BoxGeometry(0.085, 0.15, 0.09), steelDark, 0, -0.74, -0.05, false)); // poll
+      axe.add(mesh(new THREE.BoxGeometry(0.08, 0.02, 0.02), gold, 0, -0.60, 0.02, false)); // maker's mark
       player.userData.axe = axe;
-      player.userData.elbowR = elbow;
+      player.userData.wristR = wrist;
     } else {
-      arm.add(mesh(new THREE.SphereGeometry(0.14, 7, 6), skin, 0, -0.56, 0)); // hand
+      player.userData.wristL = wrist;
     }
-    player.add(arm);
+    torso.add(arm);
     player.userData[s < 0 ? 'armL' : 'armR'] = arm;
+    player.userData[s < 0 ? 'elbowL' : 'elbowR'] = elbow;
   }
-  // head: face, eyes, cheeks, cap with brim
-  player.add(mesh(new THREE.SphereGeometry(0.36, 10, 8), skin, 0, 1.98, 0));
-  player.add(mesh(new THREE.SphereGeometry(0.055, 6, 5), mat(0x22262b), -0.13, 2.02, 0.32, false));
-  player.add(mesh(new THREE.SphereGeometry(0.055, 6, 5), mat(0x22262b), 0.13, 2.02, 0.32, false));
-  player.add(mesh(new THREE.SphereGeometry(0.06, 6, 5), mat(0xf0a0a0), -0.21, 1.92, 0.27, false));
-  player.add(mesh(new THREE.SphereGeometry(0.06, 6, 5), mat(0xf0a0a0), 0.21, 1.92, 0.27, false));
-  player.add(mesh(new THREE.SphereGeometry(0.39, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xd93a3a), 0, 2.06, 0, false));
-  player.add(mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.07, 10), mat(0xb52b2b), 0, 2.08, 0.42, false));
-  // backpack + bedroll
-  player.add(mesh(new THREE.BoxGeometry(0.5, 0.62, 0.3), packM, 0, 1.15, -0.52));
-  const roll = mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.56, 8), mat(0xe8d9a8), 0, 1.52, -0.52);
+
+  // ---- scarf: collar + three springy tail segments ----
+  const scarfRoot = new THREE.Group();
+  scarfRoot.position.set(0, 0.66, 0.02);
+  torso.add(scarfRoot);
+  const collarS = mesh(new THREE.TorusGeometry(0.225, 0.055, 6, 12), scarfM, 0, 0.02, 0, false);
+  collarS.rotation.x = Math.PI / 2;
+  scarfRoot.add(collarS);
+  scarfRoot.add(mesh(new THREE.SphereGeometry(0.075, 7, 6), scarfDark, 0.10, -0.02, 0.19, false)); // knot
+  const frontTail = mesh(new THREE.BoxGeometry(0.09, 0.24, 0.03), scarfM, 0.11, -0.14, 0.255, false);
+  frontTail.rotation.z = 0.12;
+  scarfRoot.add(frontTail);
+  const sc1 = new THREE.Group(); sc1.position.set(0.09, -0.02, -0.15); sc1.rotation.x = 0.25; scarfRoot.add(sc1);
+  sc1.add(mesh(new THREE.BoxGeometry(0.16, 0.30, 0.05), scarfM, 0, -0.15, 0, false));
+  const sc2 = new THREE.Group(); sc2.position.set(0, -0.30, 0.015); sc2.rotation.x = 0.12; sc1.add(sc2);
+  sc2.add(mesh(new THREE.BoxGeometry(0.14, 0.24, 0.045), scarfDark, 0, -0.12, 0, false));
+  const sc3 = new THREE.Group(); sc3.position.set(0, -0.24, 0.01); sc2.add(sc3);
+  sc3.add(mesh(new THREE.BoxGeometry(0.12, 0.18, 0.04), scarfM, 0, -0.09, 0, false));
+  for (let i = -1; i <= 1; i++)
+    sc3.add(mesh(new THREE.BoxGeometry(0.028, 0.07, 0.03), scarfDark, i * 0.035, -0.21, 0, false));
+  player.userData.scarf = [sc1, sc2, sc3];
+
+  // ---- neck + head: shaped skull, ears, eyes with highlights, brows, nose, mouth, cap ----
+  const neck = new THREE.Group();
+  neck.position.set(0, 0.64, 0);
+  torso.add(neck);
+  neck.add(mesh(new THREE.CylinderGeometry(0.09, 0.105, 0.14, 9), skin, 0, 0.05, 0));
+  const head = new THREE.Group();
+  head.position.y = 0.14;
+  neck.add(head);
+  player.userData.head = head;
+  head.add(mesh(new THREE.SphereGeometry(0.245, 12, 10), skin, 0, 0.16, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.185, 10, 8), skin, 0, 0.06, 0.035)); // jaw
+  for (const s of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.055, 8, 6), skinDark, s * 0.235, 0.16, 0, false)); // ears
+    const eye = mesh(new THREE.SphereGeometry(0.045, 8, 6), pupilM, s * 0.095, 0.19, 0.222, false);
+    eye.scale.set(1, 1.15, 0.55);
+    head.add(eye);
+    head.add(mesh(new THREE.SphereGeometry(0.012, 5, 4), eyeW, s * 0.095 + 0.012, 0.202, 0.252, false)); // glint
+    const brow = mesh(new THREE.BoxGeometry(0.085, 0.022, 0.02), hairM, s * 0.095, 0.262, 0.225, false);
+    brow.rotation.z = s * -0.14;
+    head.add(brow);
+    head.add(mesh(new THREE.SphereGeometry(0.036, 6, 5), blushM, s * 0.155, 0.055, 0.195, false));
+  }
+  head.add(mesh(new THREE.SphereGeometry(0.045, 8, 6), skinDark, 0, 0.135, 0.245, false)); // nose
+  head.add(mesh(new THREE.BoxGeometry(0.075, 0.012, 0.02), mouthM, 0, 0.048, 0.228, false));
+  head.add(mesh(new THREE.BoxGeometry(0.022, 0.03, 0.02), mouthM, -0.05, 0.058, 0.223, false));
+  // hair fringe under the cap
+  for (let i = -2; i <= 2; i++) {
+    const tuff = mesh(new THREE.ConeGeometry(0.045, 0.12, 5), hairM, i * 0.075, 0.315, 0.17 + Math.abs(i) * 0.012, false);
+    tuff.rotation.x = 2.6;
+    head.add(tuff);
+  }
+  // stitched cap + brim + feather
+  const cap = mesh(new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.52), capM, 0, 0.26, 0, false);
+  head.add(cap);
+  head.add(mesh(new THREE.CylinderGeometry(0.248, 0.254, 0.055, 12), capDark, 0, 0.265, 0, false));
+  const brim = mesh(new THREE.BoxGeometry(0.28, 0.028, 0.13), capDark, 0, 0.258, 0.23, false);
+  brim.rotation.x = -0.12;
+  head.add(brim);
+  const feather = mesh(new THREE.ConeGeometry(0.03, 0.22, 5), mat(0xf3e9dc), 0.15, 0.36, -0.08, false);
+  feather.rotation.z = -0.5;
+  head.add(feather);
+
+  // ---- backpack: frame, pockets, bedroll, canteen ----
+  const pack = new THREE.Group();
+  pack.position.set(0, 0.38, -0.37);
+  torso.add(pack);
+  pack.add(mesh(new THREE.BoxGeometry(0.42, 0.50, 0.24), packM, 0, 0, 0));
+  pack.add(mesh(new THREE.BoxGeometry(0.44, 0.15, 0.26), packDark, 0, 0.22, 0));
+  pack.add(mesh(new THREE.BoxGeometry(0.13, 0.16, 0.08), packDark, 0.27, -0.02, 0.02));
+  pack.add(mesh(new THREE.BoxGeometry(0.13, 0.16, 0.08), packDark, -0.27, -0.02, 0.02));
+  const roll = mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.48, 8), bedM, 0, 0.34, 0, false);
   roll.rotation.z = Math.PI / 2;
-  player.add(roll);
+  pack.add(roll);
+  const canteen = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.16, 8), steelDark, 0.30, -0.20, 0.05, false);
+  canteen.rotation.z = 0.2;
+  pack.add(canteen);
+
   scene.add(player);
-  // walk swing for arms + legs, tracked from actual motion (no game-loop coupling)
+
+  // ---- animation: walk (knees/ankles), idle breathing, scarf lag, chop, slash ----
   const P = player.userData;
   let phase = 0, strideInit = false;
   const last = new THREE.Vector3();
+  let idleT = 0;
   tickers.push((t, dt) => {
-    // player.position starts at origin until the first updatePlayer runs — don't
-    // mistake the teleport-to-surface for motion (it snapped limbs on load).
     if (!strideInit) {
       if (player.position.lengthSq() < 1) return;
       last.copy(player.position);
@@ -3028,32 +3243,72 @@ const player = new THREE.Group();
     const sp = Math.min(player.position.distanceTo(last) / Math.max(dt, 1e-4), 30);
     last.copy(player.position);
     const moving = sp > 1.0;
-    if (moving) phase += dt * (4 + Math.min(sp, 12) * 0.9);
-    const target = moving ? Math.sin(phase) * 0.6 : 0;
-    const k = Math.min(1, 10 * dt);
-    // two-handed axe grip only while swinging; otherwise it hangs in the right hand
-    const wantGrip = chopT > 0 ? 1 : 0;
-    gripBlend += (wantGrip - gripBlend) * Math.min(1, 6 * dt);
-    const ready = -0.5 * gripBlend; // both arms lift forward onto the shared handle
-    // wading: high steps, arms out for balance
+    const runF = THREE.MathUtils.clamp((sp - 6.5) / 4, 0, 1);
+    if (moving) phase += dt * (4.0 + Math.min(sp, 12) * 0.95);
+    idleT += dt;
+    const s = Math.sin(phase), c = Math.cos(phase);
+    const k = 1 - Math.exp(-16 * dt);
     const wading = heightFor(playerPos.clone().normalize()) < 0.12;
     wadeBlend += ((wading ? 1 : 0) - wadeBlend) * Math.min(1, 4 * dt);
-    const wAmp = 0.8 + 0.5 * wadeBlend; // higher knees in water
-    P.armL.rotation.x += (target + ready - P.armL.rotation.x) * k;
-    P.armR.rotation.x += (-target + ready - P.armR.rotation.x) * k;
-    P.armL.rotation.z += ((P.armL.userData.baseZ + 0.28 * gripBlend + 0.4 * wadeBlend) - P.armL.rotation.z) * k;
-    P.armR.rotation.z += ((P.armR.userData.baseZ - 0.28 * gripBlend - 0.4 * wadeBlend) - P.armR.rotation.z) * k;
-    // flat chop: small shoulder dip, elbow snaps through
-    P.armR.rotation.x += chopOffset();
-    P.armL.rotation.x += chopOffset() * 0.9;
-    const elb = P.elbowR;
-    if (elb) {
-      const bend = -0.3 + (moving ? Math.sin(phase + Math.PI) * 0.1 : 0) + elbowChop();
-      elb.rotation.x += (bend - elb.rotation.x) * k;
-    }
-    P.legL.rotation.x += (-target * wAmp - P.legL.rotation.x) * k;
-    P.legR.rotation.x += (target * wAmp - P.legR.rotation.x) * k;
-    // splashes while striding through water
+    const amp = moving ? (0.50 + runF * 0.28) * (1 + 0.45 * wadeBlend) : 0;
+
+    const cp = currentChopPose();
+    const ap = currentAttackPose();
+    const pose = cp.active ? cp : (ap ? { ..._idlePose, active: true, grip: 1, yaw: ap.yaw, shR: ap.shR, shL: ap.shL, elR: ap.elR, wrist: ap.wrist } : null);
+    // fast pose joints follow the keyframes directly; only idle/walk is smoothed
+    const kPose = pose ? 1 : k;
+
+    // legs stride (forward = negative rotation.x) with knee lift + ankle roll
+    const swingL = s * amp, swingR = -s * amp;
+    P.legL.rotation.x += (-swingL - P.legL.rotation.x) * k;
+    P.legR.rotation.x += (-swingR - P.legR.rotation.x) * k;
+    const kneeL = Math.max(0, Math.sin(phase + 0.9)) * amp * 1.5;
+    const kneeR = Math.max(0, Math.sin(phase + Math.PI + 0.9)) * amp * 1.5;
+    P.kneeL.rotation.x += (kneeL - P.kneeL.rotation.x) * k;
+    P.kneeR.rotation.x += (kneeR - P.kneeR.rotation.x) * k;
+    P.ankleL.rotation.x += ((-P.legL.rotation.x - P.kneeL.rotation.x) * 0.55 - P.ankleL.rotation.x) * k;
+    P.ankleR.rotation.x += ((-P.legR.rotation.x - P.kneeR.rotation.x) * 0.55 - P.ankleR.rotation.x) * k;
+
+    // torso: bob, speed lean, walk twist, chop coil/roll, idle breathing
+    const idleF = 1 - Math.min(1, sp / 2);
+    const bob = moving ? Math.abs(c) * 0.032 * (0.7 + runF) : Math.sin(idleT * 1.6) * 0.006;
+    P.torso.position.y = 1.02 + bob;
+    P.torso.position.z = pose ? pose.lunge : 0;
+    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0)) - P.torso.rotation.x) * kPose;
+    P.torso.rotation.y += (((moving ? s * 0.07 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
+    P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0)) - P.torso.rotation.z) * kPose;
+    P.chest.scale.y = 1 + Math.sin(idleT * 1.9) * 0.012 * idleF;
+
+    // head: counter the torso, look around when idle, track the chop
+    P.head.rotation.y += (((moving ? -P.torso.rotation.y * 0.75 : Math.sin(idleT * 0.33) * 0.22) + (pose ? pose.headYaw : 0)) - P.head.rotation.y) * kPose;
+    P.head.rotation.x += (((moving ? 0.04 : Math.sin(idleT * 0.5) * 0.03) + (pose ? pose.headPitch : 0)) - P.head.rotation.x) * kPose;
+    P.head.rotation.z += ((moving ? -s * 0.015 : 0) - P.head.rotation.z) * k;
+
+    // arms: counter-swing, then the chop/slash pose takes over
+    const grip = pose ? pose.grip : 0;
+    const armAmp = (1 - grip) * (0.40 + runF * 0.25);
+    const armLTarget = (s * armAmp) + (pose ? pose.shL : 0);
+    const armRTarget = (-s * armAmp) + (pose ? pose.shR : 0);
+    P.armL.rotation.x += (armLTarget - P.armL.rotation.x) * kPose;
+    P.armR.rotation.x += (armRTarget - P.armR.rotation.x) * kPose;
+    P.armL.rotation.z += ((P.armL.userData.baseZ + 0.30 * grip + 0.42 * wadeBlend) - P.armL.rotation.z) * kPose;
+    P.armR.rotation.z += ((P.armR.userData.baseZ - 0.30 * grip - 0.42 * wadeBlend) - P.armR.rotation.z) * kPose;
+    const elbL = (pose ? pose.elL : -0.30) - (moving ? Math.sin(phase) * 0.16 : 0);
+    const elbR = (pose ? pose.elR : -0.30) + (moving ? Math.sin(phase + Math.PI) * 0.16 : 0);
+    P.elbowL.rotation.x += (elbL - P.elbowL.rotation.x) * kPose;
+    P.elbowR.rotation.x += (elbR - P.elbowR.rotation.x) * kPose;
+    P.wristR.rotation.x += (((pose ? pose.wrist : 0) + 0.16) - P.wristR.rotation.x) * kPose;
+    P.wristL.rotation.x += ((pose ? -0.15 : 0) - P.wristL.rotation.x) * kPose;
+
+    // scarf: 3-segment spring lag with speed + turn sway
+    const gust = Math.min(1, sp / 8);
+    P.scarf[0].rotation.x = 0.22 + Math.sin(idleT * 1.4) * 0.05 + gust * 0.30;
+    P.scarf[1].rotation.x = 0.12 + Math.sin(idleT * 1.9 + 0.6) * 0.07 + gust * 0.28;
+    P.scarf[2].rotation.x = 0.08 + Math.sin(idleT * 2.4 + 1.2) * 0.09 + gust * 0.22;
+    P.scarf[0].rotation.z = Math.sin(idleT * 0.9) * 0.05 + s * 0.06 * gust;
+    P.scarf[1].rotation.z = Math.sin(idleT * 1.3 + 0.8) * 0.07;
+    P.scarf[2].rotation.z = Math.sin(idleT * 1.7 + 1.6) * 0.09;
+
     if (wading && moving && t - (P._splashT || 0) > 0.35) {
       P._splashT = t;
       const fp = player.position.clone(); fp.y += 0.2;
@@ -3328,6 +3583,7 @@ window.__lp = {
     facing.copy(moveDirSmooth);
     lastBehind.copy(moveDirSmooth);
     clearAutoTask();
+    snapFollowCamera();
   },
 };
 function completeWonder(id) {
@@ -3591,7 +3847,7 @@ function attackBear(b) {
   if (d > 4.6) { toast(b.adult ? '⚠️ Too far — step closer to strike.' : 'The cub scampers just out of reach.'); return; }
   if (playerAttackCd > 0) return;
   playerAttackCd = Math.max(0.3, window.__rpgSwing || 0.55);
-  startChop(); // axe swing
+  startAttack(); // diagonal slash
   // damage lands mid-swing so the hit matches the axe visually
   setTimeout(() => {
     if (b.dead || playerDead) return;
@@ -5557,7 +5813,7 @@ function attackWolf(w) {
   if (player.position.distanceTo(w.mesh.position) > 4.6) return toast('⚠️ Too far — step closer to strike.');
   if (playerAttackCd > 0) return;
   playerAttackCd = Math.max(0.3, window.__rpgSwing || 0.55);
-  startChop();
+  startAttack();
   setTimeout(() => {
     if (w.hp <= 0 || playerDead) return;
     if (player.position.distanceTo(w.mesh.position) > 5.2) return;
@@ -6872,8 +7128,9 @@ const SETTINGS_DEFS = [
   { id: 'quality', name: 'Graphics quality', desc: 'Low helps slow devices', opts: ['high', 'low'], labels: { high: 'High ✨', low: 'Low ⚡' } },
   { id: 'cam', name: 'Camera orbit speed', desc: 'Mouse-drag sensitivity', opts: ['slow', 'normal', 'fast'], labels: { slow: 'Slow', normal: 'Normal', fast: 'Fast' } },
   { id: 'autosave', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
+  { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -6881,6 +7138,11 @@ function applySettings() {
   const sb = document.getElementById('btn-sound');
   if (sb) sb.textContent = muted ? '🔇' : '🔊';
   try { renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(devicePixelRatio, 2)); } catch { /* headless */ }
+  try {
+    const custom = settings.cursor !== false && !('ontouchstart' in window);
+    document.body.classList.toggle('custom-cursor', custom);
+    if (!custom) hideContextCursor();
+  } catch { /* headless */ }
 }
 function camFactor() { return settings.cam === 'slow' ? 0.5 : (settings.cam === 'fast' ? 2 : 1); }
 // ---------- save slots (3) ----------
@@ -7191,7 +7453,9 @@ function updateAutoTask(dt) {
   if (taskIsWonder(it) && byId(it.id)?.done && it.id !== 'plant') { clearAutoTask(); return; }
   const d = player.position.distanceTo(it.pos);
   const reach = (it.radius || 3.6) + 0.6;
-  if (d > reach) {
+  // stop at a working distance, not at the outer interact radius
+  const stopD = it.node ? 1.7 : (taskIsCombat(it) ? 3.4 : Math.min(reach, 2.5));
+  if (d > stopD) {
     // walk into range
     moveTargetN = it.pos.clone().normalize();
     try {
@@ -7217,9 +7481,9 @@ function updateAutoTask(dt) {
     if (it.bear) attackBear(it.bear);
     else if (it.wolf) attackWolf(it.wolf);
   } else if (taskIsGather(it)) {
-    activeTask.timer = Math.max(0.3, 0.62 / (window.__rpgChopMult || 1));
-    gatherHit(it.node);
-    if (it.node.depleted && !(it.node.fallRoot && it.node.trunkStock > 0)) clearAutoTask();
+    // one full swung chop per cycle; the hit lands on the contact frame
+    activeTask.timer = CHOP_DUR + 0.08;
+    if (chopT <= 0) swingChop(it.node);
   } else if (taskIsWonder(it)) {
     activeTask.timer = 1.0;
     (it.onUse || onUse)(it);
@@ -7253,7 +7517,7 @@ function updateHeroGear() {
     const axe = player?.userData?.axe;
     if (axe) {
       const tier = Math.min(RPG.weapon, 3);
-      axe.scale.setScalar(0.8 + tier * 0.18);
+      axe.scale.setScalar(0.95 + tier * 0.06);
       axe.traverse((o) => {
         if (o.isMesh && o.material && o.material.metalness > 0.3) {
           o.material.emissive = o.material.emissive || new THREE.Color(0);
@@ -7497,6 +7761,28 @@ Object.assign(window.__lp, {
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
+  photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
+  pickAt: (x, y) => {
+    const it = pickInteractableAt(x, y);
+    return it ? { id: it.id, icon: cursorIconFor(it), label: cursorLabelFor(it), kind: it.kind } : null;
+  },
+  cursorInfo: () => ({ icon: cursorIconNow, shown: cursorShown }),
+  cursorIconFor,
+  anim: () => {
+    const axe = player.userData.axe;
+    const hp = new THREE.Vector3(), ap = new THREE.Vector3();
+    player.worldToLocal(axe.getWorldPosition(ap));
+    const head = axe.children.find((c) => c.geometry && c.geometry.type === 'ExtrudeGeometry');
+    if (head) player.worldToLocal(head.getWorldPosition(hp));
+    return {
+      chopT, attackT,
+      armR: player.userData.armR.rotation.x, elbowR: player.userData.elbowR.rotation.x,
+      wristR: player.userData.wristR.rotation.x, torsoYaw: player.userData.torso.rotation.y,
+      axe: [ap.x, ap.y, ap.z].map((v) => +v.toFixed(2)),
+      head: [hp.x, hp.y, hp.z].map((v) => +v.toFixed(2)),
+    };
+  },
+  camera,
 });
 // Live read-only views (defineProperties — NOT inside assign, which would freeze values)
 Object.defineProperties(window.__lp, {
@@ -7533,6 +7819,170 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => (keys[e.code] = false));
 const clickRay = new THREE.Raycaster();
+
+// ---------- context cursor: axe over trees, sword over predators, etc. ----------
+const CURSOR_ICONS = {
+  axe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20.5 15 11"/><path d="M12.5 3.6c3.4-.9 6.4.5 7.7 2.6-3 1.5-4.5 3.6-4.9 6.3-2.7-1.7-4.3-4.8-2.8-8.9Z" fill="currentColor" stroke="none"/></svg>`,
+  pick: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21 13 10.5"/><path d="M4.5 7.5c4.5-3.6 10.5-3.6 15 0-3.8 1-6 2.8-7 5.2-1-2.4-4-4.2-8-5.2Z" fill="currentColor" stroke="none"/></svg>`,
+  sword: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 18 16.5 7.5"/><path d="M15.5 4 20 8.5 21.2 5.8 18.2 2.8Z" fill="currentColor" stroke="none"/><path d="M4.2 14.1 9.9 19.8"/><path d="M4.5 19.5 6.5 21.5"/></svg>`,
+  berry: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V10"/><path d="M12 13c-4 0-6-2.7-6-5.5 3 0 6 2 6 5.5Z" fill="currentColor" stroke="none"/><circle cx="8.5" cy="7" r="2.1" fill="currentColor" stroke="none"/><circle cx="14.5" cy="5.8" r="2" fill="currentColor" stroke="none"/><circle cx="12" cy="9.8" r="1.9" fill="currentColor" stroke="none"/></svg>`,
+  shears: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4 17 16.5"/><path d="M17 4 7 16.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/></svg>`,
+  talk: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v10.5H9l-4.5 4v-4H4Z" fill="currentColor" stroke="none" opacity=".9"/><circle cx="9" cy="10" r="1.1" fill="#13242f" stroke="none"/><circle cx="12" cy="10" r="1.1" fill="#13242f" stroke="none"/><circle cx="15" cy="10" r="1.1" fill="#13242f" stroke="none"/></svg>`,
+  pot: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 10h14v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4Z"/><path d="M3 10h18"/><path d="M9 6c0-1.2 1.2-1.2 1.2-2.4M13.5 6c0-1.2 1.2-1.2 1.2-2.4"/></svg>`,
+  hammer: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 21 14 11.5"/><path d="M11.5 3.5 19 5.5 20.5 10.5 14.5 12 10.5 6Z" fill="currentColor" stroke="none"/></svg>`,
+  rod: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 20.5C11 20 17 14 19 4.5"/><path d="M19 7v4.5a3.2 3.2 0 0 1-3.2 3.2H14"/><circle cx="13" cy="17" r="2.2"/></svg>`,
+  oar: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 20 15 7"/><path d="M13.5 4.5c2.5-1.4 5.4-.6 6.5 1.2.9 1.6.1 3.7-1.8 5.2-2.3 1.8-5 1.3-6-.6-.8-1.6 0-4.1 1.3-5.8Z" fill="currentColor" stroke="none" opacity=".85"/></svg>`,
+  star: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5c.7 5 3.8 8.1 8.8 8.8-5 .7-8.1 3.8-8.8 8.8-.7-5-3.8-8.1-8.8-8.8 5-.7 8.1-3.8 8.8-8.8Z" fill="currentColor" stroke="none"/></svg>`,
+  seed: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V11"/><path d="M12 14c-3.5 0-6-2.5-6-6 3.5 0 6 2.5 6 6Z" fill="currentColor" stroke="none"/><path d="M12 11c0-3.5 2.5-6 6-6 0 3.5-2.5 6-6 6Z" fill="currentColor" stroke="none" opacity=".7"/></svg>`,
+  water: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3.5 4.6 6 8 6 11.2A6 6 0 0 1 6 14.2C6 11 8.5 7.6 12 3Z" fill="currentColor" stroke="none" opacity=".9"/></svg>`,
+  basket: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10h16l-1.6 8.5a2 2 0 0 1-2 1.5H7.6a2 2 0 0 1-2-1.5Z"/><path d="M8 10 10 4M16 10 14 4M8 14v2M12 14v2M16 14v2"/></svg>`,
+  moon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" fill="currentColor" stroke="none"/></svg>`,
+  paw: `<svg viewBox="0 0 24 24" fill="currentColor"><ellipse cx="7" cy="8" rx="2.1" ry="2.7"/><ellipse cx="12" cy="6.2" rx="2.1" ry="2.7"/><ellipse cx="17" cy="8" rx="2.1" ry="2.7"/><ellipse cx="19" cy="13.5" rx="1.9" ry="2.4"/><path d="M12 11c3.3 0 6 2.4 6 5.2 0 2.4-2 3.8-4.3 3.8-.8 0-1.3-.3-1.7-.3s-.9.3-1.7.3C8 20 6 18.6 6 16.2 6 13.4 8.7 11 12 11Z"/></svg>`,
+  leaf: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19C4 11 9 4 20 4c0 11-7 16-15 15Z" fill="currentColor" stroke="none" opacity=".9"/><path d="M6 18 14 10"/></svg>`,
+  shell: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21c-5 0-9-3.5-9-8 0-4 4-9 9-9s9 5 9 9c0 4.5-4 8-9 8Z" fill="currentColor" stroke="none" opacity=".85"/><path d="M12 20V6M8 19l3-11M16 19l-3-11" stroke="#13242f" stroke-width="1.4"/></svg>`,
+  travel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><ellipse cx="12" cy="12" rx="8.5" ry="3.2"/><path d="M12 3.5v17"/><circle cx="17" cy="7" r="1.3" fill="currentColor" stroke="none"/></svg>`,
+};
+const CURSOR_COLORS = {
+  axe: '#ffd97a', pick: '#c9d6e0', sword: '#ff8787', berry: '#ff8fb3', shears: '#9df0a8',
+  talk: '#9fdcff', pot: '#ffb35a', hammer: '#ffd97a', rod: '#9fdcff', oar: '#9fdcff',
+  star: '#ffe596', seed: '#9df0a8', water: '#7ad9ff', basket: '#ffd97a', moon: '#c9b8ff',
+  paw: '#e7b653', leaf: '#7dff9a', shell: '#f7c8c8', travel: '#9fdcff',
+};
+function cursorIconFor(it) {
+  if (!it) return null;
+  if (it.bear) return it.bear.cub ? 'paw' : 'sword';
+  if (it.wolf) return 'sword';
+  if (it.npc) return 'talk';
+  if (it.node) {
+    const t = it.node.type;
+    if (t === 'wood') return 'axe';
+    if (t === 'stone') return 'pick';
+    if (t === 'food') return 'berry';
+    if (t === 'wool') return 'shears';
+    if (t === 'remedy') return 'leaf';
+  }
+  const id = it.id || '';
+  if (id.startsWith('plot')) {
+    const pi = parseInt(id.slice(4), 10);
+    const p = Home.plots[pi];
+    if (p && p.crop && p.growth >= 3) return 'basket';
+    if (p && p.crop && !p.water) return 'water';
+    return 'seed';
+  }
+  if (id.startsWith('animal')) return 'basket';
+  if (id === 'home-bed') return 'moon';
+  if (id === 'home-fire') return 'pot';
+  if (id === 'home-well') return 'water';
+  if (id === 'home-trough' || id === 'home-barn') return 'basket';
+  if (id === 'home-board' || id === 'home-door' || id === 'home-stall') return 'hammer';
+  if (id === 'skiff') return 'oar';
+  if (id === 'fish') return 'rod';
+  if (id.startsWith('shell')) return 'shell';
+  if (id === 'lagoon') return 'water';
+  if (id === 'plant') return 'leaf';
+  if (id === 'harvest') return 'basket';
+  return 'star';
+}
+function cursorLabelFor(it) {
+  if (!it) return '';
+  if (it.node) return `${it.node.verb} ${it.node.name}`;
+  if (it.bear) return it.bear.cub ? 'Shoo cub' : 'Fight bear';
+  if (it.wolf) return 'Fight wolf';
+  if (it.npc) return `Talk to ${it.npc.name}`;
+  if (it.id && it.id.startsWith('plot')) return 'Tend plot';
+  if (it.id && it.id.startsWith('animal')) return 'Visit livestock';
+  const names = {
+    flame: 'Tend flame', harvest: 'Tend harvest', oasis: 'Wake oasis', bell: 'Ring bell',
+    light: 'Light beacon', scan: 'Scan volcano', aurora: 'Wake aurora', plant: 'Nurture sprout',
+    fish: 'Fish here', skiff: 'Board skiff', lagoon: 'Wade in',
+    'home-bed': 'Sleep', 'home-fire': 'Cook', 'home-well': 'Draw water', 'home-trough': 'Feed herd',
+    'home-board': 'Build & goals', 'home-door': 'Home', 'home-barn': 'Barn', 'home-stall': 'Market',
+  };
+  if (names[it.id]) return names[it.id];
+  if ((it.id || '').startsWith('shell')) return 'Pocket shell';
+  return (it.kind || 'Interact').replace(/^[^\w]+\s*/, '');
+}
+const cursorEl = document.getElementById('cursor');
+const cursorIco = cursorEl && cursorEl.querySelector ? cursorEl.querySelector('.cursor-ico') : null;
+const cursorLabelEl = cursorEl && cursorEl.querySelector ? cursorEl.querySelector('.cursor-label') : null;
+let cursorX = 0, cursorY = 0, cursorDirty = false, cursorShown = false, cursorIconNow = null;
+const isTouchDevice = 'ontouchstart' in window;
+function hideContextCursor() {
+  cursorShown = false;
+  if (cursorEl) { cursorEl.classList.remove('on', 'hot', 'dragging'); }
+}
+const _pickV = new THREE.Vector3(), _pickTop = new THREE.Vector3(), _pickUp = new THREE.Vector3();
+function pickInteractableAt(x, y) {
+  if (!started || paused || !interactables.length) return null;
+  const W = innerWidth, H = innerHeight;
+  let best = null, bestScore = 1e9;
+  for (const it of interactables) {
+    if (!it.pos) continue;
+    if (it.bear && it.bear.dead) continue;
+    if (it.wolf && it.wolf.hp <= 0) continue;
+    _pickV.copy(it.pos).project(camera);
+    if (_pickV.z > 1) continue;
+    const sx = (_pickV.x * 0.5 + 0.5) * W, sy = (-_pickV.y * 0.5 + 0.5) * H;
+    const px = Math.hypot(sx - x, sy - y);
+    if (px > 130) continue;
+    _pickUp.copy(it.pos).normalize();
+    const hgt = it.node ? 3.0 : (it.bear || it.wolf ? 1.9 : 2.2);
+    _pickTop.copy(it.pos).addScaledVector(_pickUp, hgt).project(camera);
+    const ty = (-_pickTop.y * 0.5 + 0.5) * H;
+    const rpx = Math.max(18, Math.abs(ty - sy) * 0.9 + 12);
+    if (px > rpx) continue;
+    if (px < bestScore) { bestScore = px; best = it; }
+  }
+  if (!best || !planetMesh) return best;
+  // reject targets hidden behind the planet
+  clickRay.setFromCamera({ x: (x / W) * 2 - 1, y: -(y / H) * 2 + 1 }, camera);
+  const hit = clickRay.intersectObject(planetMesh, false)[0];
+  if (hit && hit.distance < camera.position.distanceTo(best.pos) - 1.6) return null;
+  return best;
+}
+function setCursorState(icon, label, color) {
+  if (!cursorEl) return;
+  cursorEl.classList.toggle('hot', !!icon);
+  if (icon && icon !== cursorIconNow) {
+    cursorIconNow = icon;
+    if (cursorIco) cursorIco.innerHTML = CURSOR_ICONS[icon] || CURSOR_ICONS.star;
+    if (cursorLabelEl) cursorLabelEl.textContent = label || '';
+    cursorEl.style.setProperty('--cur', color || '#fdf2d0');
+  } else if (icon && cursorLabelEl && cursorLabelEl.textContent !== (label || '')) {
+    cursorLabelEl.textContent = label || '';
+  }
+  if (!icon) cursorIconNow = null;
+}
+function refreshContextCursor() {
+  if (!cursorShown) return;
+  if (globeMode) {
+    clickRay.setFromCamera({ x: (cursorX / innerWidth) * 2 - 1, y: -(cursorY / innerHeight) * 2 + 1 }, camera);
+    const hit = planetMesh ? clickRay.intersectObject(planetMesh, false)[0] : null;
+    if (hit) setCursorState('travel', 'Fast travel', CURSOR_COLORS.travel);
+    else setCursorState(null, '');
+    return;
+  }
+  const it = pickInteractableAt(cursorX, cursorY);
+  if (!it) { setCursorState(null, ''); return; }
+  const icon = cursorIconFor(it);
+  setCursorState(icon, cursorLabelFor(it), CURSOR_COLORS[icon] || '#fdf2d0');
+}
+addEventListener('pointermove', (e) => {
+  cursorX = e.clientX; cursorY = e.clientY; cursorDirty = true;
+  const overWorld = e.target === canvas || e.target === document.body;
+  const enabled = settings.cursor !== false && !isTouchDevice;
+  if (overWorld && enabled && started && !paused) {
+    cursorShown = true;
+    if (cursorEl) {
+      cursorEl.classList.add('on');
+      cursorEl.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+      cursorEl.classList.toggle('dragging', dragging);
+    }
+  } else hideContextCursor();
+});
+document.addEventListener('pointerleave', hideContextCursor);
+addEventListener('blur', hideContextCursor);
+
 function clickToMove(x, y) {
   if (!planetMesh || !started || paused) return;
   clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
@@ -7553,21 +8003,12 @@ function clickToMove(x, y) {
     chime(760);
     toast('🧭 Fast travel — the planet turns beneath you.');
     toggleGlobe();
+    snapFollowCamera();
     renderStats();
     return;
   }
-  // RPG priority: clicking near a person, tree, beast, or wonder locks it as a task.
-  let best = null, bestAlong = 1e9;
-  const origin = clickRay.ray.origin, dir = clickRay.ray.direction;
-  for (const it of interactables) {
-    if (!it.pos) continue;
-    const to = it.pos.clone().sub(origin);
-    const along = to.dot(dir);
-    if (along < 0) continue;
-    const perp = to.addScaledVector(dir, -along).length();
-    const tol = (it.radius || 3.6) + 1.6;
-    if (perp < tol && along < bestAlong) { best = it; bestAlong = along; }
-  }
+  // RPG priority: clicking a person, tree, beast, or wonder locks it as a task.
+  const best = pickInteractableAt(x, y);
   if (best) {
     if (setAutoTask(best)) {
       burst(best.pos.clone(), 0x7dff9a, 6, 1.0);
@@ -7575,6 +8016,7 @@ function clickToMove(x, y) {
     }
   }
   clearAutoTask();
+  clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
   const hits = clickRay.intersectObjects([planetMesh, ocean], false);
   if (!hits.length) return; // clicked the sky
   moveTargetN = hits[0].point.clone().normalize();
@@ -7651,6 +8093,7 @@ if ('ontouchstart' in window) {
   hold('btn-run', () => { if (started && !paused) keys.KeyQ = true; }, () => (keys.KeyQ = false));
 }
 let globeMode = false;
+let photoMode = null; // { dist, height, side, aim } — QA portrait camera
 function toggleGlobe() { globeMode = !globeMode; toast(globeMode ? '🌐 Globe view — the patchwork planet' : '🧭 Back to traveler view'); }
 document.getElementById('btn-globe').onclick = toggleGlobe;
 document.getElementById('btn-sound').onclick = () => {
@@ -7720,6 +8163,22 @@ const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 const camUp = new THREE.Vector3(0, 1, 0); // smoothed up: world-Y in globe view, surface normal when following
 const lastBehind = new THREE.Vector3(0, 0, 1); // smoothed behind-the-back follow direction
 const tmpF = new THREE.Vector3(), tmpR = new THREE.Vector3(), tmpM = new THREE.Vector3(), axis = new THREE.Vector3();
+
+// Hard snap for teleports/fast travel: the follow camera must not lerp across
+// the planet (it can pass through an occluder box and freeze).
+function snapFollowCamera() {
+  const n0 = playerPos.clone().normalize();
+  const f = moveDirSmooth.clone().addScaledVector(n0, -moveDirSmooth.dot(n0));
+  if (f.lengthSq() < 1e-6) f.copy(lastBehind);
+  if (f.lengthSq() < 1e-6) f.copy(V3(0, 0, 1));
+  f.normalize();
+  camPos.copy(playerPos).addScaledVector(f, -15).addScaledVector(n0, 16);
+  camLook.copy(playerPos).addScaledVector(f, 5);
+  camUp.copy(n0);
+  camera.position.copy(camPos);
+  camera.up.copy(n0);
+  camera.lookAt(camLook);
+}
 
 function updateBoatControl(dt) {
   const n = boatN.clone().normalize();
@@ -7914,6 +8373,22 @@ function updatePlayer(dt) {
 }
 
 function updateCamera(dt, n) {
+  if (photoMode) {
+    // dev/QA portrait camera: orbit close to the hero without the follow rig
+    const fwd = facing.clone().addScaledVector(n, -facing.dot(n));
+    if (fwd.lengthSq() < 1e-6) fwd.copy(lastBehind);
+    else fwd.normalize();
+    const right = new THREE.Vector3().crossVectors(fwd, n).normalize();
+    tmpM.copy(player.position)
+      .addScaledVector(n, photoMode.height ?? 1.3)
+      .addScaledVector(fwd, photoMode.dist ?? 3.4)
+      .addScaledVector(right, photoMode.side ?? 0);
+    camPos.lerp(tmpM, 1 - Math.exp(-14 * dt));
+    camera.position.copy(camPos);
+    camera.up.copy(n);
+    camera.lookAt(player.position.clone().addScaledVector(n, photoMode.aim ?? 1.15));
+    return;
+  }
   if (globeMode) {
     const t = performance.now() * 0.00012;
     tmpM.copy(n).multiplyScalar(R * 3.1).add(V3(Math.cos(t) * 18 * S, 10 * S, Math.sin(t) * 18 * S));
@@ -7966,6 +8441,8 @@ function updateCamera(dt, n) {
   camPos.lerp(tmpM, 1 - Math.exp(-4 * dt));
   if (camPos.lengthSq() < 1) camPos.copy(tmpM);
   if (pointInOccluder(camPos)) camPos.copy(axis); // lerp cut a corner: revert
+  // safety: never let the follow camera strand itself far from the hero
+  if (camPos.distanceTo(player.position) > 42) camPos.copy(tmpM);
   camera.position.copy(camPos);
   camLook.lerp(tmpR, 1 - Math.exp(-6 * dt)); // tmpR already holds the ahead-look target
   // Lock the camera's up to the surface normal: with default world-Y up, lookAt
@@ -7973,6 +8450,11 @@ function updateCamera(dt, n) {
   camUp.lerp(n, 1 - Math.exp(-6 * dt)).normalize();
   camera.up.copy(camUp);
   camera.lookAt(camLook.lengthSq() ? camLook : tmpR);
+  if (camShake > 0.001) {
+    camera.position.x += rand(-1, 1) * camShake;
+    camera.position.y += rand(-1, 1) * camShake;
+    camera.position.z += rand(-1, 1) * camShake;
+  }
 }
 
 function updateInteract() {
@@ -8011,9 +8493,10 @@ function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
-  if (paused) { orbitYaw += dt * 0.04; renderer.render(scene, camera); return; } // menu vista: slow drift
+  if (paused) { orbitYaw += dt * 0.04; hideContextCursor(); renderer.render(scene, camera); return; } // menu vista: slow drift
   if (started) playtime += dt;
   combatNow = t;
+  camShake = Math.max(0, camShake - dt * 2.4);
   updateHealth(dt);
   for (const fn of tickers) fn(t, dt);
   const _bell = bellGroup?.getObjectByName('bell');
@@ -8030,6 +8513,11 @@ function animate() {
   updateCamera(dt, n);
   updateInteract();
   updateBiomeLabel(n);
+  // context cursor: keep it pinned and re-pick only when the pointer moved
+  if (cursorShown) {
+    if (cursorEl) cursorEl.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+    if (cursorDirty) { cursorDirty = false; refreshContextCursor(); }
+  }
   // ocean shader clock + sun; old shimmer bob removed (waves live in the vertex shader)
   try {
     oceanUniforms.uTime.value = t;

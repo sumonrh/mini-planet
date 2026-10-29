@@ -206,6 +206,49 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
 #popups {
   position: fixed; inset: 0; pointer-events: none; z-index: 35; overflow: hidden;
 }
+/* Context cursor */
+#cursor {
+  position: fixed; left: 0; top: 0; width: 0; height: 0;
+  z-index: 96; pointer-events: none; display: none;
+}
+body.custom-cursor #cursor { display: block; }
+body.custom-cursor #scene { cursor: none; }
+.cursor-ring {
+  position: absolute; left: 0; top: 0; width: 12px; height: 12px;
+  transform: translate(-50%, -50%); border-radius: 50%;
+  border: 1.5px solid rgba(255, 241, 204, 0.92);
+  background: rgba(12, 22, 30, 0.38);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  transition: width 0.12s ease, height 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.cursor-ico {
+  position: absolute; left: 0; top: 0; width: 25px; height: 25px;
+  transform: translate(-50%, -50%) scale(0.6);
+  opacity: 0; color: var(--cur, #fdf2d0);
+  transition: opacity 0.1s ease, transform 0.12s ease;
+}
+.cursor-ico svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.55)); }
+.cursor-label {
+  position: absolute; left: 0; top: 0; transform: translate(-50%, 24px);
+  padding: 3px 9px; border-radius: 999px; white-space: nowrap;
+  background: rgba(12, 22, 30, 0.84); border: 1px solid rgba(255, 217, 122, 0.5);
+  color: #f5ecda; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  opacity: 0; transition: opacity 0.1s ease;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+}
+#cursor.hot .cursor-ring {
+  width: 40px; height: 40px;
+  background: rgba(12, 22, 30, 0.82);
+  border-color: var(--cur, #ffd97a);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.35), 0 3px 14px rgba(0,0,0,0.5);
+}
+#cursor.hot .cursor-ico { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+#cursor.hot .cursor-label { opacity: 0.95; }
+#cursor.dragging .cursor-ring { width: 18px; height: 18px; opacity: 0.6; }
+@media (hover: none) { #cursor { display: none !important; } }
+@media (prefers-reduced-motion: reduce) {
+  .cursor-ring, .cursor-ico, .cursor-label { transition: none; }
+}
 .rpg-popup {
   position: absolute; transform: translate(-50%, -50%);
   font-weight: 700; font-size: 14px; letter-spacing: 0.02em;
