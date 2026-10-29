@@ -732,6 +732,10 @@ function gatherHit(nd) {
     toward.addScaledVector(up, -toward.dot(up));
     if (toward.lengthSq() > 1e-6) fxPos.addScaledVector(toward.normalize(), 0.35);
     fxPos.addScaledVector(up, 0.95);
+    // the trunk is knocked away from the hero along the blow line
+    const push = nd.shakeRoot.position.clone().sub(player.position);
+    push.addScaledVector(up, -push.dot(up));
+    if (push.lengthSq() > 1e-6) nd.shakeDir = push.normalize();
     addShake(0.13 + heat * 0.06);
     chime(95); // low thunk under the wood crack
   }
@@ -877,8 +881,12 @@ tickers.push((t, dt) => {
     if (nd.shakeRoot && nd.shake > 0) {
       nd.shake = Math.max(0, nd.shake - dt * 2.5);
       const s = nd.shake * 0.12;
+      const push = nd.shakeDir ? nd.shake * 0.1 : 0;
       if (nd.shake > 0) {
-        nd.shakeRoot.position.set(nd.home.x + rand(-s, s), nd.home.y + rand(-s, s), nd.home.z + rand(-s, s));
+        nd.shakeRoot.position.set(
+          nd.home.x + rand(-s, s) + (nd.shakeDir ? nd.shakeDir.x * push : 0),
+          nd.home.y + rand(-s, s),
+          nd.home.z + rand(-s, s) + (nd.shakeDir ? nd.shakeDir.z * push : 0));
       } else nd.shakeRoot.position.copy(nd.home);
     }
     if (nd.fallRoot) {
@@ -3257,26 +3265,28 @@ const player = new THREE.Group();
     const pose = cp.active ? cp : (ap ? { ..._idlePose, active: true, grip: 1, yaw: ap.yaw, shR: ap.shR, shL: ap.shL, elR: ap.elR, wrist: ap.wrist } : null);
     // fast pose joints follow the keyframes directly; only idle/walk is smoothed
     const kPose = pose ? 1 : k;
+    const hopF = THREE.MathUtils.clamp(hopH * 2.4, 0, 1);
+    const dashF = dashT > 0 ? 1 : 0;
 
     // legs stride (forward = negative rotation.x) with knee lift + ankle roll
     const swingL = s * amp, swingR = -s * amp;
     P.legL.rotation.x += (-swingL - P.legL.rotation.x) * k;
     P.legR.rotation.x += (-swingR - P.legR.rotation.x) * k;
-    const kneeL = Math.max(0, Math.sin(phase + 0.9)) * amp * 1.5;
-    const kneeR = Math.max(0, Math.sin(phase + Math.PI + 0.9)) * amp * 1.5;
+    const kneeL = Math.max(0, Math.sin(phase + 0.9)) * amp * 1.5 + hopF * 0.85;
+    const kneeR = Math.max(0, Math.sin(phase + Math.PI + 0.9)) * amp * 1.5 + hopF * 0.7;
     P.kneeL.rotation.x += (kneeL - P.kneeL.rotation.x) * k;
     P.kneeR.rotation.x += (kneeR - P.kneeR.rotation.x) * k;
-    P.ankleL.rotation.x += ((-P.legL.rotation.x - P.kneeL.rotation.x) * 0.55 - P.ankleL.rotation.x) * k;
-    P.ankleR.rotation.x += ((-P.legR.rotation.x - P.kneeR.rotation.x) * 0.55 - P.ankleR.rotation.x) * k;
+    P.ankleL.rotation.x += ((-P.legL.rotation.x - P.kneeL.rotation.x) * 0.55 + hopF * 0.2 - P.ankleL.rotation.x) * k;
+    P.ankleR.rotation.x += ((-P.legR.rotation.x - P.kneeR.rotation.x) * 0.55 + hopF * 0.2 - P.ankleR.rotation.x) * k;
 
     // torso: bob, speed lean, walk twist, chop coil/roll, idle breathing
     const idleF = 1 - Math.min(1, sp / 2);
     const bob = moving ? Math.abs(c) * 0.032 * (0.7 + runF) : Math.sin(idleT * 1.6) * 0.006;
     P.torso.position.y = 1.02 + bob;
     P.torso.position.z = pose ? pose.lunge : 0;
-    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0)) - P.torso.rotation.x) * kPose;
+    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16) - P.torso.rotation.x) * kPose;
     P.torso.rotation.y += (((moving ? s * 0.07 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
-    P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0)) - P.torso.rotation.z) * kPose;
+    P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0) + dashF * 0.12) - P.torso.rotation.z) * kPose;
     P.chest.scale.y = 1 + Math.sin(idleT * 1.9) * 0.012 * idleF;
 
     // head: counter the torso, look around when idle, track the chop
@@ -7906,6 +7916,7 @@ const cursorEl = document.getElementById('cursor');
 const cursorIco = cursorEl && cursorEl.querySelector ? cursorEl.querySelector('.cursor-ico') : null;
 const cursorLabelEl = cursorEl && cursorEl.querySelector ? cursorEl.querySelector('.cursor-label') : null;
 let cursorX = 0, cursorY = 0, cursorDirty = false, cursorShown = false, cursorIconNow = null;
+const _lastCursorCam = new THREE.Vector3();
 const isTouchDevice = 'ontouchstart' in window;
 function hideContextCursor() {
   cursorShown = false;
@@ -8513,9 +8524,13 @@ function animate() {
   updateCamera(dt, n);
   updateInteract();
   updateBiomeLabel(n);
-  // context cursor: keep it pinned and re-pick only when the pointer moved
+  // context cursor: keep it pinned and re-pick when the pointer or camera moved
   if (cursorShown) {
     if (cursorEl) cursorEl.style.transform = `translate3d(${cursorX}px, ${cursorY}px, 0)`;
+    if (camera.position.distanceToSquared(_lastCursorCam) > 0.06) {
+      _lastCursorCam.copy(camera.position);
+      cursorDirty = true;
+    }
     if (cursorDirty) { cursorDirty = false; refreshContextCursor(); }
   }
   // ocean shader clock + sun; old shimmer bob removed (waves live in the vertex shader)
@@ -8542,4 +8557,10 @@ function pointInOccluder(p) {
   return false;
 }
 updateBoatVisual(0);
+// dev portrait mode: append ?avatar=1 to inspect the hero up close
+try {
+  if (/[?&]avatar=1\b/.test(location.search)) {
+    photoMode = { dist: 5.0, height: 1.6, side: 1.2, aim: 1.15 };
+  }
+} catch { /* noop */ }
 animate();
