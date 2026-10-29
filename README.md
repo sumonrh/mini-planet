@@ -6,9 +6,19 @@ One traversable sphere, 4 biomes, 7 Small Wonders, contextual `E` interactions, 
 
 ## Play (double-click, no terminal needed)
 
-- **Easiest:** double-click **`Play Little Planet.bat`** — it installs, builds, and opens the game by itself.
+- **Online:** **https://studio-9373398923-6294b.web.app** (Firebase Hosting)
+- **Easiest locally:** double-click **`Play Little Planet.bat`** — it installs, builds, and opens the game by itself.
 - **Or:** double-click **`index.html`** (forwards to the bundle) or **`dist/index.html`** directly — one self-contained file, no server needed. Clicking `index.html` before ever building shows nothing: run the `.bat` (or `npm run build`) first.
 - **Dev mode:** `npm install` then `npm run dev`.
+
+### Deploying
+
+```bash
+npm run build
+firebase deploy --only hosting --project studio-9373398923-6294b
+```
+
+Firebase serves `dist/` (`firebase.json`), which is the single self-contained `index.html`.
 
 ## Controls
 
