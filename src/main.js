@@ -1525,6 +1525,24 @@ function bearSurfaceOrient(bear) {
   const m = new THREE.Matrix4().makeBasis(xA, yA, zA);
   bear.mesh.quaternion.setFromRotationMatrix(m);
 }
+// Turn the bear's heading toward a target at a capped angular speed (rad/s).
+// Lerping unit vectors straight to a new target snapped ~180° turns at up to
+// 10 rad/s, which read as jitter; a capped pivot looks like a real heavy bear.
+function bearTurnToward(b, dir, dt, maxRate) {
+  const n = b.pos.clone().normalize();
+  const cur = b.facing.clone().addScaledVector(n, -b.facing.dot(n));
+  const tgt = dir.clone().addScaledVector(n, -dir.dot(n));
+  if (cur.lengthSq() < 1e-6 || tgt.lengthSq() < 1e-6) return;
+  cur.normalize(); tgt.normalize();
+  const sin = new THREE.Vector3().crossVectors(cur, tgt).dot(n);
+  const cos = THREE.MathUtils.clamp(cur.dot(tgt), -1, 1);
+  let ang = Math.atan2(sin, cos);
+  const cap = maxRate * dt;
+  if (ang > cap) ang = cap; else if (ang < -cap) ang = -cap;
+  b.facing.copy(cur).applyAxisAngle(n, ang);
+  b.facing.addScaledVector(n, -b.facing.dot(n));
+  if (b.facing.lengthSq() > 1e-6) b.facing.normalize();
+}
 {
   const g = new THREE.Group(); scene.add(g);
   const put = (obj, la, lo, h = 0.05, yaw = 0) => {
@@ -3252,7 +3270,7 @@ function updateBears(t, dt) {
       bearSurfaceOrient(b);
       b.mesh.rotateX(1.35 * b.tip);
       if (anim) {
-        for (const leg of anim.legs) leg.rotation.x *= 0.9;
+        for (const leg of anim.legs) leg.rotation.z *= 0.9;
         anim.headPivot.rotation.z = -0.5 * b.tip;
         anim.body.position.y = 0.9;
       }
@@ -3267,7 +3285,7 @@ function updateBears(t, dt) {
       if (dist < BEAR_STRIKE) {
         // strike range: face the traveler, rear up and swipe on cooldown
         const flat = toPlayer.addScaledVector(n, -toPlayer.dot(n));
-        if (flat.lengthSq() > 1e-6) b.facing.lerp(flat.normalize(), 1 - Math.exp(-8 * dt)).normalize();
+        if (flat.lengthSq() > 1e-6) bearTurnToward(b, flat.normalize(), dt, 2.4);
         if (b.attackCd <= 0) {
           b.attackCd = 1.3;
           b.attackT = 0.65;
@@ -3302,9 +3320,15 @@ function updateBears(t, dt) {
       b.wanderT -= dt;
       if (b.wanderT <= 0 || !b.target) {
         b.wanderT = rand(2.5, 6);
-        const tangent = V3(rand(-1, 1), rand(-1, 1), rand(-1, 1));
-        tangent.addScaledVector(n, -tangent.dot(n));
-        if (tangent.lengthSq() > 1e-6) b.target = tangent.normalize();
+        // amble along a corridor: deviate from the current heading instead of
+        // spinning to a fully random tangent (that read as a twitchy bear)
+        const base = b.facing.clone().addScaledVector(n, -b.facing.dot(n));
+        if (base.lengthSq() < 1e-6) base.copy(lastBehind);
+        else base.normalize();
+        b.target = base.applyAxisAngle(n, rand(-1.1, 1.1));
+        b.target.addScaledVector(n, -b.target.dot(n));
+        if (b.target.lengthSq() < 1e-6) b.target = null;
+        else b.target.normalize();
       }
       if (b.fleeTarget) {
         const toF = b.fleeTarget.clone().sub(b.pos);
@@ -3320,7 +3344,7 @@ function updateBears(t, dt) {
       }
     }
     if (moveDir && speed > 0) {
-      b.facing.lerp(moveDir, 1 - Math.exp(-6 * dt)).normalize();
+      bearTurnToward(b, moveDir, dt, b.cub ? 3.4 : 1.9);
       const axis = new THREE.Vector3().crossVectors(n, b.facing);
       if (axis.lengthSq() > 1e-6) {
         axis.normalize();
@@ -3341,8 +3365,10 @@ function updateBears(t, dt) {
       b.phase += dt * (1.2 + b.speedNow * (b.cub ? 2.2 : 1.6));
       const s = Math.sin(b.phase * amble * 0.55);
       const amp = 0.12 + Math.min(b.speedNow / 4, 1) * 0.5;
-      anim.legs[0].rotation.x = s * amp; anim.legs[3].rotation.x = s * amp;
-      anim.legs[1].rotation.x = -s * amp; anim.legs[2].rotation.x = -s * amp;
+      // model faces +X, so a forward stride swings legs around Z (around X they
+      // splayed sideways like the splits)
+      anim.legs[0].rotation.z = s * amp; anim.legs[3].rotation.z = s * amp;
+      anim.legs[1].rotation.z = -s * amp; anim.legs[2].rotation.z = -s * amp;
       anim.body.rotation.z = s * 0.05;
       anim.body.position.y = 0.9 + Math.abs(Math.cos(b.phase * amble * 0.55)) * 0.07 * (0.5 + Math.min(b.speedNow, 3));
       // rear-up swipe: lift the head, pin the ears, lash the tail
