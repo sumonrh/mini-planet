@@ -414,49 +414,77 @@ const ocean = mesh(new THREE.SphereGeometry(R + 0.12, 160, 104), new THREE.MeshS
 ocean.receiveShadow = true;
 scene.add(ocean);
 
-// atmospheric shell: a hair-thin Fresnel haze sitting just above the surface.
-// BackSide + additive means we only see the far interior, so the glow gathers on
-// the limb and fades out overhead — the planet reads as Earth, not a moon.
+// atmosphere: a taller shell integrated per-pixel along the view ray. Density
+// falls off exponentially with altitude, so the haze is thick and hazy at the
+// horizon, fades out gradually toward space, and stays thin everywhere else.
+// BackSide + additive keeps it from ever hiding the planet it hugs.
+const ATMO_R = R + 13;
 const atmoUniforms = {
   uDay: { value: new THREE.Color(0x5aa6e8) },
   uNight: { value: new THREE.Color(0x1e3a5e) },
   uDusk: { value: new THREE.Color(0xff9c5a) },
   uSunDir: { value: new THREE.Vector3(1, 0, 0) },
-  uGlow: { value: 1.15 },
+  uDensity: { value: 0.0085 },
+  uHeight: { value: 3.4 }, // scale height: density halves roughly every 2.4 units
+  uPlanetR: { value: R },
+  uAtmoR: { value: ATMO_R },
 };
 const atmo = new THREE.Mesh(
-  new THREE.SphereGeometry(R * 1.055, 72, 48),
+  new THREE.SphereGeometry(ATMO_R, 64, 40),
   new THREE.ShaderMaterial({
     uniforms: atmoUniforms,
     vertexShader: `
-      varying vec3 vWorldNormal;
       varying vec3 vWorldPos;
       void main() {
         vec4 wp = modelMatrix * vec4(position, 1.0);
         vWorldPos = wp.xyz;
-        vWorldNormal = normalize(mat3(modelMatrix) * normal);
         gl_Position = projectionMatrix * viewMatrix * wp;
       }
     `,
     fragmentShader: `
       uniform vec3 uDay, uNight, uDusk, uSunDir;
-      uniform float uGlow;
-      varying vec3 vWorldNormal;
+      uniform float uDensity, uHeight, uPlanetR, uAtmoR;
       varying vec3 vWorldPos;
       void main() {
-        vec3 n = normalize(vWorldNormal);
-        vec3 toCam = normalize(cameraPosition - vWorldPos);
-        // 1 at the limb, 0 face-on: a thin bright edge over a wide, faint halo
-        float f = 1.0 - abs(dot(n, toCam));
-        float rim = pow(f, 3.0) * 1.0 + pow(f, 1.6) * 0.22;
-        vec3 up = normalize(vWorldPos);
+        vec3 ro = cameraPosition;
+        vec3 rd = normalize(vWorldPos - ro);
+        // where this view ray enters and leaves the atmosphere
+        float b = dot(ro, rd);
+        float disc = b * b - (dot(ro, ro) - uAtmoR * uAtmoR);
+        if (disc <= 0.0) discard;
+        float sq = sqrt(disc);
+        float tEnter = max(0.0, -b - sq);
+        float tExit = -b + sq;
+        // stop at the planet so the haze only lives in the air
+        float dp = b * b - (dot(ro, ro) - uPlanetR * uPlanetR);
+        if (dp > 0.0) {
+          float tp = -b - sqrt(dp);
+          if (tp > 0.0) tExit = min(tExit, tp);
+        }
+        float span = tExit - tEnter;
+        if (span <= 0.0) discard;
+
+        // integrate density along the ray: thick near the ground, thinning out
+        const int STEPS = 16;
+        float stepLen = span / float(STEPS);
+        float depth = 0.0;
+        for (int i = 0; i < STEPS; i++) {
+          vec3 p = ro + rd * (tEnter + (float(i) + 0.5) * stepLen);
+          float h = max(0.0, length(p) - uPlanetR);
+          float fall = smoothstep(uAtmoR, uPlanetR, length(p));
+          depth += exp(-h / uHeight) * fall * stepLen;
+        }
+        float opacity = 1.0 - exp(-depth * uDensity);
+
+        // tint by the sun at the densest point of the ray
+        float tMid = clamp(-b, tEnter, tExit);
+        vec3 up = normalize(ro + rd * tMid);
         float sun = dot(up, uSunDir);
         float day = smoothstep(-0.22, 0.3, sun);
         vec3 col = mix(uNight, uDay, day);
-        // warm scatter along the sunrise/sunset terminator
         float dusk = (1.0 - smoothstep(0.0, 0.3, abs(sun))) * (0.25 + day * 0.75);
         col = mix(col, uDusk, dusk * 0.6);
-        gl_FragColor = vec4(col * uGlow * (0.3 + day * 0.9), rim);
+        gl_FragColor = vec4(col * opacity, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }
