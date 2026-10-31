@@ -3191,6 +3191,7 @@ const player = new THREE.Group();
   neck.add(mesh(new THREE.CylinderGeometry(0.09, 0.105, 0.14, 9), skin, 0, 0.05, 0));
   const head = new THREE.Group();
   head.position.y = 0.14;
+  head.scale.setScalar(0.88); // 5.4-head proportions: less toy, more traveler
   neck.add(head);
   player.userData.head = head;
   head.add(mesh(new THREE.SphereGeometry(0.245, 12, 10), skin, 0, 0.16, 0));
