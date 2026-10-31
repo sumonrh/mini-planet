@@ -27,6 +27,16 @@
 
   <!-- Day / season pill -->
   <div id="day-pill" class="pill-dark">☀️ Day 1 · Spring</div>
+  <div id="chapter-ribbon" class="pill-dark hidden">
+    <span id="chapter-icon">🌱</span>
+    <span id="chapter-name">Chapter I · Arrival</span>
+    <span id="chapter-age">Age 20</span>
+  </div>
+  <div id="weather-chip" class="pill-dark hidden">
+    <span id="weather-icon">☀️</span>
+    <span id="weather-text">Clear skies</span>
+    <span id="weather-next"></span>
+  </div>
 
   <!-- Top-center wonders tracker (click opens the field journal) -->
   <button id="wonder-tracker" class="pill-dark" title="Field journal (J)">
@@ -47,6 +57,9 @@
   <div id="top-right">
     <button id="btn-pause" class="round-btn" title="Menu (Esc)">⏸️</button>
     <button id="btn-globe" class="round-btn" title="Globe view (M)">🌐</button>
+    <button id="btn-workshop" class="round-btn" title="Workshop (K)">🔧</button>
+    <button id="btn-almanac" class="round-btn" title="Almanac (N)">🧭</button>
+    <button id="btn-loadout" class="round-btn" title="Loadout (L)">🎒</button>
     <button id="btn-sound" class="round-btn" title="Sound on/off">🔊</button>
     <button id="btn-help" class="round-btn" title="Help">⚙</button>
   </div>
@@ -125,7 +138,10 @@
     <span><kbd>F</kbd> eat</span>
     <span><kbd>R</kbd> heal</span>
     <span><kbd>H</kbd> build</span>
-    <span><kbd>M</kbd> globe travel</span>
+    <span><kbd>K</kbd> workshop</span>
+    <span><kbd>N</kbd> almanac</span>
+    <span><kbd>L</kbd> loadout</span>
+    <span><kbd>M</kbd> globe</span>
   </div>
 
   <!-- Help overlay -->
@@ -138,6 +154,11 @@
         <li><b>Dash:</b> <kbd>Shift</kbd> rolls through danger (brief invulnerability). Dodging a swipe at the last moment triggers a <b>Clean Dodge</b> + critical hits.</li>
         <li><b>Levels:</b> chopping, fighting, fishing, cooking and wonders earn XP. Level up for perks and better weapons (Rusty Hatchet → Starforged Blade).</li>
         <li><b>Fast travel:</b> press <kbd>M</kbd> for the globe, then click any shore to teleport there.</li>
+        <li><b>Life chapters:</b> Arrival → Roots → Family → Mastery → Legacy. Each chapter unlocks a life trait. Open <kbd>J</kbd> for the journal story, family, technology and almanac tabs.</li>
+        <li><b>Weather:</b> press <kbd>N</kbd> for the almanac. Forecasts warn you about blizzards, thunderstorms, floods, droughts, eruptions, wildfires and hail — build storm shutters, a cellar, a well, irrigation, a pump or an ash mask before they hit.</li>
+        <li><b>Research:</b> press <kbd>K</kbd> to open the workshop. Earn insight by discovering things, surviving hazards and completing chapters; research tools, buildings and firearms. Build the Workshop on the homestead board (<kbd>H</kbd>) once researched.</li>
+        <li><b>Weapons:</b> press <kbd>L</kbd> for the loadout. Melee: hatchet → iron axe → war axe → halberd. Ranged: sling → bow → crossbow → musket → lever rifle → shotgun. Craft ammo at the workshop; gunshots are loud and can call wolves.</li>
+        <li><b>Threats:</b> bears, wolves, and night robbers, tolls and rustlers. Confront robbers to pay, fight or intimidate. Lanterns, dogs and fences deter them.</li>
         <li><b>Fernwood:</b> tend the eternal flame 3×.</li>
         <li><b>Clover Fields:</b> water and harvest the rows.</li>
         <li><b>Sunstone Oasis:</b> wake the oasis spring.</li>
@@ -171,12 +192,72 @@
     </div>
   </div>
 
-  <!-- Title screen -->
+  <!-- Workshop / research -->
+  <div id="workshop-overlay" class="hidden">
+    <div class="help-card npc-card wide-card">
+      <button id="btn-close-workshop" class="journal-close" title="Close (Esc)">×</button>
+      <div class="journal-eyebrow">🔧 WORKSHOP · <span id="workshop-era">Handmade</span></div>
+      <h2>Research &amp; Craft</h2>
+      <p class="journal-sub">Turn insight and materials into tools, machines and firearms.</p>
+      <div class="workshop-top">
+        <div id="workshop-insight">💡 0 insight</div>
+        <div id="workshop-queue">Idle</div>
+      </div>
+      <div id="workshop-list"></div>
+      <button id="btn-workshop-leave">Back to the bench 👋</button>
+    </div>
+  </div>
+
+  <!-- Almanac / weather -->
+  <div id="almanac-overlay" class="hidden">
+    <div class="help-card npc-card wide-card">
+      <button id="btn-close-almanac" class="journal-close" title="Close (Esc)">×</button>
+      <div class="journal-eyebrow">🧭 ALMANAC</div>
+      <h2>Read the sky.</h2>
+      <p class="journal-sub">Forecasts, warnings, and the counters you have ready.</p>
+      <div id="almanac-body"></div>
+      <button id="btn-almanac-leave">Back outside 👋</button>
+    </div>
+  </div>
+
+  <!-- Loadout / weapons -->
+  <div id="loadout-overlay" class="hidden">
+    <div class="help-card npc-card wide-card">
+      <button id="btn-close-loadout" class="journal-close" title="Close (Esc)">×</button>
+      <div class="journal-eyebrow">🎒 LOADOUT</div>
+      <h2>Tools of the trade.</h2>
+      <p class="journal-sub">One melee, one ranged. Ammo is scarce — make it count.</p>
+      <div id="loadout-body"></div>
+      <button id="btn-loadout-leave">Ready 👋</button>
+    </div>
+  </div>
+
+  <!-- Life trait choice -->
+  <div id="trait-overlay" class="hidden">
+    <div class="help-card npc-card">
+      <div class="journal-eyebrow">A LIFE CHOICE</div>
+      <h2 id="trait-title">Who are you becoming?</h2>
+      <p id="trait-sub" class="journal-sub"></p>
+      <div id="trait-body"></div>
+    </div>
+  </div>
+
+  <!-- Robber encounter -->
+  <div id="robber-overlay" class="hidden">
+    <div class="help-card npc-card">
+      <button id="btn-close-robber" class="journal-close" title="Close">×</button>
+      <div class="journal-eyebrow">⚠️ UNWELCOME VISITOR</div>
+      <h2 id="robber-title">A robber blocks the path.</h2>
+      <p id="robber-line" class="journal-sub"></p>
+      <div id="robber-choices"></div>
+    </div>
+  </div>
+
   <div id="title-overlay">
     <div class="title-inner">
       <div class="title-eyebrow">A POCKET ADVENTURE</div>
       <h1 class="title-logo">Little Planet</h1>
-      <div class="title-sub">Hearth &amp; Harvest — survive, settle, raise a family</div>
+      <div class="title-sub">A life on a little planet — survive, build, research, raise a family</div>
       <div id="title-buttons">
         <button id="btn-continue" class="menu-btn">Continue ▶</button>
         <button id="btn-newgame" class="menu-btn">New Game 🌱</button>
@@ -188,7 +269,7 @@
         <div id="slot-list"></div>
         <button id="btn-slot-back" class="menu-btn menu-btn-small">← Back</button>
       </div>
-      <div class="title-footer">click / E once to auto-act · Shift dash · M globe travel · H build · J journal · Esc menu</div>
+      <div class="title-footer">click / E once to auto-act · Shift dash · K research · N almanac · L loadout · H build · J journal · Esc menu</div>
     </div>
   </div>
 
@@ -240,6 +321,13 @@
       <h2>A world worth wandering.</h2>
       <p class="journal-sub">Seven small moments. All yours to find.</p>
       <div class="journal-progress"><span id="journal-fill"></span></div>
+      <div id="journal-tabs">
+        <button data-tab="story" class="jtab active">Story</button>
+        <button data-tab="family" class="jtab">Family</button>
+        <button data-tab="tech" class="jtab">Technology</button>
+        <button data-tab="wonders" class="jtab">Wonders</button>
+        <button data-tab="almanac" class="jtab">Almanac</button>
+      </div>
       <div id="journal-list"></div>
     </div>
   </div>

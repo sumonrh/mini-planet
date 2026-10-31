@@ -112,7 +112,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
 #interact-arrow { opacity: 0.6; font-size: 22px; }
 
 #toast {
-  position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 80;
+  position: fixed; top: 76px; left: 50%; transform: translateX(-50%); z-index: 45;
   background: rgba(255, 217, 122, 0.95); color: #2a2000; font-weight: 600; font-size: 14px;
   padding: 10px 22px; border-radius: 999px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
 }
@@ -469,3 +469,113 @@ body.touch #biome-label h1 { font-size: 34px; }
 }
 .touch-btn:active { background: rgba(255,217,122,0.85); color: #2a2000; }
 #scene { touch-action: none; }
+
+/* ---------- life journey HUD ---------- */
+#chapter-ribbon {
+  position: fixed; top: 112px; left: 20px; z-index: 10;
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; font-size: 12px; font-weight: 600;
+}
+#chapter-age { opacity: 0.65; font-size: 11px; font-weight: 500; }
+#weather-chip {
+  position: fixed; top: 150px; left: 20px; z-index: 10;
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 13px; font-size: 11.5px;
+}
+#weather-next { opacity: 0.7; font-size: 10.5px; margin-left: 4px; }
+/* ---------- research / almanac / loadout ---------- */
+.wide-card { min-width: min(580px, calc(100vw - 40px)); max-height: 86vh; overflow-y: auto; }
+#workshop-overlay, #almanac-overlay, #loadout-overlay, #trait-overlay, #robber-overlay {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(5, 12, 18, 0.55); backdrop-filter: blur(3px);
+}
+#workshop-overlay .help-card, #almanac-overlay .help-card, #loadout-overlay .help-card {
+  min-width: min(580px, calc(100vw - 40px));
+}
+/* the generic .help-card button rule would turn the cards gold */
+.help-card .tech-card,
+.help-card .loadout-btn,
+.help-card .trait-btn,
+.help-card .robber-btn {
+  margin-top: 0; padding: 9px 11px; border-radius: 11px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: none; color: #eaf2f5; font-weight: 400; font-size: 13px;
+}
+.help-card .tech-card:hover:not(:disabled),
+.help-card .loadout-btn:hover:not(:disabled),
+.help-card .trait-btn:hover,
+.help-card .robber-btn:hover { background: rgba(255,217,122,0.14); border-color: rgba(255,217,122,0.7); }
+.help-card .tech-card.done { background: rgba(157,240,168,0.08); border-color: rgba(157,240,168,0.5); }
+.help-card .tech-card:disabled, .help-card .loadout-btn:disabled { opacity: 0.5; }
+.help-card .loadout-btn.equipped { background: rgba(157,240,168,0.12); border-color: rgba(157,240,168,0.65); }
+.help-card .tech-card .tech-name { color: #eaf2f5; }
+.help-card .tech-card .tech-cost { color: #ffd97a; }
+.help-card .tech-card.done .tech-cost { color: #9df0a8; }
+.help-card .jtab {
+  margin-top: 0; padding: 5px 12px; border-radius: 999px;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: none; color: #d7e3e8; font-weight: 400; font-size: 11px;
+}
+.help-card .jtab.active { background: #ffd97a; color: #2a2000; border-color: #ffd97a; font-weight: 700; }
+.workshop-top {
+  display: flex; justify-content: space-between; gap: 10px; align-items: center;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,217,122,0.3);
+  border-radius: 10px; padding: 8px 12px; margin: 6px 0 12px; font-size: 12px;
+}
+#workshop-insight { color: #ffd97a; font-weight: 700; }
+#workshop-queue { color: #9df0a8; font-size: 11.5px; }
+#workshop-list { display: flex; flex-direction: column; gap: 7px; }
+.tech-era {
+  font-size: 10px; letter-spacing: 0.18em; opacity: 0.6;
+  margin: 10px 0 2px; text-transform: uppercase;
+}
+.tech-card {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: rgba(255,255,255,0.055); border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 11px; padding: 9px 11px; color: #eaf2f5;
+  font-family: inherit; cursor: pointer;
+}
+.tech-card:hover:not(:disabled) { background: rgba(255,217,122,0.12); border-color: rgba(255,217,122,0.6); }
+.tech-card:disabled { opacity: 0.55; cursor: default; }
+.tech-card.done { border-color: rgba(157,240,168,0.55); background: rgba(157,240,168,0.08); }
+.tech-main { flex: 1; }
+.tech-name { display: block; font-size: 13px; font-weight: 600; }
+.tech-desc { display: block; font-size: 11px; color: #b9cbd3; line-height: 1.35; margin-top: 2px; }
+.tech-cost { font-size: 10.5px; color: #ffd97a; white-space: nowrap; text-align: right; }
+.tech-card.done .tech-cost { color: #9df0a8; }
+#journal-tabs { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.jtab {
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+  color: #d7e3e8; border-radius: 999px; padding: 5px 12px;
+  font-family: inherit; font-size: 11px; cursor: pointer;
+}
+.jtab:hover { background: rgba(255,255,255,0.12); }
+.jtab.active { background: #ffd97a; color: #2a2000; border-color: #ffd97a; font-weight: 700; }
+#trait-body, #robber-choices, #loadout-body, #almanac-body { display: flex; flex-direction: column; gap: 8px; }
+.trait-btn, .loadout-btn, .robber-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,217,122,0.4);
+  border-radius: 12px; padding: 11px 13px; color: #f2f7f9;
+  font-family: inherit; font-size: 13px; cursor: pointer;
+}
+.trait-btn:hover, .loadout-btn:hover, .robber-btn:hover { background: rgba(255,217,122,0.16); border-color: #ffd97a; }
+.trait-btn strong, .loadout-btn strong { display: block; font-size: 13px; color: #ffe596; }
+.trait-btn span, .loadout-btn span { display: block; font-size: 11px; color: #b9cbd3; line-height: 1.35; }
+.loadout-btn.equipped { border-color: #9df0a8; background: rgba(157,240,168,0.12); }
+.loadout-btn:disabled { opacity: 0.5; cursor: default; }
+.almanac-row {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 10px; padding: 9px 12px; font-size: 12px;
+}
+.almanac-row .when { color: #ffd97a; font-weight: 700; min-width: 70px; }
+.almanac-row .what { flex: 1; }
+.almanac-row .ok { color: #9df0a8; font-size: 10.5px; }
+.almanac-row .warn { color: #ff8787; font-size: 10.5px; }
+.almanac-row.hazard { border-color: rgba(255,107,107,0.5); background: rgba(255,107,107,0.08); }
+@media (max-width: 980px) {
+  #top-right { gap: 6px; }
+  #top-right .round-btn { width: 36px; height: 36px; font-size: 15px; }
+  #chapter-ribbon, #weather-chip { font-size: 11px; }
+}

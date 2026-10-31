@@ -748,6 +748,12 @@ function gatherHit(nd) {
     if (!addItem(nd.item, 1)) { nd.prog = th; return; } // pack full: keep it ready
     nd.prog = 0;
     toast(`+1 ${nd.icon} ${nd.item}`);
+    if (nd.item === 'wood') Life.stats.woodChopped = (Life.stats.woodChopped || 0) + 1;
+    Life.stats.firstGather = Life.stats.firstGather || {};
+    if (!Life.stats.firstGather[nd.item]) {
+      Life.stats.firstGather[nd.item] = true;
+      grantInsight(1, `First ${nd.item}`);
+    }
     if (onPopup) onPopup(fxPos, `+1 ${nd.icon}`, '#ffe596');
     if (onGainXp) onGainXp(splitting ? 6 : 8, fxPos);
     if (splitting) {
@@ -3219,6 +3225,7 @@ const player = new THREE.Group();
   const feather = mesh(new THREE.ConeGeometry(0.03, 0.22, 5), mat(0xf3e9dc), 0.15, 0.36, -0.08, false);
   feather.rotation.z = -0.5;
   head.add(feather);
+  player.userData.capParts = [cap, brim, feather];
 
   // ---- backpack: frame, pockets, bedroll, canteen ----
   const pack = new THREE.Group();
@@ -3236,6 +3243,50 @@ const player = new THREE.Group();
   pack.add(canteen);
 
   scene.add(player);
+
+  // ---- life-journey gear layers: soft hat, satchel, goggles, rifle, elder beard ----
+  const headG = player.userData.head, torsoG = player.userData.torso;
+  const hatG = new THREE.Group();
+  hatG.position.set(0, 0.33, 0);
+  const hatBrim = mesh(new THREE.CylinderGeometry(0.40, 0.44, 0.035, 14), mat(0x8a6b3a), 0, 0, 0, false);
+  hatG.add(hatBrim);
+  hatG.add(mesh(new THREE.CylinderGeometry(0.20, 0.23, 0.16, 12), mat(0x9a7a42), 0, 0.09, 0, false));
+  hatG.add(mesh(new THREE.TorusGeometry(0.205, 0.022, 5, 12).rotateX(Math.PI / 2), mat(0x5a3e2b), 0, 0.03, 0, false));
+  head.add(hatG);
+  const satchel = new THREE.Group();
+  satchel.position.set(0.34, 0.14, 0.12);
+  satchel.add(mesh(new THREE.BoxGeometry(0.24, 0.26, 0.12), mat(0x6b4a2f), 0, -0.08, 0));
+  satchel.add(mesh(new THREE.BoxGeometry(0.24, 0.08, 0.13), mat(0x8a6238), 0, 0.07, 0, false));
+  satchel.add(mesh(new THREE.BoxGeometry(0.04, 0.55, 0.02), mat(0x4a3320), 0, 0.25, 0.05, false));
+  torsoG.add(satchel);
+  const goggles = new THREE.Group();
+  goggles.position.set(0, 0.24, 0.22);
+  for (const sx of [-1, 1]) goggles.add(mesh(new THREE.TorusGeometry(0.07, 0.022, 5, 10).rotateY(Math.PI / 2), mat(0x33414e, { metalness: 0.5 }), sx * 0.09, 0, 0, false));
+  goggles.add(mesh(new THREE.BoxGeometry(0.16, 0.02, 0.02), mat(0x33414e), 0, 0, 0, false));
+  head.add(goggles);
+  const rifleG = new THREE.Group();
+  rifleG.position.set(-0.05, 0.32, -0.46);
+  rifleG.rotation.z = -0.45;
+  rifleG.add(mesh(new THREE.CylinderGeometry(0.028, 0.032, 1.15, 6), mat(0x5a3e2b), 0, 0, 0, false));
+  rifleG.add(mesh(new THREE.CylinderGeometry(0.02, 0.022, 0.55, 6), mat(0x8e9aa3, { metalness: 0.6 }), 0, 0.78, 0, false));
+  rifleG.add(mesh(new THREE.BoxGeometry(0.07, 0.18, 0.08), mat(0x4a3320), 0, -0.25, 0.03, false));
+  rifleG.add(mesh(new THREE.BoxGeometry(0.05, 0.05, 0.32), mat(0x8e9aa3), 0, 0.95, 0, false));
+  torsoG.add(rifleG);
+  const beard = new THREE.Group();
+  beard.position.set(0, 0.02, 0.19);
+  beard.add(mesh(new THREE.ConeGeometry(0.17, 0.28, 7), mat(0xd9d2c4), 0, -0.13, 0, false));
+  head.add(beard);
+  const greyHair = new THREE.Group();
+  for (let i = -2; i <= 2; i++) {
+    const tuff = mesh(new THREE.ConeGeometry(0.05, 0.14, 5), mat(0xd9d2c4), i * 0.08, 0.27, 0.12, false);
+    tuff.rotation.x = 2.5;
+    greyHair.add(tuff);
+  }
+  head.add(greyHair);
+  const longCoat = mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.45, 12), mat(0x6e6a52), 0, 0.02, 0, false);
+  torsoG.add(longCoat);
+  player.userData.gear = { hatG, satchel, goggles, rifleG, beard, greyHair, longCoat };
+  player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
 
   // ---- animation: walk (knees/ankles), idle breathing, scarf lag, chop, slash ----
   const P = player.userData;
@@ -3284,7 +3335,7 @@ const player = new THREE.Group();
     const bob = moving ? Math.abs(c) * 0.032 * (0.7 + runF) : Math.sin(idleT * 1.6) * 0.006;
     P.torso.position.y = 1.02 + bob;
     P.torso.position.z = pose ? pose.lunge : 0;
-    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16) - P.torso.rotation.x) * kPose;
+    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16 + ((Life.age || 20) > 55 ? 0.05 : 0)) - P.torso.rotation.x) * kPose;
     P.torso.rotation.y += (((moving ? s * 0.07 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
     P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0) + dashF * 0.12) - P.torso.rotation.z) * kPose;
     P.chest.scale.y = 1 + Math.sin(idleT * 1.9) * 0.012 * idleF;
@@ -3326,6 +3377,30 @@ const player = new THREE.Group();
     }
   });
 }
+function applyHeroChapter(ch) {
+  const g = player.userData.gear;
+  if (!g) return;
+  ch = Math.max(0, Math.min(4, ch | 0));
+  const cap = ch < 1;
+  g.hatG.visible = !cap;
+  for (const p of player.userData.capParts || []) p.visible = cap;
+  g.satchel.visible = ch >= 2;
+  g.goggles.visible = ch >= 3;
+  g.beard.visible = ch >= 4;
+  g.greyHair.visible = ch >= 4;
+  g.longCoat.visible = ch >= 4;
+  const m = player.userData.heroMats;
+  if (m) {
+    m.coat.color.setHex([0xd9a13c, 0xc9a45c, 0xb08a45, 0x8a7a4a, 0x6e6a52][ch]);
+    m.coatDark.color.setHex([0xb9812a, 0xa07a3a, 0x8a6a38, 0x6e633a, 0x57533f][ch]);
+    m.capM.color.setHex(ch >= 4 ? 0x5a5a66 : 0xc0392b);
+  }
+}
+function applyHeroRanged(w) {
+  const g = player.userData.gear;
+  if (g) g.rifleG.visible = !!w;
+}
+applyHeroChapter(0);
 let playerPos = latLonToVec3(2, 50, 0); // open path south of the farmstead, clear of buildings
 let faceTarget = [12, 40]; // where the camera looks on load
 // Deep links for testing/sharing worlds: #fernwood #clover #oasis #cove #reef #ember #north
@@ -3420,28 +3495,96 @@ function renderJournal() {
   const list = document.getElementById('journal-list');
   if (!list) return;
   list.innerHTML = '';
-  WORLDS.forEach((w, i) => {
-    const done = wonders[i].done;
-    const b = document.createElement('button');
-    b.className = 'journal-entry' + (done ? ' done' : '');
-    b.innerHTML = `<span class="entry-num">${w.n}</span><span class="entry-copy"><strong>${w.name}</strong><span>${done ? '✓ ' : ''}${w.moment}</span></span><span class="entry-arrow">↗</span>`;
-    b.onclick = () => { toggleJournal(false); toast(`🧭 ${w.name} — ${w.where}.`); };
-    list.appendChild(b);
-  });
-  const fill = document.getElementById('journal-fill');
-  if (fill) fill.style.width = `${(wonders.filter((w) => w.done).length / 7) * 100}%`;
-  if (Life.chronicle.length) { // family saga entries below the wonders
+  if (typeof journalTab === 'undefined') journalTab = 'story';
+  for (const b of qsa('#journal-tabs .jtab')) b.classList.toggle('active', b.dataset.tab === journalTab);
+  const addHeading = (text) => {
     const h = document.createElement('div');
     h.className = 'journal-eyebrow';
     h.style.margin = '10px 0 4px';
-    h.textContent = `HEARTH CHRONICLE · GEN ${Life.gen}`;
+    h.textContent = text;
     list.appendChild(h);
-    for (const c of Life.chronicle.slice(-8)) {
-      const d = document.createElement('div');
-      d.className = 'goal-row';
-      d.innerHTML = `<span class="goal-era">✦</span><span>${c}</span>`;
-      list.appendChild(d);
+  };
+  const addRow = (text, icon = '✦', done = false) => {
+    const d = document.createElement('div');
+    d.className = 'goal-row' + (done ? ' done' : '');
+    d.innerHTML = `<span class="goal-era">${icon}</span><span>${text}</span>`;
+    list.appendChild(d);
+  };
+  if (journalTab === 'story') {
+    const ch = chapterNow();
+    addHeading(`CHAPTER ${Life.chapter + 1} · ${ch.name.toUpperCase()} · AGE ${Math.round(Life.age || ch.age)}`);
+    addRow(ch.blurb, ch.icon);
+    addHeading('GOALS');
+    for (const g of ch.goals) { let done = false; try { done = g.done(); } catch { /* noop */ } addRow(g.text, done ? '✓' : '○', done); }
+    addHeading('YOUR STORY');
+    for (const s of (Life.story || []).slice(-14)) addRow(`Day ${s.day} · ${s.text}`, s.icon || '✦');
+    if (Life.epitaph) addRow(`EPITAPH · ${Life.epitaph}`, '🌅');
+    if (Life.chronicle.length) {
+      addHeading(`HEARTH CHRONICLE · GEN ${Life.gen}`);
+      for (const c of Life.chronicle.slice(-8)) addRow(c, '✦');
     }
+    if (pendingTrait && pendingTrait.length) {
+      const b = document.createElement('button');
+      b.className = 'menu-btn menu-btn-small';
+      b.style.marginTop = '10px';
+      b.textContent = 'Choose a life trait 🌱';
+      b.onclick = () => { toggleJournal(false); openTraitChoice(); };
+      list.appendChild(b);
+    }
+  } else if (journalTab === 'family') {
+    addHeading(`GENERATION ${Life.gen}`);
+    addRow(Life.spouse ? `Married to ${Life.spouse}` : 'Not yet married', '❤️');
+    addRow(`${Life.kids.length} child${Life.kids.length === 1 ? '' : 'ren'}`, '👶');
+    for (const k of Life.kids) addRow(`${k.name || 'Child'} — ${['Baby', 'Child', 'Teen', 'Adult'][k.stage] || '?'}`, '🌱');
+    addHeading('HANDS');
+    if (!Life.workers.length) addRow('No hired hands yet', '🤝');
+    for (const w of Life.workers) addRow(w.name, '🤝');
+    addHeading('TRAITS');
+    if (!Life.traits.length) addRow('No life traits chosen yet', '✦');
+    for (const id of Life.traits) { const t = TRAITS[id]; if (t) addRow(`${t.name} — ${t.desc}`, t.icon); }
+    addHeading('THREATS');
+    addRow(`${Threats.robbersDrivenOff || 0} robbers driven off · ${Threats.bounties || 0} bounties · ${Threats.thefts || 0} thefts`, '⚠️');
+  } else if (journalTab === 'tech') {
+    addHeading(`TECHNOLOGY · ${TECH_ERAS[researchEra()].toUpperCase()}`);
+    addRow(`💡 ${Research.insight} insight · ${Research.unlocked.length} technologies`, '🔬');
+    addHeading('UNLOCKED');
+    if (!Research.unlocked.length) addRow('Nothing yet — build a workshop and research.', '🔧');
+    for (const id of Research.unlocked) { const t = TECH.find((x) => x.id === id); if (t) addRow(`${t.name} — ${t.desc}`, '✓', true); }
+    addHeading('NEXT');
+    for (const t of TECH.filter((x) => !hasTech(x.id) && x.req.every(hasTech)).slice(0, 4)) addRow(`${t.name} — ${t.desc}`, '○');
+    addHeading('TOOLS');
+    addRow(`Axe ×${(tools.axe || 1).toFixed(2)} · Pick ×${(tools.pick || 1).toFixed(2)}`, '🛠️');
+  } else if (journalTab === 'wonders') {
+    WORLDS.forEach((w, i) => {
+      const done = wonders[i].done;
+      const b = document.createElement('button');
+      b.className = 'journal-entry' + (done ? ' done' : '');
+      b.innerHTML = `<span class="entry-num">${w.n}</span><span class="entry-copy"><strong>${w.name}</strong><span>${done ? '✓ ' : ''}${w.moment}</span></span><span class="entry-arrow">↗</span>`;
+      b.onclick = () => { toggleJournal(false); toast(`🧭 ${w.name} — ${w.where}.`); };
+      list.appendChild(b);
+    });
+  } else if (journalTab === 'almanac') {
+    addHeading('ACTIVE');
+    if (!Weather.active.length) addRow('No active weather warnings', '☀️');
+    for (const h of Weather.active) addRow(HAZARDS[h.id]?.name || h.id, HAZARDS[h.id]?.icon || '⚠️');
+    addHeading('FORECAST');
+    for (const f of Weather.forecast.length ? Weather.forecast : [{ day: Life.day + 1, id: Weather.next }]) {
+      const hz = f.id ? HAZARDS[f.id] : null;
+      addRow(hz ? `${hz.name} — ${hz.desc}` : 'Clear / mild', hz ? hz.icon : '☀️');
+    }
+    addHeading('COUNTERS READY');
+    addRow(hazardCounterTags(Weather.next || 'thunder').join(' · ') || 'None yet', '🛡️');
+    addHeading('HAZARDS SURVIVED');
+    const wins = Object.entries(Life.hazardWins || {});
+    if (!wins.length) addRow('None yet — read the sky.', '☀️');
+    for (const [id, n] of wins) addRow(`${HAZARDS[id]?.name || id} ×${n}`, HAZARDS[id]?.icon || '⚠️', true);
+  }
+  const fill = document.getElementById('journal-fill');
+  if (fill) {
+    const ch = chapterNow();
+    let done = 0;
+    for (const g of ch.goals) { try { if (g.done()) done++; } catch { /* noop */ } }
+    fill.style.width = `${(done / ch.goals.length) * 100}%`;
   }
 }
 function toggleJournal(force) {
@@ -3510,7 +3653,9 @@ function useRemedy() {
   if (inv.remedy <= 0) return toast('🌿 No remedy — pick glowing herbs from bushes.');
   if (meters.health > 96) return toast('💚 Health already full.');
   inv.remedy--;
-  meters.health = Math.min(100, meters.health + 55);
+  let heal = 55;
+  try { heal += Research.healBonus || 0; } catch { /* early */ }
+  meters.health = Math.min(100, meters.health + heal);
   lastDamageT = combatNow; // quick cure counts as care, not combat
   burst(player.position.clone(), 0x50ffaa, 22, 2.4);
   chime(700);
@@ -3527,11 +3672,13 @@ function meterAlerts() {
   wasFreezing = fr;
 }
 const statsCache = {};
+function qsa(sel) {
+  try { return document.querySelectorAll ? Array.from(document.querySelectorAll(sel)) : []; } catch { return []; }
+}
 function setText(id, v) {
   if (statsCache[id] !== v) { statsCache[id] = v; document.getElementById(id).textContent = v; }
 }
-function renderStats() {
-  setText('inv-wood', inv.wood); setText('inv-stone', inv.stone); setText('inv-gold', inv.gold);
+function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', inv.stone); setText('inv-gold', inv.gold);
   setText('inv-food', inv.food); setText('inv-fish', inv.fish || 0); setText('inv-wool', inv.wool); setText('inv-remedy', inv.remedy);
   setText('inv-egg', inv.egg || 0); setText('inv-milk', inv.milk || 0); setText('inv-meal', inv.meal || 0);
   setText('pack-count', packSize() + '/' + packCap());
@@ -3542,8 +3689,9 @@ function renderStats() {
   try {
     updateHeroGear();
     setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
-    setText('rpg-weapon', rpgWeaponDef().name);
+    try { setText('rpg-weapon', (equippedRanged() || equippedMelee()).name); } catch { setText('rpg-weapon', rpgWeaponDef().name); }
     setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
+    try { setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP · 💡${Research.insight}`); } catch { /* early boot */ }
     const xf = document.getElementById('xp-fill');
     if (xf) xf.style.width = `${Math.min(100, (RPG.xp / RPG.xpNext) * 100)}%`;
     // compact status conditions instead of full meter bars
@@ -3607,6 +3755,7 @@ function completeWonder(id) {
   toast(`🌟 Small Wonder — ${w.name}! (${wonders.filter((x) => x.done).length}/7)`);
   if (activeTask?.interact?.id === id) clearAutoTask();
   if (onGainXp) onGainXp(60, player.position.clone());
+  grantInsight(2, `Wonder: ${w.name}`);
   const n = wonders.filter((x) => x.done).length;
   if (n === 2) repairBridge(0);
   if (n === 4) repairBridge(1);
@@ -3705,6 +3854,7 @@ function fishFrom(source) {
       chime(660); setTimeout(() => chime(880), 120);
       toast(`🐟 ${spec.name} ${sz}kg! (+1 fish${isRecord ? ' — NEW RECORD!' : ''})`);
       if (onGainXp) onGainXp(isRecord ? 25 : 14, player.position.clone());
+      grantInsight(1, 'Caught a fish');
     } else {
       if (!addItem('food', 1)) return;
       burst(player.position.clone(), 0x7ad9ff, 30, 3);
@@ -3862,7 +4012,7 @@ function attackBear(b) {
   setTimeout(() => {
     if (b.dead || playerDead) return;
     if (player.position.distanceTo(b.mesh.position) > 5.2) return; // whiffed: bear moved away
-    let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * (window.__rpgDmgMult || 1));
+    let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * meleeMult());
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical strike!'); }
     b.hp -= dmg;
     b.hitFlash = 1;
@@ -4286,6 +4436,15 @@ function doTrade(n, t) {
     return toast('🎒 Pack full — trade cancelled.');
   }
   if (t.effect) t.effect();
+  // Community trait: a small rebate on every barter
+  try {
+    if (Research.tradeBonus > 1) {
+      for (const [k, num] of Object.entries(t.give)) {
+        const rebate = Math.floor(num * (Research.tradeBonus - 1));
+        if (rebate > 0) inv[k] += rebate;
+      }
+    }
+  } catch { /* early */ }
   t.count++;
   n.lineIdx = (n.lineIdx + 1) % n.lines.length;
   burst(player.position.clone(), 0xffd97a, 16, 2);
@@ -4382,12 +4541,679 @@ const Life = {
   day: 1, t: 0.3, clothes: 0, gen: 1, ring: false, spouse: null,
   kids: [], workers: [], forecast: null, festival: false,
   nights: 0, lastGift: {}, kidSeq: 0,
-  stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false, fishCaught: 0 },
+  stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false, fishCaught: 0, woodChopped: 0 },
   rot: { food: 0, fish: 0, egg: 0, milk: 0, meal: 0 },
   chronicle: [],
   fishBook: {},
   recipes: {},
+  chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null,
 };
+
+// ==================== LIFE JOURNEY, RESEARCH, WEATHER, WEAPONS ====================
+// ---------- chapters & traits ----------
+const CHAPTERS = [
+  {
+    id: 'arrival', icon: '🌱', name: 'Arrival', age: 20,
+    blurb: 'A stranger on a small green world. Survive the first nights.',
+    beat: 'You arrived with an axe and a stubborn heart. The planet is listening.',
+    goals: [
+      { text: 'Build a Mud Hut', done: () => Home.house >= 1 },
+      { text: 'Sleep one night', done: () => Life.nights >= 1 },
+      { text: 'Stock 5 food', done: () => Life.stats.maxFood >= 5 },
+      { text: 'Chop 3 wood', done: () => (Life.stats.woodChopped || 0) >= 3 },
+    ],
+  },
+  {
+    id: 'roots', icon: '🌿', name: 'Roots', age: 28,
+    blurb: 'A roof, a field, a well. A promise you water daily.',
+    beat: 'The tent became a home. Now the land asks what you will grow.',
+    goals: [
+      { text: 'Raise a Farmhouse', done: () => Home.house >= 2 },
+      { text: 'Dig a Stone Well', done: () => !!Home.well },
+      { text: 'Harvest a field', done: () => (Life.stats.harvests || 0) >= 1 },
+      { text: 'Research a technology', done: () => Research.unlocked.length >= 1 },
+    ],
+  },
+  {
+    id: 'family', icon: '🏡', name: 'Family', age: 36,
+    blurb: 'More hands, more mouths, more reasons to come home.',
+    beat: 'Someone else’s name is on the door now. The stakes have a heartbeat.',
+    goals: [
+      { text: 'Marry your sweetheart', done: () => !!Life.spouse },
+      { text: 'Welcome a child', done: () => Life.kids.length >= 1 },
+      { text: 'Raise a Barn', done: () => Home.barn >= 1 },
+      { text: 'Drive off a thief', done: () => (Threats.robbersDrivenOff || 0) >= 1 },
+    ],
+  },
+  {
+    id: 'mastery', icon: '⚙️', name: 'Mastery', age: 48,
+    blurb: 'Iron, steam and powder. Bend the planet without breaking it.',
+    beat: 'Your hands know the work now. The workshop hums before sunrise.',
+    goals: [
+      { text: 'Build a Workshop', done: () => !!Home.workshop },
+      { text: 'Reach the Mechanical era', done: () => researchEra() >= 3 },
+      { text: 'Unlock a firearm', done: () => UnlockedWeapons.some((id) => ['musket', 'rifle', 'shotgun'].includes(id)) },
+      { text: 'Survive 4 hazards', done: () => Object.keys(Life.hazardWins || {}).length >= 4 },
+    ],
+  },
+  {
+    id: 'legacy', icon: '🌅', name: 'Legacy', age: 65,
+    blurb: 'The story is longer than one pair of hands. Hand it on.',
+    beat: 'The planet is still small. Your story no longer is.',
+    goals: [
+      { text: 'Raise an heir to teen', done: () => Life.kids.some((k) => k.stage >= 2) },
+      { text: 'Big Farmhouse + cellar', done: () => Home.house >= 3 },
+      { text: 'Survive 6 hazards', done: () => Object.keys(Life.hazardWins || {}).length >= 6 },
+      { text: 'Complete 3 wonders', done: () => wonders.filter((w) => w.done).length >= 3 },
+    ],
+  },
+];
+const TRAITS = {
+  homesteader: { name: 'Homesteader', icon: '🏡', desc: 'Buildings and research 15% faster.', apply: () => { Research.speed = (Research.speed || 1) * 1.15; } },
+  wanderer: { name: 'Wanderer', icon: '🧭', desc: '+8% movement speed; wrecks yield more blueprints.', apply: () => { RPG.perkRun = (RPG.perkRun || 1) * 1.08; } },
+  healer: { name: 'Healer', icon: '🌿', desc: 'Remedies heal 20 more; cold bites less.', apply: () => { Research.healBonus = (Research.healBonus || 0) + 20; } },
+  hunter: { name: 'Hunter', icon: '🏹', desc: '+15% ranged damage; animals yield extra meat.', apply: () => { Research.rangedBonus = (Research.rangedBonus || 1) * 1.15; } },
+  steward: { name: 'Steward', icon: '🌾', desc: 'Crops and animals produce 15% more.', apply: () => { Research.farmBonus = (Research.farmBonus || 1) * 1.15; } },
+  inventor: { name: 'Inventor', icon: '💡', desc: 'Research 20% faster; +2 insight at each chapter.', apply: () => { Research.speed = (Research.speed || 1) * 1.2; Research.insight += 2; } },
+  community: { name: 'Community', icon: '🤝', desc: 'Trades are cheaper and helpers cost less.', apply: () => { Research.tradeBonus = (Research.tradeBonus || 1) * 1.15; } },
+  solitary: { name: 'Solitary', icon: '🌙', desc: 'Family upkeep −1 food; storms hurt less.', apply: () => { Research.upkeepBonus = (Research.upkeepBonus || 0) + 1; Research.stormWard = (Research.stormWard || 0) + 0.1; } },
+};
+let pendingTrait = null;
+function chapterNow() { return CHAPTERS[Math.min(CHAPTERS.length - 1, Life.chapter | 0)]; }
+function chapterGoalsMet() {
+  const ch = chapterNow();
+  return ch.goals.every((g) => { try { return g.done(); } catch { return false; } });
+}
+function chapterProgress() {
+  const ch = chapterNow();
+  let done = 0;
+  for (const g of ch.goals) { try { if (g.done()) done++; } catch { /* noop */ } }
+  return `${done}/${ch.goals.length}`;
+}
+function pushStory(text, icon = '✦') {
+  if (!text) return;
+  Life.story = Life.story || [];
+  Life.story.push({ day: Life.day, chapter: Life.chapter, text, icon });
+  if (Life.story.length > 80) Life.story.shift();
+}
+function advanceChapter() {
+  if (!chapterGoalsMet() || Life.chapter >= CHAPTERS.length - 1) return false;
+  const old = chapterNow();
+  Life.chapter++;
+  Life._chapterAt = performance.now();
+  const ch = chapterNow();
+  Life.age = Math.max(Life.age || 20, ch.age);
+  pushStory(`Chapter ${Life.chapter + 1}: ${ch.name}. ${ch.beat}`, ch.icon);
+  Life.chronicle.push(`Day ${Life.day}: ${ch.name} — ${ch.beat}`);
+  grantInsight(3, `Chapter ${ch.name}`);
+  toast(`${ch.icon} Chapter ${Life.chapter + 1} — ${ch.name}! ${ch.beat}`);
+  setTimeout(() => toast('🌱 A life trait is waiting — open the Journal (J) to choose.'), 1900);
+  chime(880); setTimeout(() => chime(1100), 160);
+  Life.story.push({ day: Life.day, chapter: Life.chapter, text: `Age ${Life.age}. The story turns.`, icon: '📖' });
+  pendingTrait = [pickTraitChoice(), pickTraitChoice()];
+  if (pendingTrait[0] === pendingTrait[1]) {
+    const pool = Object.keys(TRAITS).filter((id) => id !== pendingTrait[0] && !(Life.traits || []).includes(id));
+    if (pool.length) pendingTrait[1] = pool[(Math.random() * pool.length) | 0];
+  }
+  if (ch.id === 'family') setTimeout(() => { try { spawnRobber('toll'); } catch { /* noop */ } }, 5000);
+  applyHeroChapter(Life.chapter);
+  saveCheckpoint();
+  renderChapterHUD();
+  return true;
+}
+function pickTraitChoice() {
+  const owned = new Set(Life.traits || []);
+  const pool = Object.keys(TRAITS).filter((id) => !owned.has(id));
+  return pool.length ? pool[(Math.random() * pool.length) | 0] : 'homesteader';
+}
+function chooseTrait(id) {
+  const t = TRAITS[id];
+  if (!t || (Life.traits || []).includes(id)) return;
+  Life.traits = Life.traits || [];
+  Life.traits.push(id);
+  t.apply();
+  pushStory(`Chose the ${t.name} path — ${t.desc}`, t.icon);
+  toast(`${t.icon} ${t.name}: ${t.desc}`);
+  chime(760);
+  pendingTrait = null;
+  closeTraitChoice();
+  saveCheckpoint();
+  renderStats();
+}
+function tickChapters() {
+  if (playerDead) return;
+  if (pendingTrait && pendingTrait.length) return; // wait for the life choice
+  if (Life._chapterAt && performance.now() - Life._chapterAt < 5000) return;
+  if (chapterGoalsMet()) advanceChapter();
+  const expectedAge = 20 + (Life.day - 1) / 24 * 2; // gentle aging between chapters
+  if (!Number.isFinite(Life.age)) Life.age = 20;
+  Life.age = Math.max(Life.age, Math.min(70, Math.round(expectedAge)));
+}
+tickers.push((t, dt) => tickChapters());
+
+// ---------- research / technology ----------
+const TECH_ERAS = ['Handmade', 'Copper', 'Iron', 'Mechanical', 'Powder'];
+const TECH = [
+  { id: 'hand-tools', era: 0, name: 'Hand Tools', insight: 1, cost: { wood: 2 }, req: [], desc: 'Stone axe and pick: +10% work speed.' },
+  { id: 'firecraft', era: 0, name: 'Firecraft', insight: 1, cost: { wood: 3 }, req: [], desc: 'Better fires: warmth drains slower.' },
+  { id: 'foraging', era: 0, name: 'Foraging', insight: 1, cost: { food: 1 }, req: [], desc: 'Berry bushes and herbs yield +1.' },
+  { id: 'copper-tools', era: 1, name: 'Copper Tools', insight: 2, cost: { wood: 4, stone: 2 }, req: ['hand-tools'], desc: 'Copper axe/pick: +30% work speed.' },
+  { id: 'workshop', era: 1, name: 'Workshop', insight: 2, cost: { wood: 8, stone: 4 }, req: ['hand-tools'], desc: 'Build the workshop: research and craft.' },
+  { id: 'irrigation', era: 1, name: 'Irrigation', insight: 2, cost: { wood: 4, stone: 3 }, req: ['workshop'], desc: 'Plots auto-water; drought hurts less.' },
+  { id: 'cart', era: 1, name: 'Hand Cart', insight: 1, cost: { wood: 4 }, req: ['hand-tools'], desc: '+8 pack capacity.' },
+  { id: 'iron-tools', era: 2, name: 'Iron Tools', insight: 3, cost: { stone: 6, gold: 2 }, req: ['copper-tools'], desc: 'Iron axe/pick: +60% work speed.' },
+  { id: 'plough', era: 2, name: 'Iron Plough', insight: 3, cost: { wood: 6, stone: 2 }, req: ['copper-tools'], desc: 'Crops grow one stage faster.' },
+  { id: 'storm-shutters', era: 2, name: 'Storm Shutters', insight: 3, cost: { wood: 6, stone: 2 }, req: ['workshop'], desc: 'Halve storm and hail damage to buildings/crops.' },
+  { id: 'ash-mask', era: 2, name: 'Ash Mask', insight: 3, cost: { wool: 2, stone: 1 }, req: ['workshop'], desc: 'Eruption ash no longer drains health.' },
+  { id: 'firebreak', era: 2, name: 'Firebreak', insight: 3, cost: { wood: 4, stone: 4 }, req: ['workshop'], desc: 'Wildfire cannot reach the homestead.' },
+  { id: 'windmill', era: 2, name: 'Windmill', insight: 4, cost: { wood: 8, stone: 4, gold: 2 }, req: ['workshop'], desc: 'Research 20% faster; a landmark for the homestead.' },
+  { id: 'forge', era: 2, name: 'Forge', insight: 4, cost: { stone: 8, gold: 4 }, req: ['iron-tools'], desc: 'Unlock iron weapons and metal repairs.' },
+  { id: 'sawmill', era: 3, name: 'Sawmill', insight: 5, cost: { wood: 10, stone: 6 }, req: ['windmill'], desc: 'Passive +2 wood each dawn.' },
+  { id: 'grain-mill', era: 3, name: 'Grain Mill', insight: 5, cost: { wood: 8, stone: 8 }, req: ['windmill', 'plough'], desc: 'Passive +2 food each dawn.' },
+  { id: 'steam-pump', era: 3, name: 'Steam Pump', insight: 5, cost: { stone: 10, gold: 4 }, req: ['irrigation'], desc: 'Floods drain fast; wells never choke.' },
+  { id: 'mechanical-tools', era: 3, name: 'Mechanical Tools', insight: 6, cost: { wood: 8, stone: 8, gold: 4 }, req: ['iron-tools'], desc: 'Mechanical axe/pick: +100% work speed.' },
+  { id: 'dynamo', era: 3, name: 'Dynamo', insight: 6, cost: { stone: 8, gold: 6 }, req: ['windmill'], desc: 'Workshop runs day and night: research 30% faster.' },
+  { id: 'gunsmith', era: 4, name: 'Gunsmith', insight: 7, cost: { wood: 8, stone: 6, gold: 8 }, req: ['forge'], desc: 'Build a gunsmith and unlock the musket.' },
+  { id: 'weather-station', era: 4, name: 'Weather Station', insight: 6, cost: { wood: 6, stone: 6, gold: 4 }, req: ['workshop'], desc: 'Three-day forecasts and earlier warnings.' },
+  { id: 'rifled-barrel', era: 4, name: 'Rifled Barrel', insight: 8, cost: { stone: 10, gold: 10 }, req: ['gunsmith'], desc: 'Unlock the lever rifle.' },
+  { id: 'shotgun', era: 4, name: 'Shotgun', insight: 8, cost: { stone: 8, gold: 10 }, req: ['gunsmith'], desc: 'Unlock the double-barrel shotgun.' },
+  { id: 'refrigeration', era: 4, name: 'Refrigeration', insight: 7, cost: { stone: 8, gold: 8 }, req: ['dynamo'], desc: 'Food spoils at half speed.' },
+  { id: 'explosives', era: 4, name: 'Explosives', insight: 7, cost: { stone: 10, gold: 6 }, req: ['forge'], desc: 'Mining yields +1 stone per hit.' },
+];
+const Research = {
+  insight: 4, unlocked: [], queue: null, progress: 0, speed: 1,
+  healBonus: 0, rangedBonus: 1, farmBonus: 1, tradeBonus: 1, upkeepBonus: 0, stormWard: 0, ashMask: false,
+};
+function hasTech(id) { return Research.unlocked.includes(id); }
+function researchEra() {
+  let era = 0;
+  for (const id of Research.unlocked) { const t = TECH.find((x) => x.id === id); if (t) era = Math.max(era, t.era); }
+  return era;
+}
+function techAvailable(t) {
+  if (hasTech(t.id)) return { ok: false, why: 'Researched ✓' };
+  if (Research.queue) return { ok: false, why: 'Bench busy' };
+  for (const r of t.req) if (!hasTech(r)) return { ok: false, why: `Needs ${TECH.find((x) => x.id === r)?.name || r}` };
+  if (!Home.workshop && t.era >= 1 && t.id !== 'workshop') return { ok: false, why: 'Build a workshop first' };
+  for (const [k, n] of Object.entries(t.cost)) if ((inv[k] || 0) < n) return { ok: false, why: `Need ${n} ${ITEM_ICON[k] || k}` };
+  if (Research.insight < t.insight) return { ok: false, why: `Need ${t.insight} 💡` };
+  return { ok: true };
+}
+function startResearch(id) {
+  const t = TECH.find((x) => x.id === id);
+  const av = t && techAvailable(t);
+  if (!t) return;
+  if (!av.ok) { toast(`🔧 ${av.why}.`); return; }
+  for (const [k, n] of Object.entries(t.cost)) inv[k] -= n;
+  Research.insight -= t.insight;
+  Research.queue = { id, t: 0, dur: Math.max(8, 22 - researchEra() * 2) };
+  toast(`🔬 Researching ${t.name}…`);
+  chime(560);
+  renderStats(); renderWorkshop();
+}
+function grantInsight(n, why) {
+  if (!n) return;
+  Research.insight = Math.max(0, (Research.insight || 0) + n);
+  if (why) toast(`💡 +${n} insight — ${why}`);
+  renderStats();
+  try { renderWorkshop(); } catch { /* not open */ }
+}
+function applyTech(id) {
+  const t = TECH.find((x) => x.id === id);
+  if (!t) return;
+  switch (id) {
+    case 'hand-tools': tools.axe = Math.max(tools.axe, 1.1); tools.pick = Math.max(tools.pick, 1.1); break;
+    case 'copper-tools': tools.axe = Math.max(tools.axe, 1.3); tools.pick = Math.max(tools.pick, 1.3); unlockWeapon('iron-axe'); unlockWeapon('bow'); break;
+    case 'iron-tools': tools.axe = Math.max(tools.axe, 1.6); tools.pick = Math.max(tools.pick, 1.6); unlockWeapon('war-axe'); unlockWeapon('crossbow'); break;
+    case 'mechanical-tools': tools.axe = Math.max(tools.axe, 2.0); tools.pick = Math.max(tools.pick, 2.0); break;
+    case 'workshop': break; // unlocks the Workshop building on the homestead board
+    case 'windmill': break; // unlocks the Windmill building    case 'sawmill': break; // unlocks the Sawmill building
+    case 'grain-mill': break; // unlocks the Grain Mill building
+    case 'steam-pump': break; // unlocks the Steam Pump building
+    case 'forge': Home.forge = true; unlockWeapon('halberd'); break;
+    case 'gunsmith': unlockWeapon('musket'); break; // unlocks the Gunsmith building + musket
+    case 'rifled-barrel': unlockWeapon('rifle'); break;
+    case 'shotgun': unlockWeapon('shotgun'); break;
+    case 'cart': packBonus += 8; break;
+    case 'irrigation': Home.irrigation = true; break;
+    case 'storm-shutters': Home.stormShutters = true; break;
+    case 'ash-mask': Research.ashMask = true; break;
+    case 'firebreak': Home.firebreak = true; break;
+    case 'weather-station': Home.weatherStation = true; break;
+    case 'refrigeration': Home.refrigeration = true; break;
+    case 'dynamo': Research.speed *= 1.3; break;
+    default: break;
+  }
+  toast(`✅ ${t.name} unlocked!`);
+  chime(880);
+  pushStory(`Researched ${t.name}. ${t.desc}`, '🔬');
+  renderStats(); renderWorkshop();
+  saveCheckpoint();
+}
+function tickResearch(dt) {
+  if (!Research.queue) return;
+  const q = Research.queue;
+  q.t += dt * (Research.speed || 1) * (Home.windmill ? 1.2 : 1) * (Home.dynamo ? 1.15 : 1);
+  if (q.t >= q.dur) {
+    const id = q.id;
+    Research.queue = null;
+    Research.unlocked.push(id);
+    applyTech(id);
+  }
+}
+tickers.push((t, dt) => tickResearch(dt));
+
+// ---------- weather & hazards ----------
+const HAZARDS = {
+  blizzard: { icon: '❄️', name: 'Blizzard', seasons: [3], dur: 34, desc: 'Snow and wind. Cold everywhere.', counters: ['warm clothes', 'barn', 'storm shutters'] },
+  thunder: { icon: '⛈️', name: 'Thunderstorm', seasons: [0, 2], dur: 28, desc: 'Rain, wind and lightning.', counters: ['storm shutters', 'lightning rod'] },
+  tornado: { icon: '🌪️', name: 'Tornado', seasons: [1], dur: 26, desc: 'A funnel crosses the homestead.', counters: ['cellar', 'storm shutters'] },
+  flood: { icon: '🌊', name: 'Flood', seasons: [0], dur: 30, desc: 'Water rises over the low fields.', counters: ['drainage', 'steam pump', 'raised beds'] },
+  drought: { icon: '☀️', name: 'Drought', seasons: [1], dur: 40, desc: 'The soil cracks. Crops stall.', counters: ['well', 'irrigation', 'water storage'] },
+  eruption: { icon: '🌋', name: 'Eruption', seasons: [0, 1, 2, 3], dur: 34, desc: 'Ash and embers rain over Ember Heights.', counters: ['ash mask', 'storm shutters', 'evacuation'] },
+  wildfire: { icon: '🔥', name: 'Wildfire', seasons: [1], dur: 30, desc: 'Wind-driven fire spreads between trees.', counters: ['firebreak', 'rain', 'water bucket'] },
+  hail: { icon: '🧊', name: 'Hailstorm', seasons: [0, 2], dur: 22, desc: 'Ice hammers crops and roofs.', counters: ['storm shutters', 'netting'] },
+  wolves: { icon: '🐺', name: 'Wolf Raid', seasons: [2, 3], dur: 0, desc: 'A pack stalks the herd tonight.', counters: ['lanterns', 'dog', 'fences'] },
+};
+const Weather = {
+  today: null, next: null, forecast: [], history: [], lastMajorDay: -99,
+  active: [], wind: 0, temp: 16, flash: 0,
+};
+function hazardById(id) { return HAZARDS[id] || null; }
+function pickHazard() {
+  const s = seasonNow();
+  const pool = Object.entries(HAZARDS).filter(([id, h]) => id !== 'wolves' && h.seasons.includes(s));
+  const tier = 1 + (Life.gen - 1) * 0.15 + (typeof settings !== 'undefined' && settings.difficulty === 'frontier' ? 0.25 : 0);
+  const weighted = [];
+  for (const [id, h] of pool) {
+    const w = (id === 'tornado' ? 1.1 : id === 'eruption' ? 0.7 : 1) * tier;
+    weighted.push([id, w]);
+  }
+  const total = weighted.reduce((a, b) => a + b[1], 0);
+  let r = Math.random() * total;
+  for (const [id, w] of weighted) { r -= w; if (r <= 0) return id; }
+  return null;
+}
+function rollForecast() {
+  // keep the legacy field for the HUD/quest text, now backed by the weather director
+  const since = Life.day - (Weather.lastMajorDay ?? -99);
+  const canHit = since >= 2 && Math.random() > (settings.difficulty === 'cozy' ? 0.55 : settings.difficulty === 'frontier' ? 0.2 : 0.32);
+  const next = canHit ? pickHazard() : null;
+  Weather.next = next;
+  Weather.forecast = [];
+  for (let i = 0; i < (Home.weatherStation ? 3 : 2); i++) {
+    Weather.forecast.push({ day: Life.day + i + 1, id: i === 0 ? next : (i === 1 && Math.random() < 0.55 ? pickHazard() : null) });
+  }
+  Life.forecast = next;
+}
+function startHazard(id) {
+  const h = hazardById(id);
+  if (!h) return;
+  Weather.active = Weather.active.filter((x) => x.id !== id);
+  Weather.active.push({ id, t: 0, dur: h.dur });
+  Weather.today = id;
+  Life.stats.disasters = (Life.stats.disasters || 0) + 1;
+  if (id === 'blizzard') Life.blizzard = true;
+  if (id === 'drought') Life.drought = true;
+  if (id === 'flood') Life.flood = true;
+  toast(`${h.icon} ${h.name.toUpperCase()}! ${h.desc} Prepare now!`);
+  chime(180);
+  pushStory(`${h.icon} ${h.name} struck. ${h.desc}`, h.icon);
+  if (typeof renderWeatherChip === 'function') renderWeatherChip();
+  spawnHazardFX(id);
+  if (id === 'tornado') startTornado();
+  Weather.history.push({ day: Life.day, id });
+  if (Weather.history.length > 40) Weather.history.shift();
+  if (id === 'wolves') { Life.wolfRaid = 1 + Math.min(2, Life.gen - 1); toast('🐺 Howls on the wind — the pack comes tonight.'); }
+  Weather.lastMajorDay = Life.day;
+}
+function hazardCounterTags(id) {
+  const tags = [];
+  if (Home.stormShutters) tags.push('storm shutters');
+  if (Home.cellar || Home.house >= 3) tags.push('cellar');
+  if (Home.well) tags.push('well');
+  if (Home.irrigation) tags.push('irrigation');
+  if (Home.pump) tags.push('steam pump');
+  if (Home.barn) tags.push('barn');
+  if (Life.clothes >= 2) tags.push('warm clothes');
+  if (Home.weatherStation) tags.push('weather station');
+  if (hasTech('ash-mask')) tags.push('ash mask');
+  if (Home.firebreak) tags.push('firebreak');
+  return tags;
+}
+function hazardWard(id) {
+  let ward = 0;
+  if (Home.stormShutters && ['blizzard', 'thunder', 'tornado', 'hail', 'eruption'].includes(id)) ward += 0.4;
+  if (Home.stormShutters && id === 'hail') ward += 0.2;
+  if (Home.pump && ['flood', 'drought'].includes(id)) ward += 0.5;
+  if (Home.well && id === 'drought') ward += 0.2;
+  if (Home.irrigation && id === 'drought') ward += 0.3;
+  if (Life.clothes >= 2 && id === 'blizzard') ward += 0.2;
+  if (Home.cellar && ['tornado', 'eruption'].includes(id)) ward += 0.4;
+  if (Home.barn && id === 'blizzard') ward += 0.15;
+  if (Home.weatherStation) ward += 0.1;
+  ward += Research.stormWard || 0;
+  return Math.min(0.85, ward);
+}
+function endHazard(h) {
+  const id = h.id;
+  Weather.active = Weather.active.filter((x) => x !== h);
+  if (id === 'blizzard') Life.blizzard = false;
+  if (id === 'drought') Life.drought = false;
+  if (id === 'flood') Life.flood = false;
+  Life.stats.hazardWins = Life.stats.hazardWins || {};
+  Life.stats.hazardWins[id] = (Life.stats.hazardWins[id] || 0) + 1;
+  Life.hazardWins[id] = (Life.hazardWins[id] || 0) + 1;
+  if (Weather.today === id) Weather.today = null;
+  if (hazardProps && hazardProps.id === id) { scene.remove(hazardProps); hazardProps = null; }
+  if (typeof renderWeatherChip === 'function') renderWeatherChip();
+  grantInsight(2, `Survived ${hazardById(id)?.name || id}`);
+  renderStats();
+  saveCheckpoint();
+}
+function triggerDisaster(id) {
+  // compatibility wrapper: the old callers still speak "disaster"
+  Life.grief = Math.min(1.5, (Life.grief || 0) + 0.4);
+  meters.morale = Math.max(0, (meters.morale ?? 80) - 6);
+  startHazard(id);
+}
+// live weather particles: snow, rain, ash, hail
+let weatherFX = null;
+let hazardProps = null;
+function spawnHazardProps(id) {
+  if (hazardProps) { scene.remove(hazardProps); hazardProps = null; }
+  const home = homeSpot(HOME.lat, HOME.lon, 0);
+  const up = home.clone().normalize();
+  if (id === 'flood') {
+    const g = new THREE.Group();
+    const water = mesh(new THREE.CircleGeometry(8.5, 36).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0x2e8bff, transparent: true, opacity: 0.42, depthWrite: false }), 0, 0, 0, false);
+    g.add(water);
+    orientOnSphere(g, home.clone().addScaledVector(up, 0.35), 0);
+    scene.add(g);
+    hazardProps = { id, g, water };
+  } else if (id === 'wildfire') {
+    const g = new THREE.Group();
+    const fm = new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff4a00, emissiveIntensity: 1.5, flatShading: true });
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const p = home.clone().addScaledVector(V3(-up.z, 0, up.x), Math.cos(a) * rand(5, 9)).addScaledVector(new THREE.Vector3().crossVectors(up, V3(-up.z, 0, up.x)), Math.sin(a) * rand(5, 9)).normalize();
+      const f = mesh(new THREE.ConeGeometry(rand(0.4, 0.8), rand(1.2, 2.2), 6), fm, 0, 0, 0, false);
+      orientOnSphere(f, p.clone().multiplyScalar(R + heightFor(p) + 0.6), rand(6));
+      g.add(f);
+    }
+    scene.add(g);
+    hazardProps = { id, g };
+  } else if (id === 'eruption') {
+    const g = new THREE.Group();
+    const glow = new THREE.PointLight(0xff5a1a, 30, 40);
+    orientOnSphere(glow, latLonToVec3(8, 328, 6), 0);
+    g.add(glow);
+    const lava = mesh(new THREE.CircleGeometry(4.5, 24).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xff5a1a, transparent: true, opacity: 0.55, depthWrite: false }), 0, 0, 0, false);
+    const crater = latLonToVec3(8, 328, 0).normalize();
+    orientOnSphere(lava, crater.clone().multiplyScalar(R + heightFor(crater) + 0.35), 0);
+    g.add(lava);
+    scene.add(g);
+    hazardProps = { id, g, glow, lava };
+  }
+}
+function spawnHazardFX(id) {
+  if (weatherFX) { scene.remove(weatherFX.pts); weatherFX = null; }
+  spawnHazardProps(id);
+  const kind = id === 'blizzard' ? 'snow' : (id === 'thunder' || id === 'flood') ? 'rain' : (id === 'eruption' ? 'ash' : (id === 'hail' ? 'hail' : null));
+  if (!kind) return;
+  const N = 800;
+  const g = new THREE.BufferGeometry();
+  const arr = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    arr[i * 3] = rand(-30, 30); arr[i * 3 + 1] = rand(0, 28); arr[i * 3 + 2] = rand(-30, 30);
+  }
+  g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+  const color = kind === 'snow' ? 0xffffff : kind === 'rain' ? 0x9fdcff : kind === 'ash' ? 0x8a817a : 0xd9f2ff;
+  const m = new THREE.PointsMaterial({ color, size: kind === 'hail' ? 0.42 : kind === 'snow' ? 0.34 : kind === 'ash' ? 0.30 : 0.24, transparent: true, opacity: 0.9, depthWrite: false });
+  const pts = new THREE.Points(g, m);
+  pts.frustumCulled = false;
+  scene.add(pts);
+  weatherFX = { pts, kind, arr, N };
+}
+tickers.push((t, dt) => {
+  if (!hazardProps) return;
+  const hp = hazardProps;
+  if (hp.id === 'flood') {
+    const k = 1 + Math.sin(t * 0.8) * 0.03;
+    hp.water.scale.set(k, 1, k);
+    hp.water.material.opacity = 0.38 + Math.sin(t * 1.1) * 0.05;
+  } else if (hp.id === 'wildfire') {
+    for (const f of hp.g.children) { f.scale.y = 1 + Math.sin(t * 9 + f.position.x) * 0.15; }
+    if (Math.random() < dt * 1.2) burst(hp.g.children[0]?.position.clone().add(player.position.clone().normalize().multiplyScalar(2)) || player.position.clone(), 0xff7a2a, 2, 1.2);
+  } else if (hp.id === 'eruption' && hp.glow) {
+    hp.glow.intensity = 26 + Math.sin(t * 5) * 8;
+  }
+});
+tickers.push((t, dt) => {
+  // weather particle drift
+  if (weatherFX) {
+    const { arr, N, kind } = weatherFX;
+    const speed = kind === 'rain' ? 26 : kind === 'snow' ? 4 : kind === 'ash' ? 2 : 12;
+    for (let i = 0; i < N; i++) {
+      arr[i * 3 + 1] -= dt * speed * (0.6 + (i % 5) * 0.1);
+      arr[i * 3] += dt * (kind === 'ash' ? 3 : 1.4);
+      if (arr[i * 3 + 1] < 0) { arr[i * 3 + 1] = 26; arr[i * 3] = rand(-30, 30); arr[i * 3 + 2] = rand(-30, 30); }
+    }
+    weatherFX.pts.geometry.attributes.position.needsUpdate = true;
+    const n = player.position.clone().normalize();
+    weatherFX.pts.position.copy(n).multiplyScalar(R + 14);
+    weatherFX.pts.quaternion.copy(player.quaternion);
+  }
+  // active hazard lifecycle
+  for (let i = Weather.active.length - 1; i >= 0; i--) {
+    const h = Weather.active[i];
+    h.t += dt;
+    if (h.dur <= 0 && h.t > 1) { endHazard(h); continue; }
+    if (h.id === 'thunder') {
+      Weather.flash = Math.max(0, Weather.flash - dt * 6);
+      if (Math.random() < dt * 0.55) {
+        Weather.flash = 1; chime(80);
+        const up = player.position.clone().normalize();
+        const ground = homeSpot(HOME.lat + rand(-7, 7), HOME.lon + rand(-7, 7), 0.05);
+        tracer(ground.clone().addScaledVector(up, 12), ground, 0xdfe9ff);
+        burst(ground, 0xffe9a3, 10, 1.8);
+        if (Math.random() < 0.18 && !Home.stormShutters) { const ids = ['house', 'barn', 'cabin'].filter((x) => (x === 'house' ? Home.house : x === 'barn' ? Home.barn : Home.cabin)); if (ids.length) { Home.dmg[ids[(Math.random() * ids.length) | 0]] = true; rebuildHomestead(); toast('⚡ Lightning struck a roof! (storm shutters protect)'); } }
+      }
+    }
+    if (h.id === 'hail' && Math.random() < dt * 0.25 && Home.plots.some((p) => p.crop) && !Home.stormShutters) {
+      const p = Home.plots.find((x) => x.crop); if (p) { p.crop = false; p.growth = 0; p.water = false; refreshPlotMeshes(); toast('🧊 Hail flattened a crop!'); }
+    }
+    if (h.id === 'eruption') {
+      if (Math.random() < dt * 0.5) burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 4), 0xff7a2a, 3, 1.2);
+      if (biomeAt(player.position.clone().normalize()) === 'volcano' && !hasTech('ash-mask')) meters.health = Math.max(0, meters.health - dt * 1.2);
+    }
+    if (h.id === 'wildfire' && Math.random() < dt * 0.35) {
+      const p = player.position.clone().add(V3(rand(-8, 8), 0, rand(-8, 8)));
+      burst(p, 0xff7a2a, 2, 1.0);
+      if (!Home.firebreak && player.position.distanceTo(p) < 3) damagePlayer(2, p);
+    }
+    if (h.id === 'flood' && Home.plots.some((p) => p.crop) && !Home.pump && !Home.irrigation && Math.random() < dt * 0.08) {
+      const p = Home.plots.find((x) => x.crop); if (p) { p.crop = false; p.growth = 0; p.water = false; refreshPlotMeshes(); toast('🌊 Floodwater drowned a crop! (pump/irrigation helps)'); }
+    }
+    if (h.id === 'drought' && !Home.irrigation && !Home.well && Math.random() < dt * 0.1 && Home.plots.some((p) => p.crop)) {
+      const p = Home.plots.find((x) => x.crop); if (p) { p.growth = Math.max(0, p.growth - 1); p.water = false; refreshPlotMeshes(); toast('☀️ Drought wilted a crop! (well/irrigation helps)'); }
+    }
+    if (h.dur > 0 && h.t >= h.dur) endHazard(h);
+  }
+  // lightning flash on the sky
+  if (Weather.flash > 0) { scene.background.lerp(new THREE.Color(0xdfe9ff), Weather.flash * 0.5); }
+});
+
+// ---------- weapons & loadout ----------
+const WEAPONS = {
+  hatchet: { id: 'hatchet', name: 'Rusty Hatchet', melee: true, dmg: 1, range: 2.2, rate: 0.62, tier: 0, desc: 'A trusty hand axe. Chops and fights.' },
+  'iron-axe': { id: 'iron-axe', name: 'Iron Broadaxe', melee: true, dmg: 1.35, range: 2.3, rate: 0.55, tier: 1, desc: 'Heavier head, deeper bite.' },
+  'war-axe': { id: 'war-axe', name: 'War Axe', melee: true, dmg: 1.7, range: 2.4, rate: 0.52, tier: 2, desc: 'A weapon first, a tool second.' },
+  halberd: { id: 'halberd', name: 'Halberd', melee: true, dmg: 2.1, range: 3.0, rate: 0.78, tier: 3, desc: 'Reach and stagger.' },
+  sling: { id: 'sling', name: 'Sling', ranged: true, dmg: 0.55, range: 12, rate: 1.1, ammo: 'stones', tier: 0, desc: 'Cheap, quiet, stunning.' },
+  bow: { id: 'bow', name: 'Short Bow', ranged: true, dmg: 0.9, range: 18, rate: 1.3, ammo: 'arrows', tier: 1, desc: 'Silent hunting weapon.' },
+  crossbow: { id: 'crossbow', name: 'Crossbow', ranged: true, dmg: 1.5, range: 22, rate: 2.0, ammo: 'bolts', tier: 2, desc: 'Slow, punchy, accurate.' },
+  musket: { id: 'musket', name: 'Musket', ranged: true, dmg: 2.4, range: 30, rate: 3.2, ammo: 'bullets', tier: 3, desc: 'One loud shot. Make it count.' },
+  rifle: { id: 'rifle', name: 'Lever Rifle', ranged: true, dmg: 2.0, range: 45, rate: 1.1, ammo: 'bullets', tier: 4, desc: 'Fast, accurate, loud.' },
+  shotgun: { id: 'shotgun', name: 'Double Shotgun', ranged: true, dmg: 3.4, range: 12, rate: 2.4, ammo: 'shells', tier: 4, desc: 'Devastating up close.' },
+};
+const UnlockedWeapons = ['hatchet', 'sling'];
+const Loadout = { melee: 'hatchet', ranged: null };
+const Ammo = { stones: 8, arrows: 0, bolts: 0, bullets: 0, shells: 0 };
+const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [] };
+function weaponById(id) { return WEAPONS[id] || null; }
+function equippedMelee() { return WEAPONS[Loadout.melee] || WEAPONS.hatchet; }
+function equippedRanged() { return Loadout.ranged ? WEAPONS[Loadout.ranged] : null; }
+function ammoCount(w) { return w && w.ammo ? (Ammo[w.ammo] || 0) : 0; }
+function meleeMult() { return equippedMelee().dmg; }
+function unlockWeapon(id) {
+  const w = WEAPONS[id];
+  if (!w || UnlockedWeapons.includes(id)) return;
+  UnlockedWeapons.push(id);
+  pushStory(`Unlocked ${w.name}. ${w.desc}`, w.ranged ? '🔫' : '⚔️');
+  toast(`${w.ranged ? '🔫' : '⚔️'} ${w.name} unlocked! (L to equip)`);
+  chime(820);
+  renderStats();
+}
+function equipWeapon(id) {
+  const w = WEAPONS[id];
+  if (!w) return;
+  if (!UnlockedWeapons.includes(id)) { toast(`🔒 ${w.name} is not unlocked yet.`); return; }
+  if (w.melee) Loadout.melee = id; else Loadout.ranged = id;
+  // keep the axe visual tier in step with the melee weapon
+  if (w.melee) {
+    RPG.weapon = Math.min(3, w.tier);
+    rpgRefreshMults();
+  }
+  if (w.ranged) applyHeroRanged(w);
+  toast(`Equipped ${w.name}.`);
+  chime(620);
+  renderStats(); renderLoadout(); renderLoadout();
+}
+function buyAmmo(kind, n = 1) {
+  const cost = kind === 'shells' ? { gold: 2, stone: 2 } : kind === 'bullets' ? { gold: 1, stone: 1 } : kind === 'arrows' ? { wood: 1 } : kind === 'bolts' ? { wood: 1, stone: 1 } : { stone: 1 };
+  for (const [k, v] of Object.entries(cost)) if ((inv[k] || 0) < v) { toast(`🔫 Need ${v} ${ITEM_ICON[k] || k} for ${n} ${kind}.`); return; }
+  for (const [k, v] of Object.entries(cost)) inv[k] -= v;
+  Ammo[kind] = (Ammo[kind] || 0) + n;
+  toast(`🔫 +${n} ${kind}.`);
+  chime(500);
+  renderStats(); renderLoadout();
+}
+// tracer + muzzle flash
+const _tracers = [];
+function tracer(from, to, color = 0xffe9a3) {
+  const g = new THREE.BufferGeometry().setFromPoints([from, to]);
+  const m = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 1 });
+  const line = new THREE.Line(g, m);
+  scene.add(line);
+  _tracers.push({ line, life: 0.12 });
+}
+tickers.push((t, dt) => {
+  for (let i = _tracers.length - 1; i >= 0; i--) {
+    const tr = _tracers[i]; tr.life -= dt;
+    tr.line.material.opacity = Math.max(0, tr.life / 0.12);
+    if (tr.life <= 0) { scene.remove(tr.line); tr.line.geometry.dispose(); tr.line.material.dispose(); _tracers.splice(i, 1); }
+  }
+});
+function fireAt(target) {
+  const w = equippedRanged();
+  if (!w || playerDead) return false;
+  if (playerAttackCd > 0) return false;
+  if (ammoCount(w) <= 0) { toast(`🔫 Out of ${w.ammo} — craft more at the workshop (K).`); return false; }
+  Ammo[w.ammo]--;
+  playerAttackCd = Math.max(0.3, w.rate);
+  startAttack();
+  const n = player.position.clone().normalize();
+  const muzzle = player.position.clone().addScaledVector(n, 1.25).addScaledVector(facing, 0.45);
+  burst(muzzle, 0xffd97a, 5, 1.2);
+  chime(w.tier >= 3 ? 180 : 300);
+  setTimeout(() => {
+    if (!target || target.dead || target.hp <= 0) return;
+    const d = player.position.distanceTo(target.mesh.position);
+    if (d > w.range + 2) return;
+    let dmg = Math.round(24 * w.dmg * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03));
+    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical shot!'); }
+    target.hp -= dmg;
+    target.hitFlash = 1;
+    tracer(muzzle, target.mesh.position.clone().add(V3(0, 1.0, 0)));
+    spawnPopup(target.mesh.position.clone(), `-${dmg}`, '#ffd97a');
+    chime(240);
+    if (target.kindTag === 'robber') {
+      if (target.hp <= 0) killRobber(target);
+    } else if (target.adult !== undefined) {
+      if (target.hp <= 0) killBear(target);
+      else if (target.cub) target.fleeTarget = target.pos.clone().add(V3(rand(-2, 2), 0, rand(-2, 2)));
+    } else if (target.hp <= 0) killWolf(target);
+    // noise: guns can call the pack
+    if (w.tier >= 2 && isNight() && Math.random() < 0.2 && !wolves.length) { Life.wolfRaid = 1; toast('🐺 The shot echoes — something answers.'); }
+    renderStats();
+  }, 120);
+  return true;
+}
+
+// ---------- progression save/restore ----------
+function saveProgression() {
+  return {
+    research: {
+      insight: Research.insight, unlocked: [...Research.unlocked],
+      speed: Research.speed, healBonus: Research.healBonus, rangedBonus: Research.rangedBonus,
+      farmBonus: Research.farmBonus, tradeBonus: Research.tradeBonus, upkeepBonus: Research.upkeepBonus,
+      stormWard: Research.stormWard,
+      ashMask: !!Research.ashMask,
+      queue: Research.queue ? { ...Research.queue } : null,
+    },
+    tools: { ...tools },
+    loadout: { ...Loadout }, ammo: { ...Ammo }, unlockedWeapons: [...UnlockedWeapons],
+    pendingTrait: pendingTrait ? [...pendingTrait] : null,
+    threats: { robbersDrivenOff: Threats.robbersDrivenOff || 0, thefts: Threats.thefts || 0, bounties: Threats.bounties || 0, reputation: Threats.reputation || 0 },
+    weather: { next: Weather.next, forecast: Weather.forecast.map((f) => ({ ...f })), history: [...Weather.history], lastMajorDay: Weather.lastMajorDay },
+    homeTech: {
+      workshop: !!Home.workshop, windmill: !!Home.windmill, sawmill: !!Home.sawmill, mill: !!Home.mill,
+      pump: !!Home.pump, forge: !!Home.forge, gunsmith: !!Home.gunsmith, irrigation: !!Home.irrigation,
+      stormShutters: !!Home.stormShutters, weatherStation: !!Home.weatherStation,
+      refrigeration: !!Home.refrigeration, firebreak: !!Home.firebreak,
+    },
+  };
+}
+function restoreProgression(p) {
+  if (!p) return;
+  if (p.research) {
+    Research.insight = Math.max(0, p.research.insight || 0);
+    Research.unlocked = [...(p.research.unlocked || [])];
+    Research.speed = p.research.speed || 1;
+    Research.healBonus = p.research.healBonus || 0;
+    Research.rangedBonus = p.research.rangedBonus || 1;
+    Research.farmBonus = p.research.farmBonus || 1;
+    Research.tradeBonus = p.research.tradeBonus || 1;
+    Research.upkeepBonus = p.research.upkeepBonus || 0;
+    Research.stormWard = p.research.stormWard || 0;
+    Research.ashMask = !!p.research.ashMask;
+    Research.queue = p.research.queue ? { ...p.research.queue } : null;
+  }
+  if (p.tools) Object.assign(tools, p.tools);
+  if (p.loadout) Object.assign(Loadout, p.loadout);
+  if (p.ammo) Object.assign(Ammo, p.ammo);
+  if (Array.isArray(p.unlockedWeapons) && p.unlockedWeapons.length) {
+    UnlockedWeapons.length = 0;
+    for (const id of p.unlockedWeapons) if (WEAPONS[id]) UnlockedWeapons.push(id);
+  }
+  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0 }, p.threats);
+  if (p.pendingTrait) pendingTrait = [...p.pendingTrait];
+  if (p.weather) {
+    Weather.next = p.weather.next || null;
+    Weather.forecast = (p.weather.forecast || []).map((f) => ({ ...f }));
+    Weather.history = [...(p.weather.history || [])];
+    Weather.lastMajorDay = p.weather.lastMajorDay ?? -99;
+  }
+  if (p.homeTech) Object.assign(Home, p.homeTech);
+  if (typeof applyHeroChapter === 'function') applyHeroChapter(Life.chapter || 0);
+  if (typeof applyHeroRanged === 'function') applyHeroRanged(equippedRanged());
+}
+
+
+
 function seasonOf(day) { return Math.floor((day - 1) / DAYS_PER_SEASON) % 4; }
 function seasonNow() { return seasonOf(Life.day); }
 function isNight() { const t = ((Life.t % 1) + 1) % 1; return t >= 0.62 || t < 0.05; }
@@ -4399,6 +5225,14 @@ function updateSky() {
   const dl = Math.sin(t * Math.PI * 2 - 0.3);
   const dayF = THREE.MathUtils.smoothstep(dl, -0.15, 0.5);
   scene.background.copy(_skyNight).lerp(_skyDay, dayF);
+  // weather mood: snow haze, storm murk, ash, fire glow
+  try {
+    const ids = Weather.active.map((h) => h.id);
+    if (ids.includes('blizzard')) scene.background.lerp(new THREE.Color(0xbcd8e8), 0.28);
+    else if (ids.includes('thunder') || ids.includes('flood')) scene.background.lerp(new THREE.Color(0x2a3d4a), 0.25);
+    else if (ids.includes('eruption')) scene.background.lerp(new THREE.Color(0x4a342a), 0.3);
+    else if (ids.includes('wildfire')) scene.background.lerp(new THREE.Color(0x5a2f1a), 0.25);
+  } catch { /* early boot */ }
   if (scene.fog) scene.fog.color.copy(scene.background);
   const ang = t * Math.PI * 2 - Math.PI / 2;
   sun.position.set(Math.cos(ang) * 60 * S, Math.sin(ang) * 60 * S + 8 * S, 25 * S);
@@ -4445,7 +5279,7 @@ function sleepUntilMorning() {
 function dawnRoutine(rested) {
   Life.nights++;
   Life.festival = (Life.day % DAYS_PER_SEASON === 0);
-  Life.blizzard = false; Life.drought = false; Life.sheltered = false; // yesterday's weather ends
+  Life.blizzard = false; Life.drought = false; Life.sheltered = false; Life.flood = false; // yesterday's weather ends
   const todayHit = Life.forecast; Life.forecast = null;
   const before = { ...inv };
   if (todayHit) triggerDisaster(todayHit);
@@ -4457,6 +5291,7 @@ function dawnRoutine(rested) {
   overnightWorkers();
   overnightFamily(rested);
   overnightStall();
+  overnightTech();
   ageKids();
   const bedQ = [70, 85, 100, 100, 100][Home.house] ?? 70;
   if (rested) {
@@ -4499,6 +5334,9 @@ function saveLife() {
     stats: { ...Life.stats }, rot: { ...Life.rot }, chronicle: [...Life.chronicle],
     bless: { ...(Life.bless || {}) },
     fishBook: { ...(Life.fishBook || {}) }, recipes: { ...(Life.recipes || {}) }, packBonus,
+    chapter: Life.chapter || 0, age: Life.age || 20,
+    story: [...(Life.story || [])], traits: [...(Life.traits || [])], hazardWins: { ...(Life.hazardWins || {}) }, epitaph: Life.epitaph || null,
+    progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
     home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
@@ -4506,10 +5344,14 @@ function saveLife() {
   };
 }
 function restoreLife(s) {
-  Object.assign(Life, { day: s.day ?? 1, t: s.t ?? 0.3, clothes: s.clothes ?? 0, gen: s.gen ?? 1, ring: !!s.ring, spouse: s.spouse ?? null, forecast: s.forecast ?? null, nights: s.nights ?? 0, kidSeq: s.kidSeq ?? 0 });
+  Object.assign(Life, { day: s.day ?? 1, t: s.t ?? 0.3, clothes: s.clothes ?? 0, gen: s.gen ?? 1, ring: !!s.ring, spouse: s.spouse ?? null, forecast: s.forecast ?? null, nights: s.nights ?? 0, kidSeq: s.kidSeq ?? 0, chapter: s.chapter ?? 0, age: s.age ?? 20 });
   Life.kids = (s.kids || []).map((k) => ({ ...k }));
   Life.workers = (s.workers || []).map((w) => ({ ...w }));
   Life.lastGift = { ...(s.lastGift || {}) };
+  Life.story = [...(s.story || [])];
+  Life.traits = [...(s.traits || [])];
+  Life.hazardWins = { ...(s.hazardWins || {}) };
+  Life.epitaph = s.epitaph || null;
   Object.assign(Life.stats, s.stats || {});
   Object.assign(Life.rot, s.rot || {});
   Life.chronicle = [...(s.chronicle || [])];
@@ -4544,6 +5386,7 @@ function restoreLife(s) {
         }
       : null;
   }
+  if (s.progression) restoreProgression(s.progression);
   rebuildHomestead();
   clearAnimals();
   for (const sa of s.animals || []) spawnAnimal(sa.kind, true);
@@ -4583,7 +5426,9 @@ function coldTick(dt, nn) {
   if (winter && !arctic) exposure += 5;
   else if (winter) exposure += 2;
   if (isNight()) exposure += 1;
-  if (Life.blizzard) exposure += 6;
+  if (Life.blizzard) exposure += Home.stormShutters ? 3 : 6;
+  if (Life.blizzard && Home.barn) exposure -= 1;
+  exposure *= (1 - (Research.stormWard || 0));
   if (Life.bless?.flame) exposure *= 0.8;
   const wTarget = THREE.MathUtils.clamp(100 - exposure * 10 + (nearHomeFire() ? 60 : 0) + Life.clothes * 12, 0, 100);
   const rate = 3 + exposure;
@@ -4598,7 +5443,7 @@ function coldTick(dt, nn) {
 }
 function overnightNeeds(rested) {
   // family supper: auto-eat cheapest raw produce first, hearty meals saved for the trail
-  const need = familyUpkeep();
+  const need = Math.max(1, familyUpkeep() - (Research.upkeepBonus || 0));
   let ate = 0;
   while (ate < need) {
     let took = false;
@@ -4654,6 +5499,9 @@ const HOME = { lat: -3, lon: 56 };
 const Home = {
   house: 0, build: null, well: false, barn: 0, fences: 0, cabin: false, stall: false,
   lanterns: 0, dog: false, decor: 0, dmg: {},
+  workshop: false, windmill: false, sawmill: false, mill: false, pump: false, forge: false,
+  gunsmith: false, irrigation: false, stormShutters: false, weatherStation: false,
+  refrigeration: false, firebreak: false, dynamo: false,
   plots: Array.from({ length: 6 }, () => ({ crop: false, growth: 0, water: false })),
 };
 let homeFirePos = null;
@@ -4959,6 +5807,76 @@ function buildMiscMeshes() {
     g.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.7), mat(0x8a6238), 0, 0.9, 0.5));
     placeAt(g, -5.5, 57.5, 0, 0.8);
   }
+  // --- technology buildings ---
+  if (Home.workshop) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.BoxGeometry(2.6, 1.8, 2.2), mat(0x8a6238), 0, 0.9, 0));
+    const roof = mesh(new THREE.ConeGeometry(2.0, 1.0, 4), mat(0x4a5d5a), 0, 2.2, 0);
+    roof.rotation.y = Math.PI / 4; g.add(roof);
+    g.add(mesh(new THREE.BoxGeometry(0.8, 1.2, 0.1), mat(0x4a3320), 0, 0.6, 1.12, false)); // door
+    g.add(mesh(new THREE.BoxGeometry(2.2, 0.12, 0.6), mat(0x9a6b42), 0, 0.75, 1.3, false)); // bench
+    g.add(mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), mat(0x7a5230), 0.8, 0.4, 1.3, false));
+    g.add(mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), mat(0x7a5230), -0.8, 0.4, 1.3, false));
+    g.add(mesh(new THREE.BoxGeometry(0.5, 0.08, 0.08), mat(0x9aa0a6), 0.6, 1.0, 1.3, false)); // tools
+    g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.4, 6), mat(0x8d8d94), -0.9, 2.5, -0.6)); // chimney
+    placeAt(g, 2.6, 55, 0, 0.4);
+    addOccluder(g);
+  }
+  if (Home.windmill) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.9, 1.15, 3.6, 8), mat(0xf3e4c8), 0, 1.8, 0));
+    g.add(mesh(new THREE.ConeGeometry(1.2, 1.0, 8), mat(0x7a8b6f), 0, 3.9, 0));
+    const hub = new THREE.Group(); hub.position.set(0, 3.6, 1.0); g.add(hub);
+    for (let i = 0; i < 4; i++) {
+      const blade = mesh(new THREE.BoxGeometry(0.18, 2.6, 0.06), mat(0xe8d9a8), 0, 0, 0, false);
+      blade.position.set(Math.cos(i * Math.PI / 2) * 1.2, Math.sin(i * Math.PI / 2) * 1.2, 0);
+      blade.rotation.z = i * Math.PI / 2;
+      hub.add(blade);
+    }
+    g.add(mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.3, 8), mat(0x5a3e2b), 0, 3.6, 1.0, false));
+    placeAt(g, 3.5, 50.5, 0, 0.2);
+    addOccluder(g);
+    tickers.push((t) => { if (g.parent) hub.rotation.z = t * 0.8; });
+  }
+  if (Home.sawmill) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.BoxGeometry(2.4, 0.25, 1.8), mat(0x7a5230), 0, 0.12, 0));
+    for (const sx of [-1, 1]) g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.6, 5), mat(0x5a3e2b), sx, 0.9, -0.7));
+    g.add(mesh(new THREE.BoxGeometry(2.4, 0.15, 1.8), mat(0x4a5d5a), 0, 1.8, 0));
+    for (let i = 0; i < 4; i++) { const log = mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.2, 7), mat(0x8a6238), 0, 0.4, 0); log.rotation.z = Math.PI / 2; log.position.set(-0.6 + i * 0.4, 0.35 + (i % 2) * 0.25, 0); g.add(log); }
+    const saw = mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.05, 12), mat(0x9aa0a6, { metalness: 0.5 }), 0.7, 0.9, 0.2, false);
+    saw.rotation.x = Math.PI / 2; g.add(saw);
+    placeAt(g, -7.5, 51, 0.1, 0.3);
+    addOccluder(g);
+    tickers.push((t) => { if (g.parent) saw.rotation.z = t * 3; });
+  }
+  if (Home.mill) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(1.0, 1.2, 2.8, 10), mat(0xe8d9a8), 0, 1.4, 0));
+    g.add(mesh(new THREE.ConeGeometry(1.3, 0.8, 10), mat(0x4a5d5a), 0, 3.0, 0));
+    const wheel = mesh(new THREE.TorusGeometry(0.8, 0.08, 5, 16), mat(0x7a5230), 0, 1.1, 1.2, false);
+    g.add(wheel);
+    placeAt(g, 3.5, 59.5, 0, 0.6);
+    addOccluder(g);
+    tickers.push((t) => { if (g.parent) wheel.rotation.z = t * 1.2; });
+  }
+  if (Home.pump) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.8, 8), mat(0x8d8d94), 0, 0.4, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2, 6), mat(0x5a3e2b), 0, 1.1, 0));
+    g.add(mesh(new THREE.TorusGeometry(0.4, 0.06, 5, 12), mat(0x7a5230), 0, 2.1, 0.2, false));
+    g.add(mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 5), mat(0x8d8d94), 0.6, 1.3, 0, false));
+    placeAt(g, 0.8, 51.5, 0, 0.2);
+  }
+  if (Home.gunsmith) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.BoxGeometry(2.0, 1.5, 1.8), mat(0x4a4038), 0, 0.75, 0));
+    g.add(mesh(new THREE.ConeGeometry(1.6, 0.8, 4), mat(0x2a2320), 0, 1.8, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.5, 8), mat(0x2a2320), 0.9, 0.25, 1.0, false)); // barrel
+    g.add(mesh(new THREE.BoxGeometry(0.7, 0.35, 0.5), mat(0x5d5d66), -0.6, 0.5, 1.0)); // anvil
+    placeAt(g, -7.5, 58.5, 0, -0.4);
+    addOccluder(g);
+  }
   // fire pit (always) + trough + board
   {
     const g = new THREE.Group();
@@ -5012,6 +5930,11 @@ function rebuildHomestead() {
 function beds() { return [1, 2, 3, 4, 6][Home.house] ?? 1; }
 function residents() { return 1 + (Life.spouse ? 1 : 0) + Life.kids.length; }
 addInteract({ id: 'home-board', pos: homeSpot(-1, 58.5, 1), kind: '🏡 HOMESTEAD', label: () => 'Build & goals (H)', onUse: () => openBuild() });
+addInteract({
+  id: 'home-workshop', pos: homeSpot(2.6, 55, 1), kind: '🔧 WORKSHOP',
+  label: () => (Home.workshop ? 'Research & craft (K)' : 'Workshop — build it (H)'),
+  onUse: () => openWorkshop(),
+});
 addInteract({ id: 'home-bed', pos: homeSpot(-2, 56, 1.2), kind: '🛏️ REST', label: () => 'Sleep until dawn', onUse: () => sleepUntilMorning() });
 addInteract({ id: 'home-fire', pos: homeSpot(-3, 58, 1), kind: '🔥 COOKPOT', label: () => 'Cook a meal (2 produce)', onUse: () => cookMeal() });
 addInteract({ id: 'home-trough', pos: homeSpot(-4, 57, 1), kind: '🥣 TROUGH', label: () => troughLabel(), onUse: () => feedAnimals() });
@@ -5117,17 +6040,25 @@ function autoWaterCount() {
 }
 function overnightCrops() {
   const winter = seasonNow() === 3;
-  const fast = Life.bless?.harvest ? 2 : 1;
+  const fast = (Life.bless?.harvest ? 2 : 1) + (hasTech('plough') ? 1 : 0) + (Research.farmBonus > 1 ? 1 : 0);
   let auto = autoWaterCount();
+  if (Home.irrigation) auto += 6;
   for (const p of Home.plots) { if (p.bought && p.crop && !p.water && auto > 0) { p.water = true; auto--; } }
   for (const p of Home.plots) {
     if (!p.bought || !p.crop) continue;
     if (winter && !Life.bless?.flame) { p.water = false; continue; } // dormant
-    if (Life.drought && !(Home.well && !Home.dmg.well) && !Life.bless?.oasis) { p.water = false; continue; }
+    if (Life.drought && !(Home.well && !Home.dmg.well) && !Life.bless?.oasis && !Home.irrigation) { p.water = false; continue; }
+    if (Life.flood && !Home.pump && !Home.irrigation && !Home.fences) { p.crop = false; p.growth = 0; p.water = false; continue; }
     if (p.water) p.growth = Math.min(3, p.growth + fast);
     p.water = false;
   }
   refreshPlotMeshes();
+}
+function overnightTech() {
+  if (Home.sawmill && !Home.dmg.sawmill) { inv.wood += 2; }
+  if (Home.mill && !Home.dmg.mill) { inv.food += 2; }
+  if (Home.pump) { Home.dmg.well = false; Life.flood = false; }
+  if (Home.gunsmith && !Home.dmg.gunsmith) Ammo.bullets += 1;
 }
 function overnightStall() {
   if (!Home.stall || Home.dmg.stall) return;
@@ -5184,6 +6115,15 @@ for (let pii = 0; pii < 6; pii++) {
     apply: () => { Home.plots[i].bought = true; },
   });
 }
+// technology buildings (visible once the matching research is unlocked)
+BUILD_DEFS.push(
+  { id: 'workshop', name: 'Workshop', cost: { wood: 8, stone: 4 }, blurb: 'Research bench, ammo crafting, tools.', req: () => (!hasTech('workshop') ? { ok: false, why: 'Research Workshop first (K)' } : Home.workshop ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.workshop = true; } },
+  { id: 'windmill', name: 'Windmill', cost: { wood: 8, stone: 4, gold: 2 }, blurb: 'Research +20%; homestead landmark.', req: () => (!hasTech('windmill') ? { ok: false, why: 'Research Windmill first' } : Home.windmill ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.windmill = true; } },
+  { id: 'sawmill', name: 'Sawmill', cost: { wood: 10, stone: 6 }, blurb: '+2 wood every dawn, automatically.', req: () => (!hasTech('sawmill') ? { ok: false, why: 'Research Sawmill first' } : Home.sawmill ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.sawmill = true; } },
+  { id: 'mill', name: 'Grain Mill', cost: { wood: 8, stone: 8 }, blurb: '+2 food every dawn.', req: () => (!hasTech('grain-mill') ? { ok: false, why: 'Research Grain Mill first' } : Home.mill ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.mill = true; } },
+  { id: 'pump', name: 'Steam Pump', cost: { stone: 10, gold: 4 }, blurb: 'Floods drain; wells never choke.', req: () => (!hasTech('steam-pump') ? { ok: false, why: 'Research Steam Pump first' } : Home.pump ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.pump = true; } },
+  { id: 'gunsmith', name: 'Gunsmith', cost: { wood: 8, stone: 6, gold: 8 }, blurb: 'Craft firearms, ammo and repairs.', req: () => (!hasTech('gunsmith') ? { ok: false, why: 'Research Gunsmith first' } : Home.gunsmith ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.gunsmith = true; } },
+);
 function buildAfford(b) {
   const r = b.req();
   if (!r.ok) return r;
@@ -5827,7 +6767,7 @@ function attackWolf(w) {
   setTimeout(() => {
     if (w.hp <= 0 || playerDead) return;
     if (player.position.distanceTo(w.mesh.position) > 5.2) return;
-    let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * (window.__rpgDmgMult || 1));
+    let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * meleeMult());
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical strike!'); }
     w.hp -= dmg;
     burst(w.mesh.position.clone(), 0xffd97a, 12, 2);
@@ -5955,6 +6895,130 @@ tickers.push(() => { // forecast packs slink in after dark, never in daylight
     Life.wolfRaid = 0;
   }
 });
+
+// --- human threats: night robbers, rustlers and tolls ---
+let robberSpawnT = 0;
+function spawnRobber(kind = 'thief') {
+  if (Threats.robbers.length || playerDead) return null;
+  const home = homeSpot(HOME.lat, HOME.lon, 0);
+  const up = home.clone().normalize();
+  const u = V3(-up.z, 0, up.x).normalize();
+  const p = home.clone().addScaledVector(u, rand(11, 15)).normalize();
+  const pos = p.clone().multiplyScalar(R + heightFor(p) + 0.08);
+  const m = makeVillager({ coat: 0x2a2320, hat: 'hood', hatColor: 0x171310, skin: 0xd9a97c });
+  if (m.userData.villager && m.userData.villager.mark) m.userData.villager.mark.visible = false;
+  m.add(mesh(new THREE.BoxGeometry(0.34, 0.16, 0.12), mat(0x171310), 0, 1.9, 0.26, false)); // mask
+  m.add(mesh(new THREE.BoxGeometry(0.34, 0.30, 0.18), mat(0x6b4a2f), 0, 1.15, 0.34, false)); // loot bag
+  m.position.copy(pos);
+  scene.add(m);
+  const name = kind === 'rustler' ? 'A cattle rustler' : kind === 'toll' ? 'A road robber' : 'A masked thief';
+  const r = {
+    name, kindTag: 'robber', mesh: m, pos, facing: V3(-up.z, 0, up.x).normalize(),
+    hp: 45, maxHp: 45, state: 'approach', t: 0, demanded: false,
+    demandText: kind === 'rustler' ? '“Your herd looks heavy. I’ll lighten it.”' : '“Coin or cargo. Your choice.”',
+  };
+  const it = {
+    id: 'robber' + Date.now() % 100000, pos: pos.clone(), robber: r, radius: 4.4, kind: '⚠️ ROBBER',
+    label: () => `${r.name} ❤ ${Math.max(0, Math.ceil(r.hp))} — confront / fight`,
+    onUse: () => openRobberDialog(r),
+  };
+  r.interact = it;
+  addInteract(it);
+  Threats.robbers.push(r);
+  toast(`⚠️ ${name} is lurking near the homestead! (click to confront)`);
+  chime(160);
+  pushStory(`${name} came in the night.`, '⚠️');
+  return r;
+}
+function removeRobber(r, reward) {
+  const ix = Threats.robbers.indexOf(r);
+  if (ix >= 0) Threats.robbers.splice(ix, 1);
+  scene.remove(r.mesh);
+  if (r.interact) { const jx = interactables.indexOf(r.interact); if (jx >= 0) interactables.splice(jx, 1); }
+  if (activeTask && activeTask.interact === r.interact) clearAutoTask();
+  if (reward) {
+    Threats.robbersDrivenOff++;
+    Threats.bounties++;
+    Threats.reputation++;
+    inv.gold += 3;
+    grantInsight(3, 'Driven off a robber');
+    toast(`🏆 ${r.name} driven off! (+3🪙, +3💡)`);
+    chime(760);
+  }
+  saveCheckpoint();
+  renderStats();
+}
+function killRobber(r) {
+  r.hp = 0;
+  burst(r.mesh.position.clone(), 0xffffff, 18, 2.2);
+  removeRobber(r, true);
+}
+function attackRobber(r) {
+  if (!r || playerDead || r.hp <= 0) return;
+  if (player.position.distanceTo(r.mesh.position) > 4.6) return toast('⚠️ Too far — step closer.');
+  if (playerAttackCd > 0) return;
+  playerAttackCd = Math.max(0.35, window.__rpgSwing || 0.55);
+  startAttack();
+  setTimeout(() => {
+    if (!r || r.hp <= 0 || playerDead) return;
+    if (player.position.distanceTo(r.mesh.position) > 5.2) return;
+    let dmg = Math.round(20 * meleeMult());
+    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; }
+    r.hp -= dmg;
+    spawnPopup(r.mesh.position.clone(), `-${dmg}`, '#ffd97a');
+    chime(280);
+    toast(`🪓 You strike the robber for ${dmg}!`);
+    if (r.hp <= 0) killRobber(r);
+    else if (r.hp < 20) r.state = 'flee';
+    renderStats();
+  }, 200);
+}
+function updateRobbers(t, dt) {
+  for (let i = Threats.robbers.length - 1; i >= 0; i--) {
+    const r = Threats.robbers[i];
+    const home = homeSpot(HOME.lat, HOME.lon, 0);
+    const pd = r.pos.distanceTo(player.position);
+    if (r.state === 'flee' || r.state === 'leave') {
+      const away = r.pos.clone().sub(home);
+      const stepped = tangentStep(r.pos, away, dt * (r.state === 'flee' ? 5.2 : 3.0));
+      if (stepped) r.facing.lerp(stepped, 0.2).normalize();
+      if (r.pos.distanceTo(home) > 20) { removeRobber(r, false); continue; }
+    } else if (r.state === 'wait') {
+      if (!robberOpen) r.t += dt;
+      if (r.t > 9) { r.state = 'flee'; r.t = 0; toast(`${r.name} slips away into the dark.`); }
+    } else {
+      const toHome = home.clone().sub(r.pos);
+      const stepped = tangentStep(r.pos, toHome, dt * 2.2);
+      if (stepped) r.facing.lerp(stepped, 0.2).normalize();
+      if (pd < 4.4 && !r.demanded) { r.demanded = true; r.state = 'wait'; openRobberDialog(r); }
+      if (r.pos.distanceTo(home) < 4.5) {
+        const stolenFood = Math.min(inv.food || 0, 2);
+        if (stolenFood) inv.food -= stolenFood;
+        if (inv.gold > 0) inv.gold -= 1;
+        Threats.thefts++;
+        toast(`💰 ${r.name} stole ${stolenFood}🍎 and 1🪙! (lanterns/dog/fences deter them)`);
+        r.state = 'flee';
+        renderStats();
+      }
+    }
+    const n = r.pos.clone().normalize();
+    r.mesh.position.copy(r.pos).addScaledVector(n, Math.abs(Math.sin(t * 6 + r.pos.x)) * 0.06);
+    r.facing.addScaledVector(n, -r.facing.dot(n)).normalize();
+    faceAlong(r.mesh, r.pos, r.facing);
+    if (r.interact) r.interact.pos.copy(r.mesh.position);
+    if (r.kindTag === 'robber' && r.hp < r.maxHp && r.state !== 'flee') r.state = 'flee';
+  }
+}
+tickers.push((t, dt) => updateRobbers(t, dt));
+tickers.push((t, dt) => {
+  if (!isNight() || playerDead || sleeping || Life.day < 3) return;
+  robberSpawnT += dt;
+  if (robberSpawnT < 24) return;
+  robberSpawnT = 0;
+  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0);
+  if (!Threats.robbers.length && Math.random() < chance) spawnRobber(['thief', 'toll', 'rustler'][(Math.random() * 3) | 0]);
+});
+
 
 // --- ambient wildlife: harmless wanderers that make each biome feel inhabited ---
 const ambientWanderers = [];
@@ -6312,58 +7376,16 @@ function overnightWorkers() {
 const ROT_DAYS = { food: 4, fish: 2, egg: 3, milk: 2, meal: 8 };
 function overnightSpoilage() {
   const cellar = Home.house >= 3 && !Home.dmg.house;
+  const chill = (cellar ? 0.5 : 1) * (Home.refrigeration ? 0.5 : 1);
   for (const k of ['food', 'fish', 'egg', 'milk', 'meal']) {
     if ((inv[k] || 0) <= 0) { Life.rot[k] = 0; continue; }
-    Life.rot[k] = (Life.rot[k] || 0) + (cellar ? 0.5 : 1);
-    if (Life.rot[k] >= ROT_DAYS[k]) { Life.rot[k] = 0; inv[k]--; toast(`🤢 A ${ITEM_ICON[k]} spoiled!${cellar ? '' : ' (cellar slows rot)'}`); }
+    Life.rot[k] = (Life.rot[k] || 0) + chill;
+    if (Life.rot[k] >= ROT_DAYS[k]) { Life.rot[k] = 0; inv[k]--; toast(`🤢 A ${ITEM_ICON[k]} spoiled!${chill < 1 ? '' : ' (cellar slows rot)'}`); }
   }
 }
-// --- disasters: forecast a day ahead, survive by preparing ---
-const DISASTER_ICON = { drought: '☀️', flood: '🌊', tornado: '🌪️', blizzard: '❄️', wolves: '🐺' };
-function rollForecast() {
-  const s = seasonNow();
-  let pool = [];
-  if (s === 0) pool = [['flood', 0.25]];
-  else if (s === 1) pool = [['drought', 0.30]];
-  else if (s === 2) pool = [['tornado', 0.20], ['wolves', 0.20]];
-  else pool = [['blizzard', 0.35], ['wolves', 0.25]];
-  const diff = 1 + (Life.gen - 1) * 0.15;
-  for (const [id, ch] of pool) {
-    const ward = (id === 'wolves' && Life.bless?.light) ? 0.5 : 1;
-    if (Math.random() < ch * diff * ward) { Life.forecast = id; return; }
-  }
-  Life.forecast = null;
-}
-function triggerDisaster(id) {
-  Life.stats.disasters++;
-  Life.grief = Math.min(1.5, (Life.grief || 0) + 0.8);
-  meters.morale = Math.max(0, (meters.morale ?? 80) - 10);
-  if (id === 'drought') {
-    Life.drought = true;
-    toast('☀️ DROUGHT! Crops stall — the well keeps them growing. Water everything!');
-    chime(180);
-  } else if (id === 'flood') {
-    const growing = Home.plots.filter((p) => p.bought && p.crop);
-    if (growing.length && Home.fences < 2) {
-      const p = growing[(Math.random() * growing.length) | 0];
-      p.crop = false; p.growth = 0; p.water = false;
-      toast('🌊 Flood drowned a crop! (fences ≥2 sandbag the fields)');
-    } else toast('🌊 Flood waters rose — the fenced fields held!');
-    refreshPlotMeshes();
-    chime(180);
-  } else if (id === 'tornado') {
-    startTornado();
-  } else if (id === 'blizzard') {
-    Life.blizzard = true;
-    toast('❄️ BLIZZARD all day! Cold everywhere. Stay by the fire, keep stock!');
-    chime(140);
-  } else if (id === 'wolves') {
-    Life.wolfRaid = 1 + Math.min(2, (Life.gen - 1) + (Math.random() < 0.5 ? 1 : 0));
-    toast('🐺 Howls on the wind… a pack will stalk the herd TONIGHT. Light lanterns, pen the animals!');
-    chime(140);
-  }
-  renderStats();
-}
+// --- disasters: forecast via the weather director (see HAZARDS above) ---
+const DISASTER_ICON = Object.fromEntries(Object.entries(HAZARDS).map(([id, h]) => [id, h.icon]));
+
 // live tornado: a funnel crosses the homestead; shelter in a cellar or risk it
 let tornadoEnt = null;
 function startTornado() {
@@ -6397,7 +7419,7 @@ tickers.push((t, dt) => {
     scene.remove(tw.mesh);
     tornadoEnt = null;
     // damage roll: 40% per building (scan blessing wards: 20%)
-    const chance = Life.bless?.scan ? 0.2 : 0.4;
+    const chance = (Life.bless?.scan ? 0.2 : 0.4) * (Home.stormShutters ? 0.65 : 1);
     const hit = [];
     for (const id of ['house', 'barn', 'cabin', 'stall', 'well']) {
       if ((id === 'house' && !Home.house) || (id === 'barn' && !Home.barn) || (id === 'cabin' && !Home.cabin) || (id === 'stall' && !Home.stall) || (id === 'well' && !Home.well)) continue;
@@ -6479,6 +7501,8 @@ function hearthRetireReady() {
 function retireToHeir() {
   const r = hearthRetireReady();
   if (!r.ok || playerDead) return;
+  Life.epitaph = `Gen ${Life.gen} · ${CHAPTERS[Math.min(Life.chapter, CHAPTERS.length - 1)].name} · ${wonders.filter((w) => w.done).length} wonders · ${Object.keys(Life.hazardWins || {}).length} hazards weathered.`;
+  pushStory(Life.epitaph, '🌅');
   Life.gen++;
   Life.chronicle.push(`Gen ${Life.gen - 1} retired in comfort 🌅 (${Life.stats.goldEarned}🪙 earned, Day ${Life.day})`);
   inv.wood = 0; inv.stone = 0; inv.gold = 2; inv.food = 4; inv.fish = 0; inv.wool = 0; inv.remedy = 1;
@@ -7139,8 +8163,9 @@ const SETTINGS_DEFS = [
   { id: 'cam', name: 'Camera orbit speed', desc: 'Mouse-drag sensitivity', opts: ['slow', 'normal', 'fast'], labels: { slow: 'Slow', normal: 'Normal', fast: 'Fast' } },
   { id: 'autosave', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
   { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
+  { id: 'difficulty', name: 'Life difficulty', desc: 'How hard the planet pushes back', opts: ['cozy', 'standard', 'frontier'], labels: { cozy: 'Cozy 🌤️', standard: 'Standard ⛅', frontier: 'Frontier 🌩️' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -7394,16 +8419,11 @@ onGainXp = (amount, pos) => {
     const perk = RPG_PERKS[(RPG.level - 2) % RPG_PERKS.length];
     try { perk.apply(); } catch { /* noop */ }
     rpgRefreshMults();
-    const wBefore = RPG.weapon;
-    if (RPG.level >= 10) RPG.weapon = 3;
-    else if (RPG.level >= 6) RPG.weapon = 2;
-    else if (RPG.level >= 3) RPG.weapon = 1;
-    rpgRefreshMults();
     meters.health = Math.min(150, meters.health + 40);
     meters.energy = Math.min(100, meters.energy + 40);
     burst(player.position.clone(), 0xffd97a, 30, 3);
     chime(880); setTimeout(() => chime(1170), 150);
-    toast(`⭐ Level ${RPG.level}! Perk: ${perk.name} (${perk.desc})${RPG.weapon > wBefore ? ` + NEW WEAPON: ${rpgWeaponDef().name}!` : ''}`);
+    toast(`⭐ Level ${RPG.level}! Perk: ${perk.name} (${perk.desc})`);
     if (player.position) spawnPopup(player.position.clone(), `LEVEL ${RPG.level}!`, '#ffd97a', true);
     try { renderStats(); } catch { /* noop */ }
     try { saveCheckpoint(); } catch { /* noop */ }
@@ -7443,9 +8463,9 @@ function clearAutoTask() {
 }
 function taskIsCombat(it) {
   if (!it) return false;
-  if (it.bear || it.wolf) return true;
+  if (it.bear || it.wolf || it.robber) return true;
   const k = (it.kind || '');
-  return k.includes('BEAR') || k.includes('WOLF');
+  return k.includes('BEAR') || k.includes('WOLF') || k.includes('ROBBER');
 }
 function taskIsGather(it) { return !!(it && it.node); }
 function taskIsWonder(it) { return !!(it && it.id && ['flame', 'harvest', 'oasis', 'bell', 'light', 'scan', 'aurora', 'plant'].includes(it.id)); }
@@ -7463,8 +8483,10 @@ function updateAutoTask(dt) {
   if (taskIsWonder(it) && byId(it.id)?.done && it.id !== 'plant') { clearAutoTask(); return; }
   const d = player.position.distanceTo(it.pos);
   const reach = (it.radius || 3.6) + 0.6;
+  const rw = equippedRanged();
+  const rangedReady = !!rw && ammoCount(rw) > 0;
   // stop at a working distance, not at the outer interact radius
-  const stopD = it.node ? 1.7 : (taskIsCombat(it) ? 3.4 : Math.min(reach, 2.5));
+  const stopD = it.node ? 1.7 : (taskIsCombat(it) ? (rangedReady ? Math.min(11, rw.range * 0.72) : 3.4) : Math.min(reach, 2.5));
   if (d > stopD) {
     // walk into range
     moveTargetN = it.pos.clone().normalize();
@@ -7487,9 +8509,12 @@ function updateAutoTask(dt) {
   activeTask.timer -= dt;
   if (activeTask.timer > 0) return;
   if (taskIsCombat(it)) {
-    activeTask.timer = Math.max(0.3, window.__rpgSwing || 0.55);
+    activeTask.timer = Math.max(0.3, rangedReady ? rw.rate : window.__rpgSwing || 0.55);
+    const target = it.bear || it.wolf || it.robber;
+    if (rangedReady && d <= rw.range && fireAt(target)) return;
     if (it.bear) attackBear(it.bear);
     else if (it.wolf) attackWolf(it.wolf);
+    else if (it.robber) attackRobber(it.robber);
   } else if (taskIsGather(it)) {
     // one full swung chop per cycle; the hit lands on the contact frame
     activeTask.timer = CHOP_DUR + 0.08;
@@ -7526,7 +8551,7 @@ function updateHeroGear() {
   try {
     const axe = player?.userData?.axe;
     if (axe) {
-      const tier = Math.min(RPG.weapon, 3);
+      const tier = Math.min(equippedMelee().tier, 3);
       axe.scale.setScalar(0.95 + tier * 0.06);
       axe.traverse((o) => {
         if (o.isMesh && o.material && o.material.metalness > 0.3) {
@@ -7603,8 +8628,13 @@ function startGame(fresh) {
   started = true; paused = false;
   orbitYaw = 0; // title-vista drift must not lean the first walk into a curve
   renderStats();
+  applyHeroChapter(Life.chapter || 0);
+  renderChapterHUD();
+  renderWeatherChip();
   if (fresh) {
     questNew();
+    pushStory('You arrived on the little planet with an axe and a stubborn heart.', '🌱');
+    rollForecast();
     saveCheckpoint(true);
     toast('🌱 A new life begins! Follow the trail objective.');
     chime(660);
@@ -7615,6 +8645,7 @@ function showTitle() {
   started = false; paused = true;
   questHide();
   closeTrade(); closeBuild(); toggleJournal(false);
+  closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber();
   document.getElementById('help-overlay').classList.add('hidden');
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
@@ -7734,8 +8765,302 @@ function renderSettings() {
   eb.classList.toggle('armed', !!eb.dataset.armed);
   eb.textContent = eb.dataset.armed ? 'Tap again to ERASE EVERYTHING ⚠️' : 'Erase ALL saves 🗑️';
 }
+// ---------- life journey / research / weather / loadout UI ----------
+let workshopOpen = false, almanacOpen = false, loadoutOpen = false, traitOpen = false, robberOpen = null;
+let journalTab = 'story', lastJourneyHud = -9;
+function renderChapterHUD() {
+  const ribbon = document.getElementById('chapter-ribbon');
+  if (!ribbon) return;
+  ribbon.classList.remove('hidden');
+  const ch = chapterNow();
+  const icon = document.getElementById('chapter-icon');
+  const name = document.getElementById('chapter-name');
+  const age = document.getElementById('chapter-age');
+  if (icon) icon.textContent = ch.icon;
+  if (name) name.textContent = `Chapter ${Life.chapter + 1} · ${ch.name}  ${chapterProgress()}`;
+  if (age) age.textContent = `Age ${Math.round(Life.age || ch.age)}`;
+}
+function renderWeatherChip() {
+  const chip = document.getElementById('weather-chip');
+  if (!chip) return;
+  chip.classList.remove('hidden');
+  const active = Weather.active[0] ? HAZARDS[Weather.active[0].id] : null;
+  const today = Weather.today ? HAZARDS[Weather.today] : null;
+  const next = Weather.next ? HAZARDS[Weather.next] : null;
+  const ic = document.getElementById('weather-icon');
+  const tx = document.getElementById('weather-text');
+  const nx = document.getElementById('weather-next');
+  if (ic) ic.textContent = active ? active.icon : today ? today.icon : (isNight() ? '🌙' : '☀️');
+  if (tx) tx.textContent = active ? active.name : today ? today.name : 'Clear skies';
+  if (nx) nx.textContent = next ? `· next ${next.icon}` : (Home.weatherStation ? '· 3-day forecast' : '');
+}
+tickers.push((t) => {
+  if (t - lastJourneyHud < 0.4) return;
+  lastJourneyHud = t;
+  renderChapterHUD();
+  renderWeatherChip();
+});
+function openWorkshop() {
+  if (playerDead) return;
+  workshopOpen = true;
+  document.getElementById('workshop-overlay').classList.remove('hidden');
+  renderWorkshop();
+  chime(520);
+}
+function closeWorkshop() {
+  workshopOpen = false;
+  document.getElementById('workshop-overlay').classList.add('hidden');
+}
+function renderWorkshop() {
+  const list = document.getElementById('workshop-list');
+  if (!list) return;
+  const eraEl = document.getElementById('workshop-era');
+  if (eraEl) eraEl.textContent = TECH_ERAS[researchEra()];
+  const ins = document.getElementById('workshop-insight');
+  if (ins) ins.textContent = `💡 ${Research.insight} insight · ${Research.unlocked.length} techs · ${TECH_ERAS[researchEra()]}`;
+  const q = document.getElementById('workshop-queue');
+  if (q) q.textContent = Research.queue
+    ? `Researching ${TECH.find((t) => t.id === Research.queue.id)?.name || '…'} ${Math.round((Research.queue.t / Research.queue.dur) * 100)}%`
+    : (Home.workshop ? 'Bench idle — choose a technology' : 'Build a Workshop at the homestead board (H)');
+  list.innerHTML = '';
+  if (!Home.workshop) {
+    const note = document.createElement('div');
+    note.className = 'almanac-row';
+    note.innerHTML = `<span class="when">🔧</span><span class="what">Build a <b>Workshop</b> on the homestead board first. Then research opens up.</span>`;
+    list.appendChild(note);
+  }
+  for (let era = 0; era < TECH_ERAS.length; era++) {
+    const group = TECH.filter((t) => t.era === era);
+    if (!group.length) continue;
+    const h = document.createElement('div');
+    h.className = 'tech-era';
+    h.textContent = `${era}. ${TECH_ERAS[era]}`;
+    list.appendChild(h);
+    for (const t of group) {
+      const av = techAvailable(t);
+      const done = hasTech(t.id);
+      const b = document.createElement('button');
+      b.className = 'tech-card' + (done ? ' done' : '');
+      b.disabled = !av.ok;
+      const cost = Object.entries(t.cost).map(([k, n]) => `${n}${ITEM_ICON[k] || k}`).join(' ') + (t.insight ? ` + ${t.insight}💡` : '');
+      b.innerHTML = `<span class="tech-main"><span class="tech-name">${t.name}</span><span class="tech-desc">${t.desc}${done ? '' : (av.ok ? '' : ` — ${av.why}`)}</span></span><span class="tech-cost">${done ? '✓' : cost}</span>`;
+      b.onclick = () => startResearch(t.id);
+      list.appendChild(b);
+    }
+  }
+  if (Home.workshop) {
+    const h = document.createElement('div');
+    h.className = 'tech-era';
+    h.textContent = 'Ammunition';
+    list.appendChild(h);
+    for (const [kind, label, cost] of [
+      ['bullets', 'Cartridges', '1🪙 + 1🪨 → 2'],
+      ['shells', 'Shotgun shells', '2🪙 + 2🪨 → 2'],
+      ['arrows', 'Arrows', '1🪵 → 4'],
+      ['bolts', 'Crossbow bolts', '1🪵 + 1🪨 → 4'],
+      ['stones', 'Sling stones', '1🪨 → 4'],
+    ]) {
+      const b = document.createElement('button');
+      b.className = 'tech-card';
+      b.innerHTML = `<span class="tech-main"><span class="tech-name">Craft ${label}</span><span class="tech-desc">${cost} · have ${Ammo[kind] || 0}</span></span><span class="tech-cost">Craft</span>`;
+      b.onclick = () => buyAmmo(kind, kind === 'arrows' || kind === 'stones' ? 4 : 2);
+      list.appendChild(b);
+    }
+  }
+}
+function openAlmanac() {
+  if (playerDead) return;
+  almanacOpen = true;
+  document.getElementById('almanac-overlay').classList.remove('hidden');
+  renderAlmanac();
+  chime(520);
+}
+function closeAlmanac() {
+  almanacOpen = false;
+  document.getElementById('almanac-overlay').classList.add('hidden');
+}
+function renderAlmanac() {
+  const box = document.getElementById('almanac-body');
+  if (!box) return;
+  box.innerHTML = '';
+  const active = Weather.active.map((h) => HAZARDS[h.id]).filter(Boolean);
+  if (active.length) {
+    const h = document.createElement('div');
+    h.className = 'journal-eyebrow';
+    h.textContent = 'ACTIVE WARNINGS';
+    box.appendChild(h);
+    for (const hz of active) {
+      const row = document.createElement('div');
+      row.className = 'almanac-row hazard';
+      row.innerHTML = `<span class="when">${hz.icon}</span><span class="what"><b>${hz.name}</b> — ${hz.desc}</span>`;
+      box.appendChild(row);
+    }
+  }
+  const h2 = document.createElement('div');
+  h2.className = 'journal-eyebrow';
+  h2.style.marginTop = '8px';
+  h2.textContent = 'FORECAST';
+  box.appendChild(h2);
+  const days = Weather.forecast.length ? Weather.forecast : [{ day: Life.day + 1, id: Weather.next }];
+  for (const f of days) {
+    const hz = f.id ? HAZARDS[f.id] : null;
+    const row = document.createElement('div');
+    row.className = 'almanac-row';
+    row.innerHTML = `<span class="when">Day ${f.day}</span><span class="what">${hz ? `${hz.icon} ${hz.name}` : '☀️ Clear / mild'}</span>`;
+    if (hz) {
+      const counters = hazardCounterTags(f.id);
+      const c = document.createElement('span');
+      c.className = counters.length ? 'ok' : 'warn';
+      c.textContent = counters.length ? `ready: ${counters.slice(0, 3).join(', ')}` : 'no counter ready';
+      row.appendChild(c);
+    }
+    box.appendChild(row);
+  }
+  const h3 = document.createElement('div');
+  h3.className = 'journal-eyebrow';
+  h3.style.marginTop = '8px';
+  h3.textContent = 'YOUR COUNTERS';
+  box.appendChild(h3);
+  const tags = hazardCounterTags(Weather.next || 'thunder');
+  const row = document.createElement('div');
+  row.className = 'almanac-row';
+  row.innerHTML = `<span class="when">🛡️</span><span class="what">${tags.length ? tags.join(' · ') : 'None yet — build storm shutters, a cellar, a well and a barn.'}</span>`;
+  box.appendChild(row);
+  if (Research.insight >= 0) {
+    const tip = document.createElement('div');
+    tip.className = 'journal-sub';
+    tip.style.marginTop = '8px';
+    tip.textContent = `Next hazard: ${Weather.next ? HAZARDS[Weather.next].name : 'none forecast'}. Research counters at the workshop (K).`;
+    box.appendChild(tip);
+  }
+}
+function openLoadout() {
+  if (playerDead) return;
+  loadoutOpen = true;
+  document.getElementById('loadout-overlay').classList.remove('hidden');
+  renderLoadout();
+  chime(520);
+}
+function closeLoadout() {
+  loadoutOpen = false;
+  document.getElementById('loadout-overlay').classList.add('hidden');
+}
+function renderLoadout() {
+  const box = document.getElementById('loadout-body');
+  if (!box) return;
+  box.innerHTML = '';
+  const addGroup = (title) => {
+    const h = document.createElement('div');
+    h.className = 'journal-eyebrow';
+    h.style.marginTop = '6px';
+    h.textContent = title;
+    box.appendChild(h);
+  };
+  addGroup('MELEE');
+  for (const w of Object.values(WEAPONS).filter((x) => x.melee)) {
+    const b = document.createElement('button');
+    b.className = 'loadout-btn' + (Loadout.melee === w.id ? ' equipped' : '');
+    b.disabled = !UnlockedWeapons.includes(w.id);
+    b.innerHTML = `<strong>${w.name}${Loadout.melee === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(2)}× damage · ${w.rate.toFixed(2)}s swing</span>`;
+    b.onclick = () => equipWeapon(w.id);
+    box.appendChild(b);
+  }
+  addGroup('RANGED');
+  const ranged = Object.values(WEAPONS).filter((x) => x.ranged);
+  if (!ranged.length) {
+    const p = document.createElement('div'); p.className = 'journal-sub'; p.textContent = 'Research firearms to unlock ranged weapons.'; box.appendChild(p);
+  }
+  for (const w of ranged) {
+    const b = document.createElement('button');
+    b.className = 'loadout-btn' + (Loadout.ranged === w.id ? ' equipped' : '');
+    b.disabled = !UnlockedWeapons.includes(w.id);
+    b.innerHTML = `<strong>${w.name}${Loadout.ranged === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(1)}× · range ${w.range} · ${w.ammo}: ${Ammo[w.ammo] || 0}</span>`;
+    b.onclick = () => equipWeapon(w.id);
+    box.appendChild(b);
+  }
+  addGroup('AMMUNITION');
+  for (const [kind, label] of [['bullets', 'Cartridges 🔫'], ['shells', 'Shells 💥'], ['arrows', 'Arrows 🏹'], ['bolts', 'Bolts ⚡'], ['stones', 'Sling stones 🪨']]) {
+    const row = document.createElement('div');
+    row.className = 'almanac-row';
+    row.innerHTML = `<span class="when">${Ammo[kind] || 0}</span><span class="what">${label}</span><span class="ok">craft at the workshop (K)</span>`;
+    box.appendChild(row);
+  }
+  addGroup('TOOLS');
+  const tier = researchEra();
+  const row = document.createElement('div');
+  row.className = 'almanac-row';
+  row.innerHTML = `<span class="when">${['Handmade', 'Copper', 'Iron', 'Mechanical', 'Powder'][tier]}</span><span class="what">Axe ×${(tools.axe || 1).toFixed(2)} · Pick ×${(tools.pick || 1).toFixed(2)}</span>`;
+  box.appendChild(row);
+}
+function openTraitChoice() {
+  if (!pendingTrait || !pendingTrait.length) { toast('🌱 A new path will open at the next chapter.'); return; }
+  traitOpen = true;
+  document.getElementById('trait-overlay').classList.remove('hidden');
+  const body = document.getElementById('trait-body');
+  const title = document.getElementById('trait-title');
+  const sub = document.getElementById('trait-sub');
+  if (title) title.textContent = `Chapter ${Life.chapter + 1} — ${chapterNow().name}`;
+  if (sub) sub.textContent = 'Choose the trait that will shape the rest of this life.';
+  body.innerHTML = '';
+  for (const id of pendingTrait) {
+    const t = TRAITS[id];
+    if (!t) continue;
+    const b = document.createElement('button');
+    b.className = 'trait-btn';
+    b.innerHTML = `<strong>${t.icon} ${t.name}</strong><span>${t.desc}</span>`;
+    b.onclick = () => chooseTrait(id);
+    body.appendChild(b);
+  }
+}
+function closeTraitChoice() {
+  traitOpen = false;
+  const el = document.getElementById('trait-overlay');
+  if (el) el.classList.add('hidden');
+}
+function openRobberDialog(r) {
+  if (!r) return;
+  robberOpen = r;
+  r.state = 'wait';
+  document.getElementById('robber-overlay').classList.remove('hidden');
+  const title = document.getElementById('robber-title');
+  const line = document.getElementById('robber-line');
+  if (title) title.textContent = r.name || 'A robber blocks the path.';
+  if (line) line.textContent = r.demandText || '“Hand over your coin and no one gets hurt.”';
+  const box = document.getElementById('robber-choices');
+  box.innerHTML = '';
+  const add = (label, sub, fn) => {
+    const b = document.createElement('button');
+    b.className = 'robber-btn';
+    b.innerHTML = `<strong>${label}</strong><span>${sub}</span>`;
+    b.onclick = fn;
+    box.appendChild(b);
+  };
+  add('Pay the toll', 'Lose 3🪙 or 2🍎 and they leave.', () => {
+    if (inv.gold >= 3) inv.gold -= 3; else if (inv.food >= 2) inv.food -= 2; else { toast('You have nothing worth taking.'); return; }
+    r.state = 'leave'; closeRobber(); saveCheckpoint(); toast('💰 They take the toll and vanish into the dark.');
+  });
+  add('Refuse — fight', 'Draw your weapon and drive them off.', () => {
+    closeRobber();
+    if (r.interact) setAutoTask(r.interact);
+  });
+  add('Intimidate', 'A gun or a high level can end this without blood. (needs a ranged weapon)', () => {
+    closeRobber();
+    if (!equippedRanged()) { toast('No firearm to back up the threat.'); return; }
+    if (Math.random() < 0.7) { r.state = 'flee'; Threats.robbersDrivenOff++; Threats.reputation++; grantInsight(2, 'Intimidated a robber'); toast('😤 They back away and run.'); }
+    else { toast('They call your bluff!'); if (r.interact) setAutoTask(r.interact); }
+    saveCheckpoint();
+  });
+}
+function closeRobber() {
+  robberOpen = null;
+  document.getElementById('robber-overlay').classList.add('hidden');
+}
 function handleEscape() {
   if (!started) return; // title screen: nothing to do
+  if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen) {
+    closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber();
+    return;
+  }
   if (npcOpen || buildOpen) { closeTrade(); closeBuild(); return; }
   if (!document.getElementById('settings-overlay').classList.contains('hidden')) { closeSettings(); return; }
   if (!document.getElementById('help-overlay').classList.contains('hidden')) { document.getElementById('help-overlay').classList.add('hidden'); return; }
@@ -7771,6 +9096,12 @@ Object.assign(window.__lp, {
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
+  life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
+  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight },
+  weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt },
+  chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice },
+  hazard: (id) => startHazard(id), spawnRobber, killRobber, openRobber: openRobberDialog,
+  openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
     const it = pickInteractableAt(x, y);
@@ -7806,7 +9137,7 @@ Object.defineProperties(window.__lp, {
  // ---------- input ----------
 const keys = {};
 addEventListener('keydown', (e) => {
-  if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'Digit1', 'Digit2', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     moveTargetN = null; // manual steering cancels click-to-move
@@ -7814,6 +9145,16 @@ addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape') { handleEscape(); return; }
   if (!started || paused) return;
+  if (e.code === 'KeyK') { workshopOpen ? closeWorkshop() : openWorkshop(); return; }
+  if (e.code === 'KeyN') { almanacOpen ? closeAlmanac() : openAlmanac(); return; }
+  if (e.code === 'KeyL') { loadoutOpen ? closeLoadout() : openLoadout(); return; }
+  if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen) return;
+  if (e.code === 'Digit1' && !playerDead) { equipWeapon(Loadout.melee); return; }
+  if (e.code === 'Digit2' && !playerDead) {
+    if (Loadout.ranged) equipWeapon(Loadout.ranged);
+    else toast('🎒 No ranged weapon equipped — open Loadout (L).');
+    return;
+  }
   if (e.code === 'KeyE' && !playerDead && !npcOpen && !buildOpen) {
     // RPG style: one press locks the nearby target and the hero does the whole job.
     const t = currentTarget || activeTask?.interact;
@@ -7861,7 +9202,7 @@ const CURSOR_COLORS = {
 function cursorIconFor(it) {
   if (!it) return null;
   if (it.bear) return it.bear.cub ? 'paw' : 'sword';
-  if (it.wolf) return 'sword';
+  if (it.wolf || it.robber) return 'sword';
   if (it.npc) return 'talk';
   if (it.node) {
     const t = it.node.type;
@@ -7884,7 +9225,7 @@ function cursorIconFor(it) {
   if (id === 'home-fire') return 'pot';
   if (id === 'home-well') return 'water';
   if (id === 'home-trough' || id === 'home-barn') return 'basket';
-  if (id === 'home-board' || id === 'home-door' || id === 'home-stall') return 'hammer';
+  if (id === 'home-board' || id === 'home-door' || id === 'home-stall' || id === 'home-workshop') return 'hammer';
   if (id === 'skiff') return 'oar';
   if (id === 'fish') return 'rod';
   if (id.startsWith('shell')) return 'shell';
@@ -7898,6 +9239,7 @@ function cursorLabelFor(it) {
   if (it.node) return `${it.node.verb} ${it.node.name}`;
   if (it.bear) return it.bear.cub ? 'Shoo cub' : 'Fight bear';
   if (it.wolf) return 'Fight wolf';
+  if (it.robber) return 'Confront robber';
   if (it.npc) return `Talk to ${it.npc.name}`;
   if (it.id && it.id.startsWith('plot')) return 'Tend plot';
   if (it.id && it.id.startsWith('animal')) return 'Visit livestock';
@@ -7907,6 +9249,7 @@ function cursorLabelFor(it) {
     fish: 'Fish here', skiff: 'Board skiff', lagoon: 'Wade in',
     'home-bed': 'Sleep', 'home-fire': 'Cook', 'home-well': 'Draw water', 'home-trough': 'Feed herd',
     'home-board': 'Build & goals', 'home-door': 'Home', 'home-barn': 'Barn', 'home-stall': 'Market',
+    'home-workshop': 'Research & craft',
   };
   if (names[it.id]) return names[it.id];
   if ((it.id || '').startsWith('shell')) return 'Pocket shell';
@@ -8107,6 +9450,23 @@ let globeMode = false;
 let photoMode = null; // { dist, height, side, aim } — QA portrait camera
 function toggleGlobe() { globeMode = !globeMode; toast(globeMode ? '🌐 Globe view — the patchwork planet' : '🧭 Back to traveler view'); }
 document.getElementById('btn-globe').onclick = toggleGlobe;
+document.getElementById('btn-workshop').onclick = () => (workshopOpen ? closeWorkshop() : openWorkshop());
+document.getElementById('btn-almanac').onclick = () => (almanacOpen ? closeAlmanac() : openAlmanac());
+document.getElementById('btn-loadout').onclick = () => (loadoutOpen ? closeLoadout() : openLoadout());
+document.getElementById('btn-close-workshop').onclick = closeWorkshop;
+document.getElementById('btn-workshop-leave').onclick = closeWorkshop;
+document.getElementById('btn-close-almanac').onclick = closeAlmanac;
+document.getElementById('btn-almanac-leave').onclick = closeAlmanac;
+document.getElementById('btn-close-loadout').onclick = closeLoadout;
+document.getElementById('btn-loadout-leave').onclick = closeLoadout;
+document.getElementById('btn-close-robber').onclick = closeRobber;
+for (const b of qsa('#journal-tabs .jtab')) {
+  b.onclick = () => { journalTab = b.dataset.tab || 'story'; renderJournal(); };
+}
+for (const id of ['workshop-overlay', 'almanac-overlay', 'loadout-overlay']) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('pointerdown', (e) => { if (e.target.id === id) { closeWorkshop(); closeAlmanac(); closeLoadout(); } });
+}
 document.getElementById('btn-sound').onclick = () => {
   settings.sound = !settings.sound;
   persistSettings(); applySettings();
