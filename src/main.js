@@ -3689,7 +3689,10 @@ function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', in
   try {
     updateHeroGear();
     setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
-    try { setText('rpg-weapon', (equippedRanged() || equippedMelee()).name); } catch { setText('rpg-weapon', rpgWeaponDef().name); }
+    try {
+      const rw = equippedRanged();
+      setText('rpg-weapon', rw ? `${rw.name} · ${Ammo[rw.ammo] || 0}` : equippedMelee().name);
+    } catch { setText('rpg-weapon', rpgWeaponDef().name); }
     setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
     try { setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP · 💡${Research.insight}`); } catch { /* early boot */ }
     const xf = document.getElementById('xp-fill');
@@ -4905,6 +4908,7 @@ function endHazard(h) {
   Life.stats.hazardWins[id] = (Life.stats.hazardWins[id] || 0) + 1;
   Life.hazardWins[id] = (Life.hazardWins[id] || 0) + 1;
   if (Weather.today === id) Weather.today = null;
+  if (weatherFX) { scene.remove(weatherFX.pts); weatherFX = null; }
   if (hazardProps && hazardProps.id === id) { scene.remove(hazardProps); hazardProps = null; }
   if (typeof renderWeatherChip === 'function') renderWeatherChip();
   grantInsight(2, `Survived ${hazardById(id)?.name || id}`);
@@ -5007,12 +5011,12 @@ tickers.push((t, dt) => {
     weatherFX.pts.quaternion.copy(player.quaternion);
   }
   // active hazard lifecycle
+  Weather.flash = Math.max(0, Weather.flash - dt * 6);
   for (let i = Weather.active.length - 1; i >= 0; i--) {
     const h = Weather.active[i];
     h.t += dt;
     if (h.dur <= 0 && h.t > 1) { endHazard(h); continue; }
     if (h.id === 'thunder') {
-      Weather.flash = Math.max(0, Weather.flash - dt * 6);
       if (Math.random() < dt * 0.55) {
         Weather.flash = 1; chime(80);
         const up = player.position.clone().normalize();
