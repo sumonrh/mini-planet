@@ -161,7 +161,9 @@
         <li><b>Weather:</b> press <kbd>N</kbd> for the almanac. Forecasts warn you about blizzards, thunderstorms, floods, droughts, eruptions, wildfires and hail — build storm shutters, a cellar, a well, irrigation, a pump or an ash mask before they hit.</li>
         <li><b>Research:</b> press <kbd>K</kbd> to open the workshop. Earn insight by discovering things, surviving hazards and completing chapters; research tools, buildings and firearms. Build the Workshop on the homestead board (<kbd>H</kbd>) once researched.</li>
         <li><b>Weapons:</b> press <kbd>L</kbd> for the loadout. Melee: hatchet → iron axe → war axe → halberd. Ranged: sling → bow → crossbow → musket → lever rifle → shotgun. Right-click to aim/fire manually, <kbd>X</kbd> to reload, left-click a predator for auto-engage. Craft ammo at the workshop; gunshots are loud and can call wolves.</li>
-        <li><b>Bounties &amp; hunting:</b> press <kbd>B</kbd> for the bounty board. Deer and hares roam the forest and fields — hunt them for meat and pelts. Bounties reward robbers driven off, wolves culled, venison, bears and fish.</li>
+        <li><b>Bounties &amp; hunting:</b> press <kbd>B</kbd> for the bounty board. Deer and hares roam the forest and fields — hunt them for meat and pelts. A clean shot (one or two hits) yields bonus meat. Drive off poachers to free trapped animals, or confront them.</li>
+        <li><b>Accessibility:</b> pause menu settings include reduced flashes/shake, large text, high-contrast panels, and the Cozy difficulty.</li>
+        <li><b>Legacy:</b> when your goals are met, retire into an heir from the homestead board. New Game+ keeps your blueprints, journal and one heirloom tool, with harsher weather.</li>
         <li><b>Threats:</b> bears, wolves, and night robbers, tolls and rustlers. Confront robbers to pay, fight or intimidate. Lanterns, dogs and fences deter them.</li>
         <li><b>Fernwood:</b> tend the eternal flame 3×.</li>
         <li><b>Clover Fields:</b> water and harvest the rows.</li>
@@ -207,6 +209,7 @@
         <div id="workshop-insight">💡 0 insight</div>
         <div id="workshop-queue">Idle</div>
       </div>
+      <div id="workshop-bar" class="bench-bar hidden"><span id="workshop-bar-fill"></span></div>
       <div id="workshop-tree" class="tech-tree"></div>
       <div id="workshop-list"></div>
       <button id="btn-workshop-leave">Back to the bench 👋</button>
@@ -267,6 +270,18 @@
       <p class="journal-sub">Robbers, predators and wild game. Claim the reward when the job is done.</p>
       <div id="bounty-body"></div>
       <button id="btn-bounty-leave">Back outside 👋</button>
+    </div>
+  </div>
+
+  <!-- Chapter intro card (one per chapter) -->
+  <div id="chapter-card" class="hidden">
+    <div class="help-card npc-card">
+      <div class="journal-eyebrow">CHAPTER <span id="card-num">I</span> · <span id="card-name">Arrival</span></div>
+      <h2 id="card-title">A new chapter begins.</h2>
+      <p id="card-blurb" class="journal-sub"></p>
+      <div id="card-goals"></div>
+      <p id="card-tip" class="journal-sub"></p>
+      <button id="card-begin">Begin this chapter →</button>
     </div>
   </div>
 

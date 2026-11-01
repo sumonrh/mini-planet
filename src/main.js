@@ -3288,7 +3288,46 @@ const player = new THREE.Group();
   const longCoat = mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.45, 12), mat(0x6e6a52), 0, 0.02, 0, false);
   longCoat.userData.noMerge = true; // toggled by chapter
   torsoG.add(longCoat);
-  player.userData.gear = { hatG, satchel, goggles, rifleG, beard, greyHair, longCoat };
+  // ---- five gear variants: bindle, apron, wedding band + lantern, bandolier, staff ----
+  const bindle = new THREE.Group();
+  bindle.position.set(0.1, 0.55, -0.42);
+  bindle.rotation.z = -0.35;
+  bindle.add(mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.1, 5), mat(0x7a5230), 0, 0, 0, false));
+  bindle.add(mesh(new THREE.SphereGeometry(0.18, 7, 6), mat(0xc9a45c), 0.05, -0.42, 0));
+  bindle.add(mesh(new THREE.TorusGeometry(0.06, 0.014, 4, 8), mat(0x5a3e2b), 0.05, -0.24, 0, false));
+  torsoG.add(bindle);
+  const apron = new THREE.Group();
+  apron.position.set(0, 0.12, 0.3);
+  apron.add(mesh(new THREE.BoxGeometry(0.5, 0.66, 0.03), mat(0x8a6a48), 0, -0.16, 0));
+  apron.add(mesh(new THREE.BoxGeometry(0.44, 0.1, 0.035), mat(0x6b4a2f), 0, 0.16, 0, false));
+  apron.add(mesh(new THREE.BoxGeometry(0.16, 0.12, 0.05), mat(0x5a3e2b), 0.12, -0.05, 0.03, false)); // pocket
+  torsoG.add(apron);
+  const band = new THREE.Group();
+  band.position.set(0.24, 0.02, 0.24);
+  band.add(mesh(new THREE.TorusGeometry(0.032, 0.008, 4, 8).rotateX(Math.PI / 2), mat(0xd9b34a, { metalness: 0.7 }), 0, 0, 0, false));
+  torsoG.add(band);
+  const lantern = new THREE.Group();
+  lantern.position.set(-0.34, -0.02, 0.22);
+  lantern.add(mesh(new THREE.BoxGeometry(0.1, 0.16, 0.1), mat(0x5a3e2b), 0, 0, 0, false));
+  lantern.add(mesh(new THREE.BoxGeometry(0.07, 0.09, 0.07), mat(0xffd97a, { emissive: 0xffb03a, emissiveIntensity: 1.1 }), 0, 0, 0, false));
+  lantern.add(mesh(new THREE.TorusGeometry(0.04, 0.008, 4, 8), mat(0x8a8f96), 0, 0.1, 0, false));
+  torsoG.add(lantern);
+  const bandolier = new THREE.Group();
+  bandolier.position.set(0, 0.28, 0.05);
+  bandolier.rotation.z = 0.7;
+  bandolier.add(mesh(new THREE.BoxGeometry(0.09, 0.78, 0.05), mat(0x5a3e2b), 0, 0, 0.26, false));
+  for (let i = -2; i <= 2; i++) bandolier.add(mesh(new THREE.CylinderGeometry(0.02, 0.024, 0.09, 5), mat(0xd9b34a, { metalness: 0.5 }), i * 0.1, i * 0.13, 0.29, false));
+  torsoG.add(bandolier);
+  const staff = new THREE.Group();
+  staff.position.set(-0.42, 0.05, 0.1);
+  staff.add(mesh(new THREE.CylinderGeometry(0.028, 0.034, 1.5, 6), mat(0x6b4a2f), 0, -0.4, 0, false));
+  staff.add(mesh(new THREE.SphereGeometry(0.07, 6, 5), mat(0x8e9aa3, { metalness: 0.6 }), 0, 0.36, 0, false));
+  torsoG.add(staff);
+  player.userData.gear = {
+    hatG, satchel, goggles, rifleG, beard, greyHair, longCoat,
+    bindle, apron, band, lantern, bandolier, staff,
+    lodDetails: [bindle, apron, band, lantern, bandolier, staff, goggles, beard, greyHair],
+  };
   player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
 
   // ---- animation: walk (knees/ankles), idle breathing, scarf lag, chop, slash ----
@@ -3388,17 +3427,52 @@ function applyHeroChapter(ch) {
   g.hatG.visible = !cap;
   for (const p of player.userData.capParts || []) p.visible = cap;
   g.satchel.visible = ch >= 2;
-  g.goggles.visible = ch >= 3;
-  g.beard.visible = ch >= 4;
-  g.greyHair.visible = ch >= 4;
   g.longCoat.visible = ch >= 4;
+  // five complete gear variants, swappable layers on the same rig
+  const allowed = {
+    bindle: ch === 0, apron: ch === 1, band: ch >= 2, lantern: ch >= 2,
+    bandolier: ch >= 3, staff: ch >= 4, goggles: ch >= 3, beard: ch >= 4, greyHair: ch >= 4,
+  };
+  for (const [key, on] of Object.entries(allowed)) {
+    if (g[key]) g[key].userData.allowed = on;
+  }
   const m = player.userData.heroMats;
   if (m) {
     m.coat.color.setHex([0xd9a13c, 0xc9a45c, 0xb08a45, 0x8a7a4a, 0x6e6a52][ch]);
     m.coatDark.color.setHex([0xb9812a, 0xa07a3a, 0x8a6a38, 0x6e633a, 0x57533f][ch]);
     m.capM.color.setHex(ch >= 4 ? 0x5a5a66 : 0xc0392b);
   }
+  refreshHeroLod();
 }
+// LOD 2: drop small accessories once the camera pulls back; LOD 1 keeps everything.
+function refreshHeroLod(forceFar) {
+  const g = player.userData.gear;
+  if (!g || !g.lodDetails) return;
+  if (forceFar !== undefined) player.userData.lodLock = forceFar;
+  const locked = player.userData.lodLock;
+  const d = (typeof camera !== 'undefined' && camera && player.position) ? camera.position.distanceTo(player.position) : 0;
+  const far = locked !== null && locked !== undefined ? locked : d > 24;
+  for (const grp of g.lodDetails) grp.visible = !!grp.userData.allowed && !far;
+  player.userData.lodLevel = far ? 2 : 1;
+}
+function measureHeroDrawCalls() {
+  const hidden = [];
+  for (const c of scene.children) {
+    if (c === player) continue;
+    hidden.push([c, c.visible]);
+    c.visible = false;
+  }
+  try { renderer.render(scene, camera); } catch { /* headless */ }
+  const calls = renderer.info.render.calls;
+  for (const [c, v] of hidden) c.visible = v;
+  return calls;
+}
+let lastLodCheck = -9;
+tickers.push((t) => {
+  if (t - lastLodCheck < 0.5) return;
+  lastLodCheck = t;
+  refreshHeroLod();
+});
 function applyHeroRanged(w) {
   const g = player.userData.gear;
   if (g) g.rifleG.visible = !!w;
@@ -3433,16 +3507,24 @@ function mergeGeometryList(meshes) {
   out.computeBoundingSphere();
   return out;
 }
+function matKey(m) {
+  if (!m || Array.isArray(m)) return null;
+  const col = m.color && m.color.getHexString ? m.color.getHexString() : '';
+  const em = m.emissive && m.emissive.getHexString ? m.emissive.getHexString() : '';
+  return [m.type || 'Mat', col, em, m.metalness ?? '', m.roughness ?? '', m.flatShading ? 1 : 0, m.map?.uuid || ''].join('|');
+}
 function mergeDirectMeshes(group) {
   const byMat = new Map();
   for (const c of group.children) {
     if (!c.isMesh || c.userData.noMerge || c.children.length || !c.geometry?.attributes?.position) continue;
-    if (Array.isArray(c.material)) continue;
-    if (!byMat.has(c.material)) byMat.set(c.material, []);
-    byMat.get(c.material).push(c);
+    const key = matKey(c.material);
+    if (!key) continue;
+    if (!byMat.has(key)) byMat.set(key, []);
+    byMat.get(key).push(c);
   }
-  for (const [material, list] of byMat) {
+  for (const [, list] of byMat) {
     if (list.length < 2) continue;
+    const material = list[0].material;
     const merged = new THREE.Mesh(mergeGeometryList(list), material);
     merged.castShadow = list.some((m) => m.castShadow);
     merged.receiveShadow = list.some((m) => m.receiveShadow);
@@ -3521,6 +3603,56 @@ function chime(freq = 520) {
     g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.9);
     o.connect(g).connect(ctx.destination); o.start(); o.stop(ctx.currentTime + 0.9);
   } catch { /* no audio */ }
+}
+const sfxLog = [];
+function logSfx(name) { sfxLog.push(name); if (sfxLog.length > 20) sfxLog.shift(); }
+function noiseBurst(dur = 0.3, vol = 0.25, freq = 900, type = 'lowpass', delay = 0) {
+  if (muted) return;
+  try {
+    const ctx = ac();
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+    const g = ctx.createGain();
+    const t0 = ctx.currentTime + delay;
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    src.connect(f).connect(g).connect(ctx.destination);
+    src.start(t0); src.stop(t0 + dur);
+  } catch { /* no audio */ }
+}
+function sfxShot(w) {
+  if (muted) return;
+  const big = (w?.tier || 0) >= 3;
+  logSfx('gunshot');
+  noiseBurst(big ? 0.32 : 0.18, big ? 0.42 : 0.26, big ? 620 : 1100, 'lowpass');
+  if (big) noiseBurst(0.5, 0.14, 300, 'lowpass', 0.06);
+  chime(big ? 150 : 260);
+}
+function weatherSound(id) {
+  if (muted) return;
+  logSfx('weather:' + id);
+  if (id === 'thunder') {
+    noiseBurst(0.5, 0.3, 380, 'lowpass');
+    noiseBurst(0.9, 0.18, 180, 'lowpass', 0.14);
+    chime(70);
+  } else if (id === 'blizzard') {
+    noiseBurst(1.6, 0.14, 2400, 'highpass');
+    noiseBurst(1.2, 0.1, 700, 'lowpass', 0.2);
+  } else if (id === 'flood') {
+    noiseBurst(2.0, 0.16, 1200, 'lowpass');
+  } else if (id === 'hail') {
+    for (let i = 0; i < 8; i++) noiseBurst(0.06, 0.12, 2600, 'highpass', i * 0.09);
+  } else if (id === 'eruption') {
+    noiseBurst(1.8, 0.3, 120, 'lowpass');
+    noiseBurst(0.8, 0.18, 600, 'lowpass', 0.4);
+  } else if (id === 'wildfire' || id === 'tornado') {
+    noiseBurst(1.4, 0.2, 500, 'lowpass');
+    noiseBurst(0.5, 0.12, 1800, 'bandpass', 0.3);
+  }
 }
 
 // ---------- wonders / HUD ----------
@@ -3608,6 +3740,7 @@ function renderJournal() {
     for (const id of Life.traits) { const t = TRAITS[id]; if (t) addRow(`${t.name} — ${t.desc}`, t.icon); }
     addHeading('THREATS');
     addRow(`${Threats.robbersDrivenOff || 0} robbers driven off · ${Threats.bounties || 0} bounties · ${Threats.thefts || 0} thefts`, '⚠️');
+    addRow(`Reputation ${Threats.reputation || 0} — ${repTier().label}`, repTier().icon, (Threats.reputation || 0) >= 2);
   } else if (journalTab === 'tech') {
     addHeading(`TECHNOLOGY · ${TECH_ERAS[researchEra()].toUpperCase()}`);
     addRow(`💡 ${Research.insight} insight · ${Research.unlocked.length} technologies`, '🔬');
@@ -4513,13 +4646,19 @@ function doTrade(n, t) {
     return toast('🎒 Pack full — trade cancelled.');
   }
   if (t.effect) t.effect();
-  // Community trait: a small rebate on every barter
+  // Community trait + reputation: a small rebate on every barter
   try {
     if (Research.tradeBonus > 1) {
       for (const [k, num] of Object.entries(t.give)) {
         const rebate = Math.floor(num * (Research.tradeBonus - 1));
         if (rebate > 0) inv[k] += rebate;
       }
+    }
+    const rep = reputationRebate(t);
+    if (rep) {
+      const [k, num] = rep;
+      inv[k] = (inv[k] || 0) + num;
+      toast(`🤝 ${repTier().label}: ${fmtItems({ [k]: num })} back.`);
     }
   } catch { /* early */ }
   t.count++;
@@ -4579,6 +4718,29 @@ function openTrade(n) {
   renderTradePanel();
   chime(520);
 }
+function repTier() {
+  const r = Threats.reputation || 0;
+  if (r >= 8) return { key: 'trusted', label: 'Trusted neighbour', icon: '🌟', rebate: 2 };
+  if (r >= 2) return { key: 'known', label: 'Known face', icon: '🤝', rebate: 1 };
+  return { key: 'stranger', label: 'Stranger', icon: '👋', rebate: 0 };
+}
+function reputationRebate(t) {
+  const tier = repTier();
+  if (!tier.rebate) return null;
+  const entries = Object.entries(t.give || {}).filter(([, n]) => n > 0);
+  if (!entries.length) return null;
+  const total = entries.reduce((a, [, n]) => a + n, 0);
+  if (total < 2) return null;
+  const gold = entries.find(([k, n]) => k === 'gold' && n >= 2);
+  if (gold) return ['gold', Math.min(gold[1], tier.rebate)];
+  const [k, n] = entries.sort((a, b) => b[1] - a[1])[0];
+  return n >= 2 ? [k, Math.min(n, tier.rebate)] : null;
+}
+function repLineHtml() {
+  const tier = repTier();
+  const disc = tier.rebate ? ` · ${tier.rebate} unit rebate on multi-item barters` : '';
+  return `<div class="almanac-row" style="margin-bottom:8px"><span class="when">${tier.icon}</span><span class="what"><b>${tier.label}</b> — reputation ${Threats.reputation || 0}${disc}</span></div>`;
+}
 function renderTradePanel() {
   const n = npcOpen;
   if (!n) return;
@@ -4586,6 +4748,7 @@ function renderTradePanel() {
   box.innerHTML = '';
   document.getElementById('npc-line').textContent = `“${n.lines[n.lineIdx % n.lines.length]}”`;
   renderCourtRow(n, box);
+  box.insertAdjacentHTML('beforeend', repLineHtml());
   for (const t of n.trades) {
     const aff = tradeAfford(n, t);
     const b = document.createElement('button');
@@ -4623,7 +4786,7 @@ const Life = {
   chronicle: [],
   fishBook: {},
   recipes: {},
-  chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null,
+  chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null, seenCards: [],
 };
 
 // ==================== LIFE JOURNEY, RESEARCH, WEATHER, WEAPONS ====================
@@ -4633,6 +4796,7 @@ const CHAPTERS = [
     id: 'arrival', icon: '🌱', name: 'Arrival', age: 20,
     blurb: 'A stranger on a small green world. Survive the first nights.',
     beat: 'You arrived with an axe and a stubborn heart. The planet is listening.',
+    tip: 'Click a tree or press E once — the hero walks over and does the whole job. Build a Mud Hut (H) before dark.',
     goals: [
       { text: 'Build a Mud Hut', done: () => Home.house >= 1 },
       { text: 'Sleep one night', done: () => Life.nights >= 1 },
@@ -4644,6 +4808,7 @@ const CHAPTERS = [
     id: 'roots', icon: '🌿', name: 'Roots', age: 28,
     blurb: 'A roof, a field, a well. A promise you water daily.',
     beat: 'The tent became a home. Now the land asks what you will grow.',
+    tip: 'Open the Workshop (K) to research. Copper tools speed every chore; a well and irrigation blunt droughts and floods.',
     goals: [
       { text: 'Raise a Farmhouse', done: () => Home.house >= 2 },
       { text: 'Dig a Stone Well', done: () => !!Home.well },
@@ -4655,6 +4820,7 @@ const CHAPTERS = [
     id: 'family', icon: '🏡', name: 'Family', age: 36,
     blurb: 'More hands, more mouths, more reasons to come home.',
     beat: 'Someone else’s name is on the door now. The stakes have a heartbeat.',
+    tip: 'Thieves and rustlers come at night. Lanterns, a dog and fences deter them; confront with click or E. A barn shelters animals in blizzards.',
     goals: [
       { text: 'Marry your sweetheart', done: () => !!Life.spouse },
       { text: 'Welcome a child', done: () => Life.kids.length >= 1 },
@@ -4666,6 +4832,7 @@ const CHAPTERS = [
     id: 'mastery', icon: '⚙️', name: 'Mastery', age: 48,
     blurb: 'Iron, steam and powder. Bend the planet without breaking it.',
     beat: 'Your hands know the work now. The workshop hums before sunrise.',
+    tip: 'Research the Gunsmith after the Forge (K), craft ammo, then equip a rifle (L). Gunshots are loud — they can call wolves.',
     goals: [
       { text: 'Build a Workshop', done: () => !!Home.workshop },
       { text: 'Reach the Mechanical era', done: () => researchEra() >= 3 },
@@ -4677,6 +4844,7 @@ const CHAPTERS = [
     id: 'legacy', icon: '🌅', name: 'Legacy', age: 65,
     blurb: 'The story is longer than one pair of hands. Hand it on.',
     beat: 'The planet is still small. Your story no longer is.',
+    tip: 'Retire into an heir from the homestead board (H) when your goals are met. Your journal keeps the story; the planet keeps the house.',
     goals: [
       { text: 'Raise an heir to teen', done: () => Life.kids.some((k) => k.stage >= 2) },
       { text: 'Big Farmhouse + cellar', done: () => Home.house >= 3 },
@@ -4713,6 +4881,36 @@ function pushStory(text, icon = '✦') {
   Life.story.push({ day: Life.day, chapter: Life.chapter, text, icon });
   if (Life.story.length > 80) Life.story.shift();
 }
+const CARD_ROMAN = ['I', 'II', 'III', 'IV', 'V'];
+function showChapterCard(ch) {
+  if (!ch) return;
+  document.getElementById('card-num').textContent = CARD_ROMAN[Life.chapter] || String(Life.chapter + 1);
+  document.getElementById('card-name').textContent = ch.name;
+  document.getElementById('card-title').textContent = `${ch.icon} ${ch.name}`;
+  document.getElementById('card-blurb').textContent = ch.beat;
+  document.getElementById('card-tip').textContent = ch.tip || '';
+  const goals = document.getElementById('card-goals');
+  goals.innerHTML = '';
+  for (const g of ch.goals) {
+    const row = document.createElement('div');
+    row.className = 'goal-row';
+    row.innerHTML = `<span class="goal-era">○</span><span>${g.text}</span>`;
+    goals.appendChild(row);
+  }
+  document.getElementById('chapter-card').classList.remove('hidden');
+  chime(700);
+}
+function closeChapterCard() {
+  document.getElementById('chapter-card').classList.add('hidden');
+  Life.seenCards = Life.seenCards || [];
+  if (!Life.seenCards.includes(Life.chapter)) Life.seenCards.push(Life.chapter);
+  saveCheckpoint();
+}
+function maybeShowChapterCard() {
+  if (!started || playerDead) return;
+  if ((Life.seenCards || []).includes(Life.chapter)) return;
+  showChapterCard(chapterNow());
+}
 function advanceChapter() {
   if (!chapterGoalsMet() || Life.chapter >= CHAPTERS.length - 1) return false;
   const old = chapterNow();
@@ -4736,6 +4934,7 @@ function advanceChapter() {
   applyHeroChapter(Life.chapter);
   saveCheckpoint();
   renderChapterHUD();
+  setTimeout(showChapterCard, 900);
   return true;
 }
 function pickTraitChoice() {
@@ -4798,7 +4997,7 @@ const TECH = [
   { id: 'explosives', era: 4, name: 'Explosives', insight: 7, cost: { stone: 10, gold: 6 }, req: ['forge'], desc: 'Mining yields +1 stone per hit.' },
 ];
 const Research = {
-  insight: 4, unlocked: [], queue: null, progress: 0, speed: 1,
+  insight: 4, unlocked: [], queue: null, queued: null, progress: 0, speed: 1,
   healBonus: 0, rangedBonus: 1, farmBonus: 1, tradeBonus: 1, upkeepBonus: 0, stormWard: 0, ashMask: false,
 };
 function hasTech(id) { return Research.unlocked.includes(id); }
@@ -4809,7 +5008,9 @@ function researchEra() {
 }
 function techAvailable(t) {
   if (hasTech(t.id)) return { ok: false, why: 'Researched ✓' };
-  if (Research.queue) return { ok: false, why: 'Bench busy' };
+  if (Research.queue?.id === t.id) return { ok: false, why: 'On the bench' };
+  if (Research.queued?.id === t.id) return { ok: false, why: 'Already queued' };
+  if (Research.queue && Research.queued) return { ok: false, why: 'Bench full' };
   for (const r of t.req) if (!hasTech(r)) return { ok: false, why: `Needs ${TECH.find((x) => x.id === r)?.name || r}` };
   if (!Home.workshop && t.era >= 1 && t.id !== 'workshop') return { ok: false, why: 'Build a workshop first' };
   for (const [k, n] of Object.entries(t.cost)) if ((inv[k] || 0) < n) return { ok: false, why: `Need ${n} ${ITEM_ICON[k] || k}` };
@@ -4823,8 +5024,14 @@ function startResearch(id) {
   if (!av.ok) { toast(`🔧 ${av.why}.`); return; }
   for (const [k, n] of Object.entries(t.cost)) inv[k] -= n;
   Research.insight -= t.insight;
-  Research.queue = { id, t: 0, dur: Math.max(8, 22 - researchEra() * 2) };
-  toast(`🔬 Researching ${t.name}…`);
+  const job = { id, t: 0, dur: Math.max(8, 22 - researchEra() * 2) };
+  if (!Research.queue) {
+    Research.queue = job;
+    toast(`🔬 Researching ${t.name}…`);
+  } else {
+    Research.queued = job;
+    toast(`📋 ${t.name} queued — starts when the bench frees up.`);
+  }
   chime(560);
   renderStats(); renderWorkshop();
 }
@@ -4844,7 +5051,8 @@ function applyTech(id) {
     case 'iron-tools': tools.axe = Math.max(tools.axe, 1.6); tools.pick = Math.max(tools.pick, 1.6); unlockWeapon('war-axe'); unlockWeapon('crossbow'); break;
     case 'mechanical-tools': tools.axe = Math.max(tools.axe, 2.0); tools.pick = Math.max(tools.pick, 2.0); break;
     case 'workshop': break; // unlocks the Workshop building on the homestead board
-    case 'windmill': break; // unlocks the Windmill building    case 'sawmill': break; // unlocks the Sawmill building
+    case 'windmill': break; // unlocks the Windmill building
+    case 'sawmill': break; // unlocks the Sawmill building
     case 'grain-mill': break; // unlocks the Grain Mill building
     case 'steam-pump': break; // unlocks the Steam Pump building
     case 'forge': Home.forge = true; unlockWeapon('halberd'); break;
@@ -4876,6 +5084,14 @@ function tickResearch(dt) {
     Research.queue = null;
     Research.unlocked.push(id);
     applyTech(id);
+    if (Research.queued) {
+      const next = Research.queued;
+      Research.queued = null;
+      Research.queue = { ...next, t: 0 };
+      const nt = TECH.find((x) => x.id === next.id);
+      toast(`🔬 Bench free — ${nt?.name || 'next project'} begins.`);
+      renderWorkshop();
+    }
   }
 }
 tickers.push((t, dt) => tickResearch(dt));
@@ -4935,6 +5151,7 @@ function startHazard(id) {
   if (id === 'flood') Life.flood = true;
   toast(`${h.icon} ${h.name.toUpperCase()}! ${h.desc} Prepare now!`);
   chime(180);
+  try { weatherSound(id); } catch { /* audio */ }
   pushStory(`${h.icon} ${h.name} struck. ${h.desc}`, h.icon);
   if (typeof renderWeatherChip === 'function') renderWeatherChip();
   spawnHazardFX(id);
@@ -5284,6 +5501,7 @@ function fireAt(target) {
   const muzzle = player.position.clone().addScaledVector(n, 1.25).addScaledVector(facing, 0.45);
   burst(muzzle, 0xffd97a, 5, 1.2);
   chime(w.tier >= 3 ? 180 : 300);
+  try { sfxShot(w); } catch { /* audio */ }
   if (Mag[w.id] <= 0) setTimeout(() => startReload(), 250);
   setTimeout(() => {
     if (!target || target.dead || target.hp <= 0) return;
@@ -5301,6 +5519,7 @@ function fireAt(target) {
       tracer(muzzle, off);
     }
     target.hitFlash = 1;
+    target.shotHits = (target.shotHits || 0) + 1;
     spawnPopup(target.mesh.position.clone(), `-${total}`, '#ffd97a');
     chime(240);
     if (target.kindTag === 'robber') {
@@ -5358,6 +5577,7 @@ function manualFire(x, y) {
   burst(muzzle, 0xffd97a, 6, 1.2);
   burst(hit.point.clone(), 0xffd97a, 4, 0.8);
   chime(w.tier >= 3 ? 180 : 300);
+  try { sfxShot(w); } catch { /* audio */ }
   if (Mag[w.id] <= 0) setTimeout(() => startReload(), 250);
   renderStats();
   return true;
@@ -5373,6 +5593,7 @@ function saveProgression() {
       stormWard: Research.stormWard,
       ashMask: !!Research.ashMask,
       queue: Research.queue ? { ...Research.queue } : null,
+      queued: Research.queued ? { ...Research.queued } : null,
     },
     tools: { ...tools },
     loadout: { ...Loadout }, ammo: { ...Ammo }, mag: { ...Mag }, unlockedWeapons: [...UnlockedWeapons],
@@ -5407,6 +5628,7 @@ function restoreProgression(p) {
     Research.stormWard = p.research.stormWard || 0;
     Research.ashMask = !!p.research.ashMask;
     Research.queue = p.research.queue ? { ...p.research.queue } : null;
+    Research.queued = p.research.queued ? { ...p.research.queued } : null;
   }
   if (p.tools) Object.assign(tools, p.tools);
   if (p.loadout) Object.assign(Loadout, p.loadout);
@@ -5555,6 +5777,7 @@ function saveLife() {
     fishBook: { ...(Life.fishBook || {}) }, recipes: { ...(Life.recipes || {}) }, packBonus,
     chapter: Life.chapter || 0, age: Life.age || 20,
     story: [...(Life.story || [])], traits: [...(Life.traits || [])], hazardWins: { ...(Life.hazardWins || {}) }, epitaph: Life.epitaph || null, scars: [...(Life.scars || [])],
+    seenCards: [...(Life.seenCards || [])], ngPlus: Life.ngPlus || 0,
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
     home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
@@ -5572,6 +5795,8 @@ function restoreLife(s) {
   Life.hazardWins = { ...(s.hazardWins || {}) };
   Life.epitaph = s.epitaph || null;
   Life.scars = [...(s.scars || [])];
+  Life.seenCards = [...(s.seenCards || [])];
+  Life.ngPlus = s.ngPlus || 0;
   Object.assign(Life.stats, s.stats || {});
   Object.assign(Life.rot, s.rot || {});
   Life.chronicle = [...(s.chronicle || [])];
@@ -7156,10 +7381,55 @@ function spawnRobber(kind = 'thief') {
   pushStory(`${name} came in the night.`, '⚠️');
   return r;
 }
+let poacherT = 120;
+function spawnPoacher() {
+  if (Threats.robbers.length || playerDead) return null;
+  const la = rand(10, 20), lo = rand(140, 170);
+  const n = latLonToVec3(la, lo, 0).normalize();
+  const pos = n.clone().multiplyScalar(R + heightFor(n) + 0.08);
+  const m = makeVillager({ coat: 0x4a3a28, hat: 'cap', hatColor: 0x2f2a22, skin: 0xc99b72 });
+  if (m.userData.villager && m.userData.villager.mark) m.userData.villager.mark.visible = false;
+  // a snare and a cage with a trapped hare
+  const prop = new THREE.Group();
+  prop.add(mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), mat(0x6b5a3a), 0, 0.25, 0));
+  for (const sx of [-1, 1]) prop.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 4), mat(0x8a7a4a), sx * 0.3, 0.45, 0));
+  prop.add(mesh(new THREE.SphereGeometry(0.14, 6, 5), mat(0xd8cbb0), 0, 0.28, 0, false));
+  prop.position.copy(pos).addScaledVector(V3(-n.z, 0, n.x), 0.7);
+  scene.add(prop);
+  m.position.copy(pos);
+  scene.add(m);
+  const r = {
+    poacher: true, prop, name: 'A poacher', kindTag: 'robber', mesh: m, pos,
+    facing: V3(-n.z, 0, n.x).normalize(),
+    hp: 40, maxHp: 40, state: 'poach', t: 0, demanded: true,
+    demandText: '“Plenty of game out here. None of your business.”',
+  };
+  const it = {
+    id: 'poacher' + Date.now() % 100000, pos: pos.clone(), robber: r, radius: 4.4, kind: '🪤 POACHER',
+    label: () => 'A poacher — free the hare or confront',
+    onUse: () => openRobberDialog(r),
+  };
+  r.interact = it;
+  addInteract(it);
+  Threats.robbers.push(r);
+  toast('🪤 A poacher is trapping hares in the woods. (click to approach)');
+  chime(200);
+  pushStory('A poacher was setting snares in the forest.', '🪤');
+  return r;
+}
+tickers.push((t, dt) => {
+  if (!started || paused || playerDead || isNight() || Life.day < 4) return;
+  if (Threats.robbers.length) return;
+  poacherT -= dt;
+  if (poacherT > 0) return;
+  poacherT = rand(140, 220);
+  if (Math.random() < 0.5) spawnPoacher();
+});
 function removeRobber(r, reward) {
   const ix = Threats.robbers.indexOf(r);
   if (ix >= 0) Threats.robbers.splice(ix, 1);
   scene.remove(r.mesh);
+  if (r.prop) scene.remove(r.prop);
   if (r.interact) { const jx = interactables.indexOf(r.interact); if (jx >= 0) interactables.splice(jx, 1); }
   if (activeTask && activeTask.interact === r.interact) clearAutoTask();
   if (reward) {
@@ -7204,7 +7474,10 @@ function updateRobbers(t, dt) {
     const r = Threats.robbers[i];
     const home = homeSpot(HOME.lat, HOME.lon, 0);
     const pd = r.pos.distanceTo(player.position);
-    if (r.state === 'flee' || r.state === 'leave') {
+    if (r.poacher && r.state === 'poach') {
+      if (!robberOpen) r.t += dt;
+      if (r.t > 50) { removeRobber(r, false); toast('🪤 The poacher packs up and slips away.'); continue; }
+    } else if (r.state === 'flee' || r.state === 'leave') {
       const away = r.pos.clone().sub(home);
       const stepped = tangentStep(r.pos, away, dt * (r.state === 'flee' ? 5.2 : 3.0));
       if (stepped) r.facing.lerp(stepped, 0.2).normalize();
@@ -7232,7 +7505,7 @@ function updateRobbers(t, dt) {
     r.facing.addScaledVector(n, -r.facing.dot(n)).normalize();
     faceAlong(r.mesh, r.pos, r.facing);
     if (r.interact) r.interact.pos.copy(r.mesh.position);
-    if (r.kindTag === 'robber' && r.hp < r.maxHp && r.state !== 'flee') r.state = 'flee';
+    if (r.kindTag === 'robber' && !r.poacher && r.hp < r.maxHp && r.state !== 'flee') r.state = 'flee';
   }
 }
 tickers.push((t, dt) => updateRobbers(t, dt));
@@ -7241,7 +7514,9 @@ tickers.push((t, dt) => {
   robberSpawnT += dt;
   if (robberSpawnT < 24) return;
   robberSpawnT = 0;
-  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0);
+  // a known/trusted neighbour is a less tempting target
+  const repShield = Math.min(0.08, (Threats.reputation || 0) * 0.008);
+  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield;
   if (!Threats.robbers.length && Math.random() < chance) spawnRobber(['thief', 'toll', 'rustler'][(Math.random() * 3) | 0]);
 });
 
@@ -7310,11 +7585,14 @@ function killPrey(p) {
   if (activeTask?.interact === p.interact) clearAutoTask();
   inv.food = (inv.food || 0) + info.food;
   if (info.pelt) inv.wool = (inv.wool || 0) + info.pelt;
+  const clean = (p.shotHits || 0) > 0 && p.shotHits <= 2;
+  if (clean) { inv.food++; grantInsight(1, 'Clean shot'); }
   Threats.venison = (Threats.venison || 0) + (p.kind === 'deer' ? 2 : 1);
   Life.stats.hunted = (Life.stats.hunted || 0) + 1;
   burst(p.mesh.position.clone(), 0xe8c96a, 18, 2.2);
   chime(620);
-  toast(`${info.icon} ${p.name} hunted! (+${info.food}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''})`);
+  toast(`${info.icon} ${p.name} hunted! (+${info.food}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''})${clean ? ' — clean shot! +1🍎' : ''}`);
+  if (clean) pushStory(`A clean shot brought down a ${p.name}.`, '🎯');
   grantInsight(2, `Hunted a ${p.name}`);
   saveCheckpoint();
   renderStats();
@@ -7902,7 +8180,12 @@ function retireToHeir() {
   Life.epitaph = `Gen ${Life.gen} · ${CHAPTERS[Math.min(Life.chapter, CHAPTERS.length - 1)].name} · ${wonders.filter((w) => w.done).length} wonders · ${Object.keys(Life.hazardWins || {}).length} hazards weathered.`;
   pushStory(Life.epitaph, '🌅');
   Life.gen++;
+  Life.ngPlus = (Life.ngPlus || 0) + 1;
   Life.chronicle.push(`Gen ${Life.gen - 1} retired in comfort 🌅 (${Life.stats.goldEarned}🪙 earned, Day ${Life.day})`);
+  // New Game+: blueprints, journal and one heirloom tool carry over; the heir starts at Arrival
+  tools.axe = Math.max(tools.axe || 1, 1.3);
+  Life.chapter = 0; Life.age = 20; Life.seenCards = []; pendingTrait = null;
+  applyHeroChapter(0);
   inv.wood = 0; inv.stone = 0; inv.gold = 2; inv.food = 4; inv.fish = 0; inv.wool = 0; inv.remedy = 1;
   inv.egg = 0; inv.milk = 0; inv.meal = 1;
   meters.energy = 100; meters.health = 100; meters.cold = 0; meters.hunger = 90; meters.warmth = 100; meters.morale = 90;
@@ -7915,7 +8198,7 @@ function retireToHeir() {
   rebuildHomestead();
   burst(player.position.clone(), 0xffd97a, 30, 3);
   chime(880);
-  toast(`🌅 Generation ${Life.gen} takes the axe! Harder seasons ahead. The saga continues.`);
+  toast(`🌅 Generation ${Life.gen} takes the axe! New Game+${Life.ngPlus} — harder seasons, kept blueprints. The saga continues.`);
   closeBuild(); renderStats();
   saveCheckpoint();
 }
@@ -8563,8 +8846,10 @@ const SETTINGS_DEFS = [
   { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
   { id: 'difficulty', name: 'Life difficulty', desc: 'How hard the planet pushes back', opts: ['cozy', 'standard', 'frontier'], labels: { cozy: 'Cozy 🌤️', standard: 'Standard ⛅', frontier: 'Frontier 🌩️' } },
   { id: 'effects', name: 'Flashes & shake', desc: 'Reduced is easier on the eyes', opts: ['full', 'reduced'], labels: { full: 'Full ✨', reduced: 'Reduced 🧘' } },
+  { id: 'textSize', name: 'Text size', desc: 'HUD and journal text', opts: ['normal', 'large'], labels: { normal: 'Normal', large: 'Large 🔎' } },
+  { id: 'contrast', name: 'High contrast', desc: 'Stronger panels and outlines', opts: ['normal', 'high'], labels: { normal: 'Normal', high: 'High ◐' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full' };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -8576,6 +8861,10 @@ function applySettings() {
     const custom = settings.cursor !== false && !('ontouchstart' in window);
     document.body.classList.toggle('custom-cursor', custom);
     if (!custom) hideContextCursor();
+  } catch { /* headless */ }
+  try {
+    document.body.classList.toggle('text-large', settings.textSize === 'large');
+    document.body.classList.toggle('contrast-high', settings.contrast === 'high');
   } catch { /* headless */ }
 }
 function camFactor() { return settings.cam === 'slow' ? 0.5 : (settings.cam === 'fast' ? 2 : 1); }
@@ -8665,12 +8954,19 @@ buildCheckpoints();
   plantHerbBush(6, 44, herbParent);
 }
 function snapshot() {
+  const progression = saveProgression();
   return {
-    v: 1, at: Date.now(),
+    v: 2, at: Date.now(),
     pos: playerPos.toArray(), facing: facing.toArray(), heading: moveDirSmooth.toArray(),
     inv: { ...inv }, meters: { ...meters },
     tools: { ...tools },
     life: saveLife(),
+    // v2 top-level systems (also mirrored inside life.progression for v1 compatibility)
+    research: progression.research,
+    weapons: { loadout: progression.loadout, ammo: progression.ammo, mag: progression.mag, unlocked: progression.unlockedWeapons },
+    weather: progression.weather,
+    threats: progression.threats,
+    hero: { gearSet: Life.chapter || 0, ageLook: 'auto', scars: [...(Life.scars || [])] },
     npcs: NPCS.map((n) => ({ id: n.id, counts: n.trades.map((t) => t.count), met: n.met, lineIdx: n.lineIdx })),
     wonders: wonders.map((w) => ({ id: w.id, done: w.done, stage: w.stage || 0 })),
     bridges: bridges.map((b) => b.fixed),
@@ -8685,6 +8981,22 @@ function snapshot() {
     },
   };
 }
+// v1 saves stored progression inside life.progression; lift it to the v2 slots.
+function migrateSave(s) {
+  if (!s) return s;
+  if (!s.v || s.v < 2) {
+    const p = s.life?.progression || {};
+    s.v = 2;
+    s.research = s.research || p.research || null;
+    s.weapons = s.weapons || {
+      loadout: p.loadout || null, ammo: p.ammo || null, mag: p.mag || null, unlocked: p.unlockedWeapons || null,
+    };
+    s.weather = s.weather || p.weather || null;
+    s.threats = s.threats || p.threats || null;
+    s.hero = s.hero || { gearSet: s.life?.chapter ?? 0, ageLook: 'auto', scars: s.life?.scars || [] };
+  }
+  return s;
+}
 // Silent save of the active slot. `force` ignores the autosave setting.
 function saveCheckpoint(force) {
   if (!force && !settings.autosave) return; // autosave off: menu saves only
@@ -8693,11 +9005,25 @@ function saveCheckpoint(force) {
 function loadSave() {
   try {
     const raw = localStorage.getItem(slotKey(activeSlot));
-    return raw ? JSON.parse(raw) : null;
+    return raw ? migrateSave(JSON.parse(raw)) : null;
   } catch { return null; }
 }
 function applySave(s, respawn) {
   if (!s) return false;
+  s = migrateSave(s);
+  // v2 top-level systems win; fall back to the v1 life.progression block
+  if (s.life && (s.research || s.weapons || s.weather || s.threats)) {
+    if (!s.life.progression) s.life.progression = {};
+    const p = s.life.progression;
+    p.research = s.research || p.research;
+    p.loadout = s.weapons?.loadout || p.loadout;
+    p.ammo = s.weapons?.ammo || p.ammo;
+    p.mag = s.weapons?.mag || p.mag;
+    p.unlockedWeapons = s.weapons?.unlocked || p.unlockedWeapons;
+    p.weather = s.weather || p.weather;
+    p.threats = s.threats || p.threats;
+    s.life.progression = p;
+  }
   Object.assign(inv, s.inv);
   Object.assign(meters, s.meters);
   if (meters.hunger === undefined) meters.hunger = 100;
@@ -9040,12 +9366,14 @@ function startGame(fresh) {
     chime(660);
   }
   questResume();
+  setTimeout(maybeShowChapterCard, 1100);
 }
 function showTitle() {
   started = false; paused = true;
   questHide();
   closeTrade(); closeBuild(); toggleJournal(false);
   closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber(); closeBounty();
+  document.getElementById('chapter-card').classList.add('hidden');
   document.getElementById('help-overlay').classList.add('hidden');
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
@@ -9199,6 +9527,7 @@ tickers.push((t) => {
   lastJourneyHud = t;
   renderChapterHUD();
   renderWeatherChip();
+  if (workshopOpen) updateWorkshopProgress();
 });
 function techTreeSVG() {
   const W = 560, H = 190;
@@ -9234,6 +9563,23 @@ function closeWorkshop() {
   workshopOpen = false;
   document.getElementById('workshop-overlay').classList.add('hidden');
 }
+function benchStatusText() {
+  const active = Research.queue ? TECH.find((t) => t.id === Research.queue.id) : null;
+  const next = Research.queued ? TECH.find((t) => t.id === Research.queued.id) : null;
+  if (!active) return Home.workshop ? 'Bench idle — choose a technology' : 'Build a Workshop at the homestead board (H)';
+  const pct = Math.round((Research.queue.t / Research.queue.dur) * 100);
+  return `🔬 ${active.name} ${pct}%${next ? ` · next: ${next.name}` : ' · queue open'}`;
+}
+function updateWorkshopProgress() {
+  const q = document.getElementById('workshop-queue');
+  if (q) q.textContent = benchStatusText();
+  const bar = document.getElementById('workshop-bar');
+  const fill = document.getElementById('workshop-bar-fill');
+  if (!bar || !fill) return;
+  const show = !!Research.queue;
+  bar.classList.toggle('hidden', !show);
+  if (show) fill.style.width = `${Math.max(2, Math.min(100, (Research.queue.t / Research.queue.dur) * 100))}%`;
+}
 function renderWorkshop() {
   const list = document.getElementById('workshop-list');
   if (!list) return;
@@ -9241,10 +9587,7 @@ function renderWorkshop() {
   if (eraEl) eraEl.textContent = TECH_ERAS[researchEra()];
   const ins = document.getElementById('workshop-insight');
   if (ins) ins.textContent = `💡 ${Research.insight} insight · ${Research.unlocked.length} techs · ${TECH_ERAS[researchEra()]}`;
-  const q = document.getElementById('workshop-queue');
-  if (q) q.textContent = Research.queue
-    ? `Researching ${TECH.find((t) => t.id === Research.queue.id)?.name || '…'} ${Math.round((Research.queue.t / Research.queue.dur) * 100)}%`
-    : (Home.workshop ? 'Bench idle — choose a technology' : 'Build a Workshop at the homestead board (H)');
+  updateWorkshopProgress();
   const tree = document.getElementById('workshop-tree');
   if (tree) {
     tree.innerHTML = techTreeSVG();
@@ -9472,6 +9815,31 @@ function openRobberDialog(r) {
     b.onclick = fn;
     box.appendChild(b);
   };
+  if (r.poacher) {
+    add('Free the trapped hare', 'Recover the snare and let the hare go (+2🍎, +insight, +reputation).', () => {
+      inv.food = (inv.food || 0) + 2;
+      Threats.reputation = (Threats.reputation || 0) + 1;
+      grantInsight(3, 'Freed a trapped hare');
+      pushStory('Freed a hare from a poacher’s snare in the woods.', '🐇');
+      r.state = 'leave';
+      closeRobber();
+      saveCheckpoint();
+      toast('🐇 The hare bolts for the ferns. The poacher curses and leaves.');
+    });
+    add('Drive them off', 'Confront the poacher — they will not risk a fight.', () => {
+      Threats.robbersDrivenOff = (Threats.robbersDrivenOff || 0) + 1;
+      Threats.reputation = (Threats.reputation || 0) + 1;
+      r.state = 'flee';
+      closeRobber();
+      saveCheckpoint();
+      toast('😤 The poacher grabs their traps and runs.');
+    });
+    add('Leave them be', 'Walk away. The snares stay set.', () => {
+      r.state = 'leave';
+      closeRobber();
+    });
+    return;
+  }
   add('Pay the toll', 'Lose 3🪙 or 2🍎 and they leave.', () => {
     if (inv.gold >= 3) inv.gold -= 3; else if (inv.food >= 2) inv.food -= 2; else { toast('You have nothing worth taking.'); return; }
     r.state = 'leave'; closeRobber(); saveCheckpoint(); toast('💰 They take the toll and vanish into the dark.');
@@ -9483,7 +9851,7 @@ function openRobberDialog(r) {
   add('Intimidate', 'A gun or a high level can end this without blood. (needs a ranged weapon)', () => {
     closeRobber();
     if (!equippedRanged()) { toast('No firearm to back up the threat.'); return; }
-    if (Math.random() < 0.7) { r.state = 'flee'; Threats.robbersDrivenOff++; Threats.reputation++; grantInsight(2, 'Intimidated a robber'); toast('😤 They back away and run.'); }
+    if (Math.random() < 0.7 + Math.min(0.2, (Threats.reputation || 0) * 0.02)) { r.state = 'flee'; Threats.robbersDrivenOff++; Threats.reputation++; grantInsight(2, 'Intimidated a robber'); toast('😤 They back away and run.'); }
     else { toast('They call your bluff!'); if (r.interact) setAutoTask(r.interact); }
     saveCheckpoint();
   });
@@ -9494,6 +9862,7 @@ function closeRobber() {
 }
 function handleEscape() {
   if (!started) return; // title screen: nothing to do
+  if (!document.getElementById('chapter-card').classList.contains('hidden')) { closeChapterCard(); return; }
   if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) {
     closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber(); closeBounty();
     return;
@@ -9518,7 +9887,7 @@ try {
   } else if (bootLoad !== null && bootLoad !== undefined) {
     activeSlot = Math.min(SLOT_COUNT - 1, Math.max(0, parseInt(bootLoad) || 0));
     const prev = loadSave();
-    if (prev && prev.v === 1) {
+    if (prev && (prev.v === 1 || prev.v === 2)) {
       // defer one frame: wonders/bridges/reef visuals all exist by now
       setTimeout(() => {
         if (applySave(prev, false)) { startGame(false); toast('🧭 Welcome back — save restored.'); }
@@ -9534,12 +9903,16 @@ Object.assign(window.__lp, {
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
-  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight },
+  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued },
   weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
-  chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice },
-  hazard: (id) => startHazard(id), spawnRobber, killRobber, openRobber: openRobberDialog,
+  chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
+  hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
   prey: Prey, spawnPrey, huntPrey, killPrey,
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
+  retire: { ready: hearthRetireReady, go: retireToHeir },
+  reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
+  sfx: { log: sfxLog, weather: weatherSound },
+  hero: { lod: refreshHeroLod, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
@@ -9911,6 +10284,7 @@ document.getElementById('btn-loadout').onclick = () => (loadoutOpen ? closeLoado
 document.getElementById('btn-bounty').onclick = () => (bountyOpen ? closeBounty() : openBounty());
 document.getElementById('btn-close-bounty').onclick = closeBounty;
 document.getElementById('btn-bounty-leave').onclick = closeBounty;
+document.getElementById('card-begin').onclick = closeChapterCard;
 document.getElementById('btn-close-workshop').onclick = closeWorkshop;
 document.getElementById('btn-workshop-leave').onclick = closeWorkshop;
 document.getElementById('btn-close-almanac').onclick = closeAlmanac;

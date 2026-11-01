@@ -497,7 +497,7 @@ body.touch #biome-label h1 { font-size: 34px; }
 #weather-next { opacity: 0.7; font-size: 10.5px; margin-left: 4px; }
 /* ---------- research / almanac / loadout ---------- */
 .wide-card { min-width: min(580px, calc(100vw - 40px)); max-height: 86vh; overflow-y: auto; }
-#workshop-overlay, #almanac-overlay, #loadout-overlay, #trait-overlay, #robber-overlay, #bounty-overlay {
+#workshop-overlay, #almanac-overlay, #loadout-overlay, #trait-overlay, #robber-overlay, #bounty-overlay, #chapter-card {
   position: fixed; inset: 0; z-index: 50;
   display: flex; align-items: center; justify-content: center;
   background: rgba(5, 12, 18, 0.55); backdrop-filter: blur(3px);
@@ -602,3 +602,42 @@ body.touch #biome-label h1 { font-size: 34px; }
 .tech-tree .node { cursor: pointer; }
 .tech-tree .node:hover circle { filter: brightness(1.4); }
 .tech-tree text { font-family: 'Inter', sans-serif; font-size: 7px; fill: #b9cbd3; }
+
+/* Research bench progress */
+.bench-bar {
+  height: 6px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,0.1); margin: -6px 0 10px;
+  border: 1px solid rgba(255,217,122,0.25);
+}
+.bench-bar span {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, #ffd97a, #9df0a8);
+  transition: width 0.3s linear;
+}
+
+/* Accessibility: larger text and higher contrast */
+body.text-large #chapter-ribbon,
+body.text-large #weather-chip,
+body.text-large #controls-hint,
+body.text-large .pill-dark { font-size: 14px; }
+body.text-large .goal-row,
+body.text-large .tech-name,
+body.text-large .tech-desc,
+body.text-large .almanac-row,
+body.text-large .trait-btn,
+body.text-large .loadout-btn { font-size: 15px; }
+body.text-large .journal-sub { font-size: 14px; }
+body.contrast-high .pill-dark,
+body.contrast-high .help-card,
+body.contrast-high .npc-card,
+body.contrast-high .tech-card,
+body.contrast-high .almanac-row {
+  background: rgba(4, 10, 14, 0.94) !important;
+  border-color: rgba(255, 235, 180, 0.85) !important;
+  color: #ffffff;
+}
+body.contrast-high .tech-desc,
+body.contrast-high .journal-sub,
+body.contrast-high .almanac-row .what { color: #eef4f7; }
+body.contrast-high #chapter-ribbon,
+body.contrast-high #weather-chip { color: #fff; font-weight: 700; }
