@@ -3366,9 +3366,15 @@ const player = new THREE.Group();
   holster.add(mesh(new THREE.BoxGeometry(0.1, 0.22, 0.14), mat(0x4a3320), 0, 0, 0, false));
   holster.add(mesh(new THREE.BoxGeometry(0.03, 0.5, 0.03), mat(0x5a3e2b), 0.03, 0.18, 0, false));
   torsoG.add(holster);
+  const heatCloak = new THREE.Group();
+  heatCloak.position.set(0, 0.1, 0.02);
+  const cloakM = mat(0x8a4a2a, { emissive: 0x3a1200, emissiveIntensity: 0.2 });
+  heatCloak.add(mesh(new THREE.CylinderGeometry(0.46, 0.56, 0.62, 12, 1, true), cloakM, 0, 0, 0, false));
+  heatCloak.add(mesh(new THREE.TorusGeometry(0.42, 0.05, 5, 12).rotateX(Math.PI / 2), mat(0xc9a227, { metalness: 0.5 }), 0, 0.3, 0, false)); // brass collar
+  torsoG.add(heatCloak);
   player.userData.gear = {
     hatG, satchel, goggles, rifleG, beard, greyHair, longCoat, coatTails, coatFlaps,
-    bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster,
+    bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, heatCloak,
     lodDetails: [bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, goggles, beard, greyHair],
   };
   player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
@@ -3581,6 +3587,7 @@ function applyHeroToolGear() {
   if (g.sawTool) g.sawTool.userData.allowed = buildingTier() >= 1;
   if (g.drillTool) g.drillTool.userData.allowed = buildingTier() >= 2;
   if (g.holster) g.holster.userData.allowed = hasTech('holster');
+  if (g.heatCloak) g.heatCloak.visible = !!Research.heatGear;
   refreshHeroLod();
 }
 // Merge static meshes inside each joint group by material: keeps the articulated
@@ -4981,6 +4988,7 @@ const Life = {
   fishBook: {},
   recipes: {},
   chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null, seenCards: [], legacy: null,
+  seed: 1 + ((Math.random() * 1000000000) | 0),
 };
 
 // ==================== LIFE JOURNEY, RESEARCH, WEATHER, WEAPONS ====================
@@ -5181,6 +5189,7 @@ const TECH = [
   { id: 'hail-netting', era: 2, name: 'Hail Netting', insight: 3, cost: { wood: 2, wool: 3 }, req: ['storm-shutters'], desc: 'Nets over the rows stop hail from flattening crops.' },
   { id: 'scarecrow', era: 1, name: 'Scarecrow', insight: 2, cost: { wood: 3, wool: 1 }, req: ['hand-tools'], desc: 'A watchful figure: fewer night robbers and rustlers.' },
   { id: 'holster', era: 1, name: 'Quick-Draw Holster', insight: 2, cost: { wool: 2, wood: 1 }, req: ['copper-tools'], desc: 'Melee swings are 8% faster.' },
+  { id: 'heat-gear', era: 2, name: 'Heat Gear', insight: 3, cost: { wool: 2, stone: 3, gold: 2 }, req: ['forge'], desc: 'Fire, lava and ash hurt far less.' },
   { id: 'windmill', era: 2, name: 'Windmill', insight: 4, cost: { wood: 8, stone: 4, gold: 2 }, req: ['workshop'], desc: 'Research 20% faster; a landmark for the homestead.' },
   { id: 'forge', era: 2, name: 'Forge', insight: 4, cost: { stone: 8, gold: 4 }, req: ['iron-tools'], desc: 'Unlock iron weapons and metal repairs.' },
   { id: 'sawmill', era: 3, name: 'Sawmill', insight: 5, cost: { wood: 10, stone: 6 }, req: ['windmill'], desc: 'Passive +2 wood each dawn.' },
@@ -5207,7 +5216,7 @@ const TECH = [
 ];
 const Research = {
   insight: 4, unlocked: [], queue: null, queued: null, progress: 0, speed: 1,
-  healBonus: 0, rangedBonus: 1, farmBonus: 1, tradeBonus: 1, upkeepBonus: 0, stormWard: 0, ashMask: false,
+  healBonus: 0, rangedBonus: 1, farmBonus: 1, tradeBonus: 1, upkeepBonus: 0, stormWard: 0, ashMask: false, heatGear: false,
 };
 function hasTech(id) { return Research.unlocked.includes(id); }
 function researchEra() {
@@ -5292,6 +5301,7 @@ function applyTech(id) {
     case 'hail-netting': Home.hailNetting = true; rebuildHomestead(); break;
     case 'scarecrow': Home.scarecrow = true; rebuildHomestead(); break;
     case 'holster': if (typeof rpgRefreshMults === 'function') rpgRefreshMults(); break;
+    case 'heat-gear': Research.heatGear = true; break;
     case 'power-tools': tools.axe = Math.max(tools.axe, 2.2); break;
     default: break;
   }
@@ -5456,7 +5466,21 @@ tickers.push((t, dt) => {
 });
 
 function hazardById(id) { return HAZARDS[id] || null; }
-function pickHazard() {
+function seededRandom(seed) {
+  let t = (seed >>> 0) || 1;
+  return function () {
+    t += 0x6D2B79F5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function daySeed(day = Life.day) {
+  const base = (Life.seed || 1) >>> 0;
+  return (base ^ Math.imul(day + 1, 2654435761)) >>> 0;
+}
+function seasonForDay(day) { return Math.floor((day - 1) / DAYS_PER_SEASON) % 4; }
+function pickHazard(rnd = Math.random) {
   const s = seasonNow();
   const pool = Object.entries(HAZARDS).filter(([id, h]) => id !== 'wolves' && h.seasons.includes(s));
   const tier = 1 + (Life.gen - 1) * 0.15 + (typeof settings !== 'undefined' && settings.difficulty === 'frontier' ? 0.25 : 0);
@@ -5466,22 +5490,57 @@ function pickHazard() {
     weighted.push([id, w]);
   }
   const total = weighted.reduce((a, b) => a + b[1], 0);
-  let r = Math.random() * total;
+  let r = rnd() * total;
   for (const [id, w] of weighted) { r -= w; if (r <= 0) return id; }
   return null;
 }
+// The same seed + day always yields the same multi-day outlook (daily seeded runs).
+function seededForecast(seed, day, days = 2) {
+  const rnd = seededRandom(((seed >>> 0) ^ Math.imul(day + 1, 2654435761)) >>> 0);
+  const season = seasonForDay(day);
+  const pool = Object.entries(HAZARDS).filter(([id, h]) => id !== 'wolves' && h.seasons.includes(season)).map(([id]) => id);
+  const roll = () => pool.length ? pool[(rnd() * pool.length) | 0] : null;
+  const canHit = rnd() > 0.32;
+  const out = [];
+  for (let i = 0; i < days; i++) out.push(i === 0 ? (canHit ? roll() : null) : (rnd() < 0.55 ? roll() : null));
+  return out;
+}
 function rollForecast() {
-  // keep the legacy field for the HUD/quest text, now backed by the weather director
+  // seeded weather director: reproducible for a given world seed + day
   const since = Life.day - (Weather.lastMajorDay ?? -99);
-  const canHit = since >= 2 && Math.random() > (settings.difficulty === 'cozy' ? 0.55 : settings.difficulty === 'frontier' ? 0.2 : 0.32);
-  const next = canHit ? pickHazard() : null;
+  const rnd = seededRandom(daySeed(Life.day));
+  const canHit = since >= 2 && rnd() > (settings.difficulty === 'cozy' ? 0.55 : settings.difficulty === 'frontier' ? 0.2 : 0.32);
+  const next = canHit ? pickHazard(rnd) : null;
   Weather.next = next;
   Weather.forecast = [];
-  for (let i = 0; i < (Home.radio ? 4 : Home.weatherStation ? 3 : 2); i++) {
-    Weather.forecast.push({ day: Life.day + i + 1, id: i === 0 ? next : (i === 1 && Math.random() < 0.55 ? pickHazard() : null) });
+  const days = Home.radio ? 4 : Home.weatherStation ? 3 : 2;
+  for (let i = 0; i < days; i++) {
+    Weather.forecast.push({ day: Life.day + i + 1, id: i === 0 ? next : (i === 1 && rnd() < 0.55 ? pickHazard(rnd) : null) });
   }
+  Weather.seed = daySeed(Life.day);
   Life.forecast = next;
   setTelegraph(next);
+}
+function floodWashout() {
+  const repairReady = bridges.filter((b) => b.fixed);
+  const washed = repairReady.slice(0, Math.max(1, Math.min(2, repairReady.length)));
+  for (const b of washed) b.fixed = false;
+  const livestock = animals.filter((a) => !a.stranded);
+  const strandCount = Math.min(livestock.length, Math.max(1, Math.ceil(livestock.length / 2)));
+  for (const a of livestock.slice(0, strandCount)) { a.stranded = true; a.tgt = a.pos.clone(); }
+  Life.floodWash = { bridges: washed.length, animals: strandCount, day: Life.day };
+  if (washed.length || strandCount) {
+    const parts = [];
+    if (washed.length) parts.push(`${washed.length} bridge${washed.length === 1 ? '' : 's'} washed out`);
+    if (strandCount) parts.push(`${strandCount} animal${strandCount === 1 ? '' : 's'} stranded`);
+    toast(`🌊 The flood ${parts.join(' and ')}!`);
+    pushStory(`Floodwater ${parts.join('; ')}.`, '🌊');
+  }
+  return Life.floodWash;
+}
+function releaseStranded() {
+  for (const a of animals) a.stranded = false;
+  Life.floodWash = null;
 }
 function startHazard(id) {
   const h = hazardById(id);
@@ -5494,6 +5553,7 @@ function startHazard(id) {
   if (id === 'blizzard') Life.blizzard = true;
   if (id === 'drought') Life.drought = true;
   if (id === 'flood') Life.flood = true;
+  if (id === 'flood') floodWashout();
   toast(`${hazardIcon(id)} ${h.name.toUpperCase()}! ${h.desc} Prepare now!`);
   chime(180);
   try { weatherSound(id); } catch { /* audio */ }
@@ -5518,6 +5578,7 @@ function hazardCounterTags(id) {
   if (Life.clothes >= 2) tags.push('warm clothes');
   if (Home.weatherStation) tags.push('weather station');
   if (hasTech('ash-mask')) tags.push('ash mask');
+  if (Research.heatGear) tags.push('heat gear');
   if (Home.firebreak) tags.push('firebreak');
   if (Home.lightningRod) tags.push('lightning rod');
   if (Home.sandbags) tags.push('sandbags');
@@ -5540,6 +5601,7 @@ function hazardWard(id) {
   if (Home.sandbags && id === 'flood') ward += 0.5;
   if (Home.hailNetting && id === 'hail') ward += 0.5;
   if (Home.firebreak && id === 'wildfire') ward += 0.5;
+  if (Research.heatGear && (id === 'wildfire' || id === 'eruption')) ward += 0.4;
   ward += Research.stormWard || 0;
   return Math.min(0.85, ward);
 }
@@ -5549,6 +5611,7 @@ function endHazard(h) {
   if (id === 'blizzard') Life.blizzard = false;
   if (id === 'drought') Life.drought = false;
   if (id === 'flood') Life.flood = false;
+  if (id === 'flood') releaseStranded();
   Life.stats.hazardWins = Life.stats.hazardWins || {};
   Life.stats.hazardWins[id] = (Life.stats.hazardWins[id] || 0) + 1;
   Life.hazardWins[id] = (Life.hazardWins[id] || 0) + 1;
@@ -5663,14 +5726,14 @@ tickers.push((t, dt) => {
     hp.dmgT = Math.max(0, (hp.dmgT || 0) - dt);
     if (!Home.firebreak && hp.dmgT <= 0) {
       const near = hp.cells.find((c) => player.position.distanceTo(c.mesh.position) < 2.6);
-      if (near) { damagePlayer(3, near.mesh.position); hp.dmgT = 1.1; }
+      if (near) { damagePlayer(Research.heatGear ? 1 : 3, near.mesh.position); hp.dmgT = 1.1; }
     }
   } else if (hp.id === 'eruption' && hp.glow) {
     hp.glow.intensity = 26 + Math.sin(t * 5) * 8;
     hp.lavaT = Math.max(0, (hp.lavaT || 0) - dt);
     if (hp.lavaT <= 0) {
       const near = (hp.flow || []).find((c) => player.position.distanceTo(c.mesh.position) < 1.8);
-      if (near) { damagePlayer(3, near.mesh.position); hp.lavaT = 1.1; }
+      if (near) { damagePlayer(Research.heatGear ? 1 : 3, near.mesh.position); hp.lavaT = 1.1; }
     }
   }
 });
@@ -5710,7 +5773,7 @@ tickers.push((t, dt) => {
     }
     if (h.id === 'eruption') {
       if (Math.random() < dt * 0.5) burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 4), 0xff7a2a, 3, 1.2);
-      if (biomeAt(player.position.clone().normalize()) === 'volcano' && !hasTech('ash-mask')) meters.health = Math.max(0, meters.health - dt * 1.2);
+      if (biomeAt(player.position.clone().normalize()) === 'volcano' && !hasTech('ash-mask')) meters.health = Math.max(0, meters.health - dt * (Research.heatGear ? 0.4 : 1.2));
     }
     if (h.id === 'wildfire' && Math.random() < dt * 0.35) {
       const p = player.position.clone().add(V3(rand(-8, 8), 0, rand(-8, 8)));
@@ -5782,7 +5845,7 @@ function repairWeapon(id) {
   saveCheckpoint();
   return true;
 }
-const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, boars: 0, captured: 0, recovered: 0, rustled: null, honest: 0, feared: 0, kind: 0 };
+const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, boars: 0, captured: 0, recovered: 0, rustled: null, honest: 0, feared: 0, kind: 0, wanted: {} };
 function addRep(dim, n = 1) {
   if (!['honest', 'feared', 'kind'].includes(dim)) return;
   Threats[dim] = (Threats[dim] || 0) + n;
@@ -6002,7 +6065,7 @@ function saveProgression() {
       speed: Research.speed, healBonus: Research.healBonus, rangedBonus: Research.rangedBonus,
       farmBonus: Research.farmBonus, tradeBonus: Research.tradeBonus, upkeepBonus: Research.upkeepBonus,
       stormWard: Research.stormWard,
-      ashMask: !!Research.ashMask,
+      ashMask: !!Research.ashMask, heatGear: !!Research.heatGear,
       queue: Research.queue ? { ...Research.queue } : null,
       queued: Research.queued ? { ...Research.queued } : null,
     },
@@ -6015,6 +6078,7 @@ function saveProgression() {
       wolvesCulled: Threats.wolvesCulled || 0, bearsBested: Threats.bearsBested || 0,
       venison: Threats.venison || 0, boars: Threats.boars || 0, captured: Threats.captured || 0, recovered: Threats.recovered || 0,
       honest: Threats.honest || 0, feared: Threats.feared || 0, kind: Threats.kind || 0,
+      wanted: { ...(Threats.wanted || {}) },
       rustled: Threats.rustled ? { kind: Threats.rustled.kind, day: Threats.rustled.day } : null,
     },
     bountiesClaimed: { ...BountyClaimed },
@@ -6042,6 +6106,7 @@ function restoreProgression(p) {
     Research.upkeepBonus = p.research.upkeepBonus || 0;
     Research.stormWard = p.research.stormWard || 0;
     Research.ashMask = !!p.research.ashMask;
+    Research.heatGear = !!p.research.heatGear;
     Research.queue = p.research.queue ? { ...p.research.queue } : null;
     Research.queued = p.research.queued ? { ...p.research.queued } : null;
   }
@@ -6056,7 +6121,8 @@ function restoreProgression(p) {
     UnlockedWeapons.length = 0;
     for (const id of p.unlockedWeapons) if (WEAPONS[id]) UnlockedWeapons.push(id);
   }
-  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, boars: 0, captured: 0, recovered: 0, honest: 0, feared: 0, kind: 0 }, p.threats);
+  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, boars: 0, captured: 0, recovered: 0, honest: 0, feared: 0, kind: 0, wanted: {} }, p.threats);
+  Threats.wanted = { ...(p.threats?.wanted || Threats.wanted || {}) };
   if (p.threats?.rustled) {
     Threats.rustled = { ...p.threats.rustled, pos: latLonToVec3(13, 158, 0).normalize() };
     try { addHerdTrail(); } catch { /* scene not ready */ }
@@ -6199,7 +6265,7 @@ function saveLife() {
     fishBook: { ...(Life.fishBook || {}) }, recipes: { ...(Life.recipes || {}) }, packBonus,
     chapter: Life.chapter || 0, age: Life.age || 20,
     story: [...(Life.story || [])], traits: [...(Life.traits || [])], hazardWins: { ...(Life.hazardWins || {}) }, epitaph: Life.epitaph || null, scars: [...(Life.scars || [])],
-    seenCards: [...(Life.seenCards || [])], ngPlus: Life.ngPlus || 0,
+    seenCards: [...(Life.seenCards || [])], ngPlus: Life.ngPlus || 0, seed: Life.seed || 1,
     legacy: Life.legacy ? { ...Life.legacy, traits: [...(Life.legacy.traits || [])] } : null,
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
@@ -6220,6 +6286,7 @@ function restoreLife(s) {
   Life.scars = [...(s.scars || [])];
   Life.seenCards = [...(s.seenCards || [])];
   Life.ngPlus = s.ngPlus || 0;
+  Life.seed = s.seed || (1 + ((Math.random() * 1000000000) | 0));
   Life.legacy = s.legacy ? { ...s.legacy, traits: [...(s.legacy.traits || [])] } : null;
   Object.assign(Life.stats, s.stats || {});
   Object.assign(Life.rot, s.rot || {});
@@ -7557,6 +7624,11 @@ tickers.push((t, dt) => {
   for (const a of animals) {
     a.wt -= dt;
     a.sheltering = !!Life.wildlifeShelter;
+    if (a.stranded) {
+      a.mesh.position.copy(a.pos).addScaledVector(a.pos.clone().normalize(), 0.03);
+      if (a.interact) a.interact.pos.copy(a.mesh.position);
+      continue;
+    }
     if (Life.wildlifeShelter) {
       // hazard sign: herd and flock head for the barn
       a.tgt = barnC.clone().add(V3(((a.phase || 0) % 1) * 2 - 1, 0, ((a.phase || 0) % 1) * 2 - 1));
@@ -7911,9 +7983,10 @@ function spawnRobber(kind = 'thief') {
   m.add(mesh(new THREE.BoxGeometry(0.34, 0.30, 0.18), mat(0x6b4a2f), 0, 1.15, 0.34, false)); // loot bag
   m.position.copy(pos);
   scene.add(m);
-  const name = kind === 'rustler' ? 'A cattle rustler' : kind === 'toll' ? 'A road robber' : 'A masked thief';
+  const wanted = nextWanted();
+  const name = wanted.name;
   const r = {
-    name, kindTag: 'robber', mesh: m, pos, facing: V3(-up.z, 0, up.x).normalize(),
+    name, kindTag: 'robber', wanted: wanted.name, wantedReward: wanted.reward, mesh: m, pos, facing: V3(-up.z, 0, up.x).normalize(),
     hp: 45, maxHp: 45, state: 'approach', t: 0, demanded: false,
     demandText: kind === 'rustler' ? '“Your herd looks heavy. I’ll lighten it.”' : '“Coin or cargo. Your choice.”',
   };
@@ -7929,6 +8002,26 @@ function spawnRobber(kind = 'thief') {
   chime(160);
   pushStory(`${name} came in the night.`, '⚠️');
   return r;
+}
+const WANTED = [
+  { name: 'Red Mara', kind: 'thief', reward: 8 },
+  { name: 'Crow Finn', kind: 'toll', reward: 8 },
+  { name: 'Ash Sable', kind: 'rustler', reward: 10 },
+  { name: 'Old Tallow', kind: 'thief', reward: 10 },
+];
+let wantedCursor = 0;
+function nextWanted() { const w = WANTED[wantedCursor % WANTED.length]; wantedCursor++; return w; }
+function claimWanted(name) {
+  const w = WANTED.find((x) => x.name === name);
+  if (!w || Threats.wanted?.[name] !== 'captured') { toast('🎯 That outlaw is not in custody yet.'); return false; }
+  Threats.wanted[name] = 'claimed';
+  inv.gold = (inv.gold || 0) + 10;
+  grantInsight(5, `Wanted: ${name}`);
+  toast(`🎯 ${name} delivered — +10🪙, +5💡.`);
+  saveCheckpoint();
+  renderBounty();
+  renderStats();
+  return true;
 }
 let poacherT = 120;
 function spawnPoacher() {
@@ -8024,6 +8117,7 @@ function captureRobber(r) {
   if (!r || r.kindTag !== 'robber') return false;
   const reward = { gold: 6, insight: 4 };
   inv.gold = (inv.gold || 0) + reward.gold;
+  if (r.wanted) Threats.wanted[r.wanted] = 'captured';
   Threats.captured = (Threats.captured || 0) + 1;
   addRep('kind', 1);
   addRep('honest', 1);
@@ -8043,6 +8137,7 @@ function removeRobber(r, reward) {
   if (r.prop) scene.remove(r.prop);
   if (r.interact) { const jx = interactables.indexOf(r.interact); if (jx >= 0) interactables.splice(jx, 1); }
   if (activeTask && activeTask.interact === r.interact) clearAutoTask();
+  if (r.wanted && !Threats.wanted[r.wanted]) Threats.wanted[r.wanted] = 'driven';
   if (reward) {
     Threats.robbersDrivenOff++;
     Threats.bounties++;
@@ -8357,6 +8452,29 @@ function renderBounty() {
       btn.textContent = prog >= b.target ? 'Claim' : 'In progress';
       btn.onclick = () => claimBounty(b.id);
       row.appendChild(btn);
+    }
+    body.appendChild(row);
+  }
+  const wh = document.createElement('div');
+  wh.className = 'journal-eyebrow';
+  wh.style.marginTop = '8px';
+  wh.textContent = 'WANTED OUTLAWS';
+  body.appendChild(wh);
+  for (const w of WANTED) {
+    const status = Threats.wanted?.[w.name] || 'at large';
+    const row = document.createElement('div');
+    row.className = 'almanac-row' + (status === 'captured' ? ' hazard' : '');
+    row.innerHTML = `<span class="when">🎯</span><span class="what"><b>${w.name}</b> — ${w.kind} · ${status}</span>`;
+    if (status === 'captured') {
+      const btn = document.createElement('button');
+      btn.className = 'loadout-btn';
+      btn.style.width = 'auto'; btn.style.padding = '5px 12px'; btn.style.fontSize = '11px';
+      btn.textContent = 'Deliver (10🪙)';
+      btn.onclick = () => claimWanted(w.name);
+      row.appendChild(btn);
+    } else if (status !== 'claimed') {
+      const s = document.createElement('span'); s.className = 'warn'; s.textContent = 'bring in alive';
+      row.appendChild(s);
     }
     body.appendChild(row);
   }
@@ -10367,6 +10485,10 @@ function renderAlmanac() {
   h2.style.marginTop = '8px';
   h2.textContent = 'FORECAST';
   box.appendChild(h2);
+  const seedRow = document.createElement('div');
+  seedRow.className = 'almanac-row';
+  seedRow.innerHTML = `<span class="when">🎲</span><span class="what">Daily run seed #${(Life.seed || 1).toString(36).toUpperCase()} · day ${Life.day}</span>`;
+  box.appendChild(seedRow);
   const days = Weather.forecast.length ? Weather.forecast : [{ day: Life.day + 1, id: Weather.next }];
   for (const f of days) {
     const hz = f.id ? HAZARDS[f.id] : null;
@@ -10631,18 +10753,20 @@ Object.assign(window.__lp, {
   weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
+  bridges, floodWashout, releaseStranded,
   recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
+  weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
   prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech, craftLeather, preyInfo: PREY_INFO,
-  bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
+  bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty, wanted: WANTED, claimWanted },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
   sfx: { log: sfxLog, weather: weatherSound },
   legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
   hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
-    gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
+    gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, heat: !!player.userData.gear?.heatCloak?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
