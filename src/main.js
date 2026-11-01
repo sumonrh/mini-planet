@@ -3191,7 +3191,7 @@ const player = new THREE.Group();
   neck.add(mesh(new THREE.CylinderGeometry(0.09, 0.105, 0.14, 9), skin, 0, 0.05, 0));
   const head = new THREE.Group();
   head.position.y = 0.14;
-  head.scale.setScalar(0.88); // 5.4-head proportions: less toy, more traveler
+  head.scale.setScalar(0.80); // ~6-head proportions: less toy, more traveler
   neck.add(head);
   player.userData.head = head;
   head.add(mesh(new THREE.SphereGeometry(0.245, 12, 10), skin, 0, 0.16, 0));
@@ -5335,6 +5335,19 @@ function manualFire(x, y) {
   clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
   const hit = planetMesh ? clickRay.intersectObject(planetMesh, false)[0] : null;
   if (!hit) return false;
+  // aiming at a beast near the impact point counts as a shot at it
+  let near = null, nearD = 3.2;
+  for (const c of [...bears, ...wolves, ...Threats.robbers, ...Prey]) {
+    if (!c || c.dead || c.hp <= 0 || !c.mesh) continue;
+    const d = c.mesh.position.distanceTo(hit.point);
+    if (d < nearD) { nearD = d; near = c; }
+  }
+  if (near) return fireAt(near);
+  // turn the traveler toward the shot
+  const toHit = hit.point.clone().sub(player.position);
+  const upN = player.position.clone().normalize();
+  toHit.addScaledVector(upN, -toHit.dot(upN));
+  if (toHit.lengthSq() > 1e-4) { facing.copy(toHit.normalize()); faceAlong(player, player.position, facing); }
   Ammo[w.ammo]--; Mag[w.id]--;
   playerAttackCd = Math.max(0.3, w.rate);
   startAttack();
@@ -7351,7 +7364,7 @@ const BOUNTIES = [
   { id: 'robber', name: 'Drive off a robber', icon: '⚠️', target: 1, get: () => Threats.robbersDrivenOff || 0, gold: 4, insight: 2 },
   { id: 'wolves', name: 'Cull 2 wolves', icon: '🐺', target: 2, get: () => Threats.wolvesCulled || 0, gold: 4, insight: 2 },
   { id: 'venison', name: 'Bring 2 venison', icon: '🦌', target: 2, get: () => Threats.venison || 0, gold: 5, insight: 2 },
-  { id: 'bear', name: 'Best a polar bear', icon: '🐻‍❄️', target: 1, get: () => Threats.bearsBested || 0, gold: 6, insight: 3 },
+  { id: 'bear', name: 'Best a polar bear', icon: '🐻', target: 1, get: () => Threats.bearsBested || 0, gold: 6, insight: 3 },
   { id: 'fish', name: 'Catch 3 fish', icon: '🐟', target: 3, get: () => Life.stats.fishCaught || 0, gold: 4, insight: 2 },
 ];
 const BountyClaimed = {};
