@@ -217,6 +217,8 @@ const BIOME_META = {
 const tickers = []; // fn(t, dt)
 const nightLights = []; // {l, base} — lanterns/windows glow harder at night
 const interactables = [];
+const ambientWanderers = [];
+let ambientHuntSeq = 0;
 const occluders = []; // tall structures the follow camera must not clip through
 const camRay = new THREE.Raycaster();
 function addInteract(def) { interactables.push({ radius: 3.6, ...def }); }
@@ -2495,6 +2497,7 @@ addInteract(boatInteract);
 
 // ---------- SUNSTONE OASIS ----------
 let oasisPond;
+let oasisCamelEntry = null;
 const sunstoneMats = [];
 {
   const g = new THREE.Group(); scene.add(g);
@@ -2623,6 +2626,9 @@ const sunstoneMats = [];
   camelTail.add(mesh(new THREE.SphereGeometry(0.075, 7, 5), camelDark, 0, -0.64, 0, false)); // tuft
   const camelBodyScale = camelBody.scale.clone();
   put(camel, latC - 2, lonC - 6, 0, 1.2);
+  oasisCamelEntry = { mesh: camel, parent: g, kindTag: 'ambient', dead: false, hp: 90, maxHp: 90, hunt: { name: 'Camel', icon: '🐪', hp: 90, meat: 6 }, fleeT: 0 };
+  ambientWanderers.push(oasisCamelEntry);
+  attachAmbientHunt(oasisCamelEntry);
   window.__camel = camel;
   // slow looping amble around the oasis
   const camelHome = camel.position.clone();
@@ -2633,6 +2639,7 @@ const sunstoneMats = [];
   const camelEyeBase = camelEyes.map((e) => e.scale.y);
   const camelEarBase = camelEars.map((e) => e.rotation.z);
   tickers.push((t) => {
+    if (oasisCamelEntry?.dead) return;
     const a = t * 0.42;
     const sa = Math.sin(a), ca = Math.cos(a);
     const n = camelHome.clone()
@@ -2640,6 +2647,7 @@ const sunstoneMats = [];
       .addScaledVector(camelB, (1 - ca) * 1.15)
       .normalize();
     camel.position.copy(n).multiplyScalar(R + heightFor(n) + 0.05);
+    if (oasisCamelEntry?.interact) oasisCamelEntry.interact.pos.copy(camel.position);
     const fwd = camelA.clone().multiplyScalar(ca).addScaledVector(camelB, sa);
     fwd.addScaledVector(n, -fwd.dot(n));
     if (fwd.lengthSq() > 1e-6) {
@@ -9506,8 +9514,6 @@ function renderBounty() {
   }
 }
 
-const ambientWanderers = [];
-let ambientHuntSeq = 0;
 function attachAmbientHunt(entry) {
   if (!entry || !entry.hunt) return;
   const it = {
@@ -9547,7 +9553,9 @@ function killAmbient(entry) {
   if (!entry || entry.dead) return;
   const h = entry.hunt || {};
   entry.dead = true;
-  scene.remove(entry.mesh);
+  const parent = entry.mesh.parent || scene;
+  entry.parent = parent;
+  parent.remove(entry.mesh);
   if (entry.interact) {
     const ix = interactables.indexOf(entry.interact);
     if (ix >= 0) interactables.splice(ix, 1);
@@ -9570,7 +9578,7 @@ function killAmbient(entry) {
     entry.dead = false;
     entry.hp = entry.maxHp || entry.hp;
     entry.fleeT = 0;
-    scene.add(entry.mesh);
+    (entry.parent || scene).add(entry.mesh);
     attachAmbientHunt(entry);
   }, 75000);
 }

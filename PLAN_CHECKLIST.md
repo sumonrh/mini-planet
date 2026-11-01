@@ -36,7 +36,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Build-site placement: choose a structure on the homestead board, click a clear spot, then watch the settler walk over and hammer it up; sites persist, and family, herd, dog and hired hands follow the new house/barn/cabin (`herotrest`, `journeytest`)
 - [x] Shoreline dock → raft → boat progression: dock placement is waterline-only, the raft unlocks after the dock, and Boatbuilding unlocks the boat upgrade; the dock craft sails, fishes and saves/loads (`docktest`, `dockbrowsertest`)
 - [x] Fifteen fishing grounds with distinct species pools across ponds, coasts, reefs, deep water and the ice hole; shore markers, boat-zone fishing, and Journal → Almanac progress (`docktest`, `dockbrowsertest`)
-- [x] All wild game huntable (prey, bears, wolves, ambient deer/hares/fennec/lizards/turtles) with collectible 🍖 meat, plus Bowyer → bow/arrows and Hunting Rifle technology (`docktest`, `weapontest`)
+- [x] All wild game huntable (prey, bears, wolves, ambient deer/hares/fennec/lizards/turtles and the oasis camel) with collectible 🍖 meat, plus Bowyer → bow/arrows and Hunting Rifle technology (`docktest`, `weapontest`)
 - [x] Visible tool/gear changes: rod, saw, drill, holster, heat cloak (`weapontest`, `herotrest`)
 - [x] Workshop clatter audio on research/crafting (`progtest`)
 
