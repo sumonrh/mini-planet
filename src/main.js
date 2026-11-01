@@ -3196,20 +3196,32 @@ const player = new THREE.Group();
   player.userData.head = head;
   head.add(mesh(new THREE.SphereGeometry(0.245, 12, 10), skin, 0, 0.16, 0));
   head.add(mesh(new THREE.SphereGeometry(0.185, 10, 8), skin, 0, 0.06, 0.035)); // jaw
+  const face = { eyes: [], glints: [], brows: [], mouth: null };
   for (const s of [-1, 1]) {
     head.add(mesh(new THREE.SphereGeometry(0.055, 8, 6), skinDark, s * 0.235, 0.16, 0, false)); // ears
-    const eye = mesh(new THREE.SphereGeometry(0.045, 8, 6), pupilM, s * 0.095, 0.19, 0.222, false);
+    const eyeG = new THREE.Group();
+    eyeG.position.set(s * 0.095, 0.19, 0.222);
+    const eye = mesh(new THREE.SphereGeometry(0.045, 8, 6), pupilM, 0, 0, 0, false);
     eye.scale.set(1, 1.15, 0.55);
-    head.add(eye);
-    head.add(mesh(new THREE.SphereGeometry(0.012, 5, 4), eyeW, s * 0.095 + 0.012, 0.202, 0.252, false)); // glint
+    eyeG.add(eye);
+    head.add(eyeG);
+    face.eyes.push(eyeG);
     const brow = mesh(new THREE.BoxGeometry(0.085, 0.022, 0.02), hairM, s * 0.095, 0.262, 0.225, false);
     brow.rotation.z = s * -0.14;
+    brow.userData.baseZ = brow.rotation.z;
+    brow.userData.noMerge = true; // expression rig
     head.add(brow);
+    face.brows.push(brow);
     head.add(mesh(new THREE.SphereGeometry(0.036, 6, 5), blushM, s * 0.155, 0.055, 0.195, false));
   }
   head.add(mesh(new THREE.SphereGeometry(0.045, 8, 6), skinDark, 0, 0.135, 0.245, false)); // nose
-  head.add(mesh(new THREE.BoxGeometry(0.075, 0.012, 0.02), mouthM, 0, 0.048, 0.228, false));
-  head.add(mesh(new THREE.BoxGeometry(0.022, 0.03, 0.02), mouthM, -0.05, 0.058, 0.223, false));
+  const mouthG = new THREE.Group();
+  mouthG.position.set(0, 0.05, 0.232);
+  mouthG.add(mesh(new THREE.BoxGeometry(0.075, 0.012, 0.02), mouthM, 0, 0, 0, false));
+  mouthG.add(mesh(new THREE.BoxGeometry(0.022, 0.03, 0.02), mouthM, -0.05, 0.008, -0.005, false));
+  head.add(mouthG);
+  face.mouth = mouthG;
+  head.userData.face = face;
   // hair fringe under the cap
   for (let i = -2; i <= 2; i++) {
     const tuff = mesh(new THREE.ConeGeometry(0.045, 0.12, 5), hairM, i * 0.075, 0.315, 0.17 + Math.abs(i) * 0.012, false);
@@ -3288,6 +3300,15 @@ const player = new THREE.Group();
   const longCoat = mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.45, 12), mat(0x6e6a52), 0, 0.02, 0, false);
   longCoat.userData.noMerge = true; // toggled by chapter
   torsoG.add(longCoat);
+  const coatTails = new THREE.Group();
+  coatTails.position.set(0, 0.05, -0.30);
+  const coatFlaps = [];
+  const pivot = new THREE.Group();
+  const flap = mesh(new THREE.BoxGeometry(0.5, 0.52, 0.045), mat(0x625f4a), 0, -0.26, 0, false);
+  pivot.add(flap);
+  coatTails.add(pivot);
+  coatFlaps.push(pivot);
+  torsoG.add(coatTails);
   // ---- five gear variants: bindle, apron, wedding band + lantern, bandolier, staff ----
   const bindle = new THREE.Group();
   bindle.position.set(0.1, 0.55, -0.42);
@@ -3323,10 +3344,27 @@ const player = new THREE.Group();
   staff.add(mesh(new THREE.CylinderGeometry(0.028, 0.034, 1.5, 6), mat(0x6b4a2f), 0, -0.4, 0, false));
   staff.add(mesh(new THREE.SphereGeometry(0.07, 6, 5), mat(0x8e9aa3, { metalness: 0.6 }), 0, 0.36, 0, false));
   torsoG.add(staff);
+  // tool-tier visuals: fishing rod, carpenter saw, mechanical drill
+  const rod = new THREE.Group();
+  rod.position.set(0.28, 0.5, -0.38);
+  rod.rotation.z = 0.5;
+  rod.add(mesh(new THREE.CylinderGeometry(0.016, 0.022, 1.25, 5), mat(0x7a5230), 0, 0, 0, false));
+  torsoG.add(rod);
+  const sawTool = new THREE.Group();
+  sawTool.position.set(0.34, 0.02, 0.05);
+  sawTool.rotation.z = -0.25;
+  sawTool.add(mesh(new THREE.BoxGeometry(0.05, 0.05, 0.5), mat(0x8e9aa3, { metalness: 0.6 }), 0, 0, 0, false));
+  sawTool.add(mesh(new THREE.BoxGeometry(0.06, 0.16, 0.1), mat(0x5a3e2b), 0, 0, -0.28, false));
+  torsoG.add(sawTool);
+  const drillTool = new THREE.Group();
+  drillTool.position.set(-0.36, 0.05, 0.02);
+  drillTool.add(mesh(new THREE.BoxGeometry(0.12, 0.12, 0.34), mat(0x4a5d5a), 0, 0, 0, false));
+  drillTool.add(mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.3, 5), mat(0x9aa0a6, { metalness: 0.7 }), 0, 0, 0.3, false));
+  torsoG.add(drillTool);
   player.userData.gear = {
-    hatG, satchel, goggles, rifleG, beard, greyHair, longCoat,
-    bindle, apron, band, lantern, bandolier, staff,
-    lodDetails: [bindle, apron, band, lantern, bandolier, staff, goggles, beard, greyHair],
+    hatG, satchel, goggles, rifleG, beard, greyHair, longCoat, coatTails, coatFlaps,
+    bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool,
+    lodDetails: [bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, goggles, beard, greyHair],
   };
   player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
 
@@ -3375,16 +3413,25 @@ const player = new THREE.Group();
     // torso: bob, speed lean, walk twist, chop coil/roll, idle breathing
     const idleF = 1 - Math.min(1, sp / 2);
     const bob = moving ? Math.abs(c) * 0.032 * (0.7 + runF) : Math.sin(idleT * 1.6) * 0.006;
-    P.torso.position.y = 1.02 + bob;
+    let hunch = 0, headTilt = 0;
+    try {
+      const codes = Weather.active.map((h) => h.id);
+      if (codes.includes('blizzard')) hunch += 0.15;            // lean into the wind
+      if (codes.includes('eruption')) { hunch += 0.05; headTilt += 0.09; } // ash haze, chin down
+      if (codes.includes('thunder') || codes.includes('hail')) hunch += 0.05;
+      if (codes.includes('drought') || codes.includes('wildfire')) headTilt -= 0.03;
+    } catch { /* weather not ready */ }
+    const ageF = Math.min(1, Math.max(0, ((Life.age || 20) - 50) / 20));
+    P.torso.position.y = 1.02 + bob - ageF * 0.02;
     P.torso.position.z = pose ? pose.lunge : 0;
-    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16 + ((Life.age || 20) > 55 ? 0.05 : 0)) - P.torso.rotation.x) * kPose;
+    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16 + ageF * 0.06 + hunch) - P.torso.rotation.x) * kPose;
     P.torso.rotation.y += (((moving ? s * 0.07 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
     P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0) + dashF * 0.12) - P.torso.rotation.z) * kPose;
-    P.chest.scale.y = 1 + Math.sin(idleT * 1.9) * 0.012 * idleF;
+    P.chest.scale.y = 1 + Math.sin(idleT * (1.9 - ageF * 0.6)) * 0.012 * idleF;
 
-    // head: counter the torso, look around when idle, track the chop
+    // head: counter the torso, look around when idle, track the chop, weather tilt
     P.head.rotation.y += (((moving ? -P.torso.rotation.y * 0.75 : Math.sin(idleT * 0.33) * 0.22) + (pose ? pose.headYaw : 0)) - P.head.rotation.y) * kPose;
-    P.head.rotation.x += (((moving ? 0.04 : Math.sin(idleT * 0.5) * 0.03) + (pose ? pose.headPitch : 0)) - P.head.rotation.x) * kPose;
+    P.head.rotation.x += (((moving ? 0.04 : Math.sin(idleT * 0.5) * 0.03) + (pose ? pose.headPitch : 0) + headTilt) - P.head.rotation.x) * kPose;
     P.head.rotation.z += ((moving ? -s * 0.015 : 0) - P.head.rotation.z) * k;
 
     // arms: counter-swing, then the chop/slash pose takes over
@@ -3412,6 +3459,38 @@ const player = new THREE.Group();
     P.scarf[1].rotation.z = Math.sin(idleT * 1.3 + 0.8) * 0.07;
     P.scarf[2].rotation.z = Math.sin(idleT * 1.7 + 1.6) * 0.09;
 
+    // face: blink, and expressions for danger, weariness and warm days
+    const face = P.head.userData.face;
+    if (face) {
+      if (P._blinkT === undefined) P._blinkT = 2 + Math.random() * 3;
+      if (P._blinkDur === undefined) P._blinkDur = 0;
+      P._blinkT -= dt;
+      if (P._blinkT <= 0) { P._blinkT = 2.4 + Math.random() * 3.4; P._blinkDur = 0.13; }
+      P._blinkDur = Math.max(0, P._blinkDur - dt);
+      const eyeTarget = (P._blinkDur > 0 ? 0.08 : 1) * (ageF > 0.6 ? 0.82 : 1);
+      for (const e of face.eyes) e.scale.y += (eyeTarget - e.scale.y) * 0.6;
+      const danger = (activeTask && taskIsCombat(activeTask.interact)) || meters.health < 35;
+      const tired = ageF > 0.5 || meters.energy < 22;
+      const warm = !danger && !tired && (meters.morale || 0) > 75 && !isNight();
+      const brow = danger ? -0.38 : tired ? -0.04 : -0.14;
+      for (let bi = 0; bi < face.brows.length; bi++) {
+        const b = face.brows[bi];
+        const sign = bi === 0 ? -1 : 1;
+        b.rotation.z += (sign * brow - b.rotation.z) * 0.2;
+      }
+      const mx = warm ? 1.3 : danger ? 0.82 : 1;
+      const my = warm ? 1.5 : danger ? 0.7 : 1;
+      face.mouth.scale.x += (mx - face.mouth.scale.x) * 0.2;
+      face.mouth.scale.y += (my - face.mouth.scale.y) * 0.2;
+    }
+    // coat tails: secondary spring motion when walking and in wind
+    const g2 = P.gear;
+    if (g2 && g2.coatFlaps && g2.coatTails && g2.coatTails.visible) {
+      const flapA = Math.min(0.6, sp / 14) + hunch * 0.7;
+      g2.coatFlaps[0].rotation.x = 0.08 + flapA + Math.sin(idleT * 2.3) * 0.06;
+      g2.coatFlaps[0].rotation.z = Math.sin(idleT * 1.2) * 0.05;
+    }
+
     if (wading && moving && t - (P._splashT || 0) > 0.35) {
       P._splashT = t;
       const fp = player.position.clone(); fp.y += 0.2;
@@ -3428,6 +3507,7 @@ function applyHeroChapter(ch) {
   for (const p of player.userData.capParts || []) p.visible = cap;
   g.satchel.visible = ch >= 2;
   g.longCoat.visible = ch >= 4;
+  if (g.coatTails) g.coatTails.visible = ch >= 4;
   // five complete gear variants, swappable layers on the same rig
   const allowed = {
     bindle: ch === 0, apron: ch === 1, band: ch >= 2, lantern: ch >= 2,
@@ -3476,6 +3556,16 @@ tickers.push((t) => {
 function applyHeroRanged(w) {
   const g = player.userData.gear;
   if (g) g.rifleG.visible = !!w;
+  applyHeroToolGear();
+}
+function applyHeroToolGear() {
+  const g = player.userData.gear;
+  if (!g) return;
+  const ranged = Loadout.ranged && WEAPONS[Loadout.ranged];
+  if (g.rod) g.rod.userData.allowed = fishingTier() >= 1 && !ranged;
+  if (g.sawTool) g.sawTool.userData.allowed = buildingTier() >= 1;
+  if (g.drillTool) g.drillTool.userData.allowed = buildingTier() >= 2;
+  refreshHeroLod();
 }
 // Merge static meshes inside each joint group by material: keeps the articulated
 // rig, but collapses the many tiny details into a few draw calls (LOD pass).
@@ -4018,9 +4108,9 @@ function pickFish(sea) {
     if (f.ice && sea) return false;
     return true;
   });
-  const total = pool.reduce((a, b) => a + b.w, 0);
+  const total = pool.reduce((a, b) => a + b.w * (fishingTier() >= 2 && b.w <= 10 ? 1.9 : 1), 0);
   let r = Math.random() * total;
-  for (const f of pool) { r -= f.w; if (r <= 0) return f; }
+  for (const f of pool) { r -= f.w * (fishingTier() >= 2 && f.w <= 10 ? 1.9 : 1); if (r <= 0) return f; }
   return pool[0];
 }
 function fishFrom(source) {
@@ -4030,6 +4120,7 @@ function fishFrom(source) {
     fishStage = 1;
     chime(440);
     const first = (Life.stats.fishCaught || 0) < 2;
+    const tier = fishingTier();
     toast(source === 'sea' ? '🎣 Line cast into the blue — wait, then press E.' : '🎣 Line cast… wait… then press E again!');
     setTimeout(() => {
       if (fishStage === 1 && fishSource === source) {
@@ -4037,31 +4128,28 @@ function fishFrom(source) {
         chime(880);
         toast('❗ Nibble! Press E now!');
       }
-    }, first ? 1200 : 2200);
+    }, first ? 1200 : Math.max(900, 2300 - tier * 350));
   } else {
     const sea = fishSource === 'sea';
     fishStage = 0;
     const spec = pickFish(sea);
     const sz = (spec.size[0] + Math.random() * (spec.size[1] - spec.size[0])).toFixed(1);
-    Life.stats.fishCaught = (Life.stats.fishCaught || 0) + 1;
+    const tier = fishingTier();
+    const count = 1 + (tier >= 2 && Math.random() < 0.5 ? 1 : 0) + (tier >= 3 && Math.random() < 0.35 ? 1 : 0);
+    Life.stats.fishCaught = (Life.stats.fishCaught || 0) + count;
     Life.fishBook = Life.fishBook || {};
     const prev = Life.fishBook[spec.id];
     const isRecord = !prev || Number(sz) > prev.best;
-    Life.fishBook[spec.id] = { n: (prev?.n || 0) + 1, best: isRecord ? Number(sz) : prev.best, name: spec.name };
-    if (sea) {
-      if (!addItem('fish', 1)) return;
-      burst(player.position.clone(), 0x7ad9ff, 30, 3);
-      chime(660); setTimeout(() => chime(880), 120);
-      toast(`🐟 ${spec.name} ${sz}kg! (+1 fish${isRecord ? ' — NEW RECORD!' : ''})`);
-      if (onGainXp) onGainXp(isRecord ? 25 : 14, player.position.clone());
-      grantInsight(1, 'Caught a fish');
-    } else {
-      if (!addItem('food', 1)) return;
-      burst(player.position.clone(), 0x7ad9ff, 30, 3);
-      chime(660); setTimeout(() => chime(880), 120);
-      toast(`🐟 ${spec.name} ${sz}kg! (+1 food${isRecord ? ' — NEW!' : ''})`);
-      if (onGainXp) onGainXp(isRecord ? 22 : 12, player.position.clone());
-    }
+    Life.fishBook[spec.id] = { n: (prev?.n || 0) + count, best: isRecord ? Number(sz) : prev.best, name: spec.name };
+    let got = 0;
+    for (let i = 0; i < count; i++) { if (!addItem(sea ? 'fish' : 'food', 1)) break; got++; }
+    if (!got) return;
+    burst(player.position.clone(), 0x7ad9ff, 30, 3);
+    chime(660); setTimeout(() => chime(880), 120);
+    const many = got > 1 ? ` ×${got}` : '';
+    toast(`🐟 ${spec.name} ${sz}kg${many}! (+${got} ${sea ? 'fish' : 'food'}${isRecord ? ' — NEW RECORD!' : ''})${tier ? ` · ${['handline', 'rod', 'net', 'trap'][tier]}` : ''}`);
+    if (sea) { if (onGainXp) onGainXp(isRecord ? 25 : 14, player.position.clone()); grantInsight(1, 'Caught a fish'); }
+    else if (onGainXp) onGainXp(isRecord ? 22 : 12, player.position.clone());
   }
 }
 addInteract({ id: 'shell', pos: anchor(4, 284), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
@@ -4995,6 +5083,16 @@ const TECH = [
   { id: 'shotgun', era: 4, name: 'Shotgun', insight: 8, cost: { stone: 8, gold: 10 }, req: ['gunsmith'], desc: 'Unlock the double-barrel shotgun.' },
   { id: 'refrigeration', era: 4, name: 'Refrigeration', insight: 7, cost: { stone: 8, gold: 8 }, req: ['dynamo'], desc: 'Food spoils at half speed.' },
   { id: 'explosives', era: 4, name: 'Explosives', insight: 7, cost: { stone: 10, gold: 6 }, req: ['forge'], desc: 'Mining yields +1 stone per hit.' },
+  { id: 'fishing-rod', era: 1, name: 'Fishing Rod', insight: 2, cost: { wood: 3, wool: 1 }, req: ['hand-tools'], desc: 'Fishing tier 1: quicker bites, better rare catches.' },
+  { id: 'saw', era: 1, name: 'Carpenter Saw', insight: 2, cost: { wood: 3, stone: 1 }, req: ['hand-tools'], desc: 'Building tier 1: houses finish 25% faster.' },
+  { id: 'fishing-net', era: 2, name: 'Fishing Net', insight: 3, cost: { wood: 4, wool: 2 }, req: ['fishing-rod'], desc: 'Fishing tier 2: 50% chance of a double catch.' },
+  { id: 'seed-drill', era: 2, name: 'Seed Drill', insight: 3, cost: { wood: 5, stone: 2 }, req: ['plough'], desc: 'Farming tier 2: fields yield +1 food and grow faster.' },
+  { id: 'thresher', era: 3, name: 'Thresher', insight: 5, cost: { wood: 8, stone: 6, gold: 2 }, req: ['seed-drill'], desc: 'Farming tier 3: harvests yield another +1 food.' },
+  { id: 'fish-trap', era: 3, name: 'Fish Trap', insight: 5, cost: { wood: 6, stone: 2 }, req: ['fishing-net'], desc: 'Fishing tier 3: passive fish at dawn; triple-catch chance.' },
+  { id: 'greenhouse', era: 3, name: 'Greenhouse', insight: 5, cost: { wood: 8, stone: 4, gold: 2 }, req: ['irrigation'], desc: 'Winter no longer stops the fields.' },
+  { id: 'telegraph', era: 4, name: 'Telegraph', insight: 6, cost: { wood: 6, stone: 4, gold: 4 }, req: ['workshop'], desc: 'Dawn dispatches: +1 insight each morning.' },
+  { id: 'radio', era: 4, name: 'Radio', insight: 8, cost: { stone: 8, gold: 6 }, req: ['telegraph'], desc: 'Four-day forecasts and a morale lift at dawn.' },
+  { id: 'power-tools', era: 4, name: 'Power Tools', insight: 8, cost: { stone: 10, gold: 8 }, req: ['mechanical-tools'], desc: 'Building tier 2: houses finish 50% faster; chores +10%.' },
 ];
 const Research = {
   insight: 4, unlocked: [], queue: null, queued: null, progress: 0, speed: 1,
@@ -5006,6 +5104,12 @@ function researchEra() {
   for (const id of Research.unlocked) { const t = TECH.find((x) => x.id === id); if (t) era = Math.max(era, t.era); }
   return era;
 }
+// tool progression tiers (handmade -> upgraded), derived from researched nodes
+function fishingTier() { return hasTech('fish-trap') ? 3 : hasTech('fishing-net') ? 2 : hasTech('fishing-rod') ? 1 : 0; }
+function farmingTier() { return hasTech('thresher') ? 3 : hasTech('seed-drill') ? 2 : hasTech('plough') ? 1 : 0; }
+function buildingTier() { return hasTech('power-tools') ? 2 : hasTech('saw') ? 1 : 0; }
+function harvestYield() { return 2 + (farmingTier() >= 2 ? 1 : 0) + (farmingTier() >= 3 ? 1 : 0); }
+function buildSpeedMult() { return 1 + (buildingTier() >= 1 ? 0.25 : 0) + (buildingTier() >= 2 ? 0.5 : 0); }
 function techAvailable(t) {
   if (hasTech(t.id)) return { ok: false, why: 'Researched ✓' };
   if (Research.queue?.id === t.id) return { ok: false, why: 'On the bench' };
@@ -5067,8 +5171,14 @@ function applyTech(id) {
     case 'weather-station': Home.weatherStation = true; break;
     case 'refrigeration': Home.refrigeration = true; break;
     case 'dynamo': Research.speed *= 1.3; break;
+    case 'telegraph': Home.telegraph = true; rebuildHomestead(); break;
+    case 'radio': Home.radio = true; rebuildHomestead(); break;
+    case 'greenhouse': Home.greenhouse = true; break;
+    case 'fish-trap': Home.fishTrap = true; break;
+    case 'power-tools': tools.axe = Math.max(tools.axe, 2.2); break;
     default: break;
   }
+  try { applyHeroToolGear(); } catch { /* gear not built yet */ }
   toast(`✅ ${t.name} unlocked!`);
   chime(880);
   pushStory(`Researched ${t.name}. ${t.desc}`, '🔬');
@@ -5134,7 +5244,7 @@ function rollForecast() {
   const next = canHit ? pickHazard() : null;
   Weather.next = next;
   Weather.forecast = [];
-  for (let i = 0; i < (Home.weatherStation ? 3 : 2); i++) {
+  for (let i = 0; i < (Home.radio ? 4 : Home.weatherStation ? 3 : 2); i++) {
     Weather.forecast.push({ day: Life.day + i + 1, id: i === 0 ? next : (i === 1 && Math.random() < 0.55 ? pickHazard() : null) });
   }
   Life.forecast = next;
@@ -5611,6 +5721,7 @@ function saveProgression() {
       pump: !!Home.pump, forge: !!Home.forge, gunsmith: !!Home.gunsmith, irrigation: !!Home.irrigation,
       stormShutters: !!Home.stormShutters, weatherStation: !!Home.weatherStation,
       refrigeration: !!Home.refrigeration, firebreak: !!Home.firebreak,
+      telegraph: !!Home.telegraph, radio: !!Home.radio, greenhouse: !!Home.greenhouse, fishTrap: !!Home.fishTrap,
     },
   };
 }
@@ -5947,6 +6058,7 @@ const Home = {
   workshop: false, windmill: false, sawmill: false, mill: false, pump: false, forge: false,
   gunsmith: false, irrigation: false, stormShutters: false, weatherStation: false,
   refrigeration: false, firebreak: false, dynamo: false,
+  telegraph: false, radio: false, greenhouse: false, fishTrap: false,
   plots: Array.from({ length: 6 }, () => ({ crop: false, growth: 0, water: false })),
 };
 let homeFirePos = null;
@@ -6127,7 +6239,7 @@ function updateHouseConstruction(p) {
 }
 
 function startHouseConstruction(target) {
-  Home.build = { target, t: 0, dur: HOUSE_BUILD_DUR };
+  Home.build = { target, t: 0, dur: HOUSE_BUILD_DUR / buildSpeedMult() };
   closeBuild();
   rebuildHomestead();
   burst(homeSpot(HOUSE_SPOT.lat, HOUSE_SPOT.lon, 1.0), 0xd8c7a1, 12, 1.6);
@@ -6322,6 +6434,25 @@ function buildMiscMeshes() {
     placeAt(g, -7.5, 58.5, 0, -0.4);
     addOccluder(g);
   }
+  if (Home.telegraph) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.07, 0.09, 3.4, 6), mat(0x6b4a2f), 0, 1.7, 0));
+    g.add(mesh(new THREE.BoxGeometry(1.2, 0.08, 0.08), mat(0x8a6238), 0, 3.0, 0));
+    g.add(mesh(new THREE.BoxGeometry(1.0, 0.06, 0.06), mat(0x8a6238), 0, 2.75, 0));
+    g.add(mesh(new THREE.BoxGeometry(0.18, 0.24, 0.12), mat(0x4a5d5a), 0.35, 2.2, 0.05, false)); // key box
+    for (const sx of [-1, 1]) g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.16, 4), mat(0xd9f2ff, { emissive: 0x9fdcff, emissiveIntensity: 0.8 }), sx * 0.4, 3.08, 0, false));
+    placeAt(g, 6.5, 56.5, 0, 0);
+    addOccluder(g);
+  }
+  if (Home.radio) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.BoxGeometry(0.8, 0.6, 0.5), mat(0x4a4038), 0, 0.95, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.8, 4), mat(0x8e9aa3, { metalness: 0.6 }), 0, 2.4, 0));
+    for (let i = 0; i < 3; i++) g.add(mesh(new THREE.TorusGeometry(0.3 + i * 0.22, 0.015, 4, 12), mat(0x9aa0a6), 0, 2.4, 0, false));
+    g.add(mesh(new THREE.SphereGeometry(0.05, 5, 4), mat(0xffe596, { emissive: 0xffb03a, emissiveIntensity: 1.2 }), 0.3, 1.15, 0.26, false));
+    placeAt(g, 6.5, 59.2, 0, 0.3);
+    addOccluder(g);
+  }
   // fire pit (always) + trough + board
   {
     const g = new THREE.Group();
@@ -6460,12 +6591,13 @@ function plotCycle(i) {
   if (!Home.plots[i].bought) return openBuild();
   const p = Home.plots[i];
   if (p.crop && p.growth >= 3) {
-    if (packSize() + 2 > packCap()) return toast('🎒 Pack full — make room, then harvest!');
+    const yieldN = harvestYield();
+    if (packSize() + yieldN > packCap()) return toast('🎒 Pack full — make room, then harvest!');
     p.crop = false; p.growth = 0; p.water = false;
-    addItem('food', 2);
+    for (let n = 0; n < yieldN; n++) addItem('food', 1);
     Life.stats.harvests++;
     burst(plotMesh[i].g.position.clone(), 0x8fd06a, 12, 1.6);
-    chime(600); toast('🌾 Harvest! (+2🍎)');
+    chime(600); toast(`🌾 Harvest! (+${yieldN}🍎)${farmingTier() >= 2 ? ` · ${['hoe', 'plough', 'seed drill', 'thresher'][farmingTier()]}` : ''}`);
     if (onGainXp) onGainXp(12, plotMesh[i].g.position.clone());
   } else if (p.crop && !p.water) {
     const noWell = !Home.well || Home.dmg.well;
@@ -6490,13 +6622,13 @@ function autoWaterCount() {
 }
 function overnightCrops() {
   const winter = seasonNow() === 3;
-  const fast = (Life.bless?.harvest ? 2 : 1) + (hasTech('plough') ? 1 : 0) + (Research.farmBonus > 1 ? 1 : 0);
+  const fast = (Life.bless?.harvest ? 2 : 1) + (hasTech('plough') ? 1 : 0) + (farmingTier() >= 2 ? 1 : 0) + (Research.farmBonus > 1 ? 1 : 0);
   let auto = autoWaterCount();
   if (Home.irrigation) auto += 6;
   for (const p of Home.plots) { if (p.bought && p.crop && !p.water && auto > 0) { p.water = true; auto--; } }
   for (const p of Home.plots) {
     if (!p.bought || !p.crop) continue;
-    if (winter && !Life.bless?.flame) { p.water = false; continue; } // dormant
+    if (winter && !Life.bless?.flame && !Home.greenhouse) { p.water = false; continue; } // dormant unless greenhouse
     if (Life.drought && !(Home.well && !Home.dmg.well) && !Life.bless?.oasis && !Home.irrigation) { p.water = false; continue; }
     if (Life.flood && !Home.pump && !Home.irrigation && !Home.fences) { p.crop = false; p.growth = 0; p.water = false; continue; }
     if (p.water) p.growth = Math.min(3, p.growth + fast);
@@ -6509,6 +6641,9 @@ function overnightTech() {
   if (Home.mill && !Home.dmg.mill) { inv.food += 2; }
   if (Home.pump) { Home.dmg.well = false; Life.flood = false; }
   if (Home.gunsmith && !Home.dmg.gunsmith) Ammo.bullets += 1;
+  if (hasTech('fish-trap')) inv.fish = (inv.fish || 0) + 1;
+  if (Home.telegraph) grantInsight(1, 'Telegraph dispatch');
+  if (Home.radio) meters.morale = Math.min(100, (meters.morale || 70) + 4);
 }
 function overnightStall() {
   if (!Home.stall || Home.dmg.stall) return;
@@ -9520,7 +9655,7 @@ function renderWeatherChip() {
   const nx = document.getElementById('weather-next');
   if (ic) ic.textContent = active ? active.icon : today ? today.icon : (isNight() ? '🌙' : '☀️');
   if (tx) tx.textContent = active ? active.name : today ? today.name : 'Clear skies';
-  if (nx) nx.textContent = next ? `· next ${next.icon}` : (Home.weatherStation ? '· 3-day forecast' : '');
+  if (nx) nx.textContent = next ? `· next ${next.icon}` : (Home.radio ? '· 4-day forecast' : Home.weatherStation ? '· 3-day forecast' : '');
 }
 tickers.push((t) => {
   if (t - lastJourneyHud < 0.4) return;
@@ -9530,11 +9665,13 @@ tickers.push((t) => {
   if (workshopOpen) updateWorkshopProgress();
 });
 function techTreeSVG() {
-  const W = 560, H = 190;
+  const W = 560;
+  const rows = Math.max(...TECH_ERAS.map((_, e) => TECH.filter((t) => t.era === e).length));
+  const H = Math.max(190, 34 + rows * 20 + 16);
   const pos = new Map();
   for (let era = 0; era < TECH_ERAS.length; era++) {
     const arr = TECH.filter((t) => t.era === era);
-    arr.forEach((t, i) => pos.set(t.id, { x: 38 + era * 108, y: 26 + i * 22 }));
+    arr.forEach((t, i) => pos.set(t.id, { x: 38 + era * 108, y: 26 + i * 20 }));
   }
   let edges = '';
   for (const t of TECH) for (const r of t.req) {
@@ -9553,7 +9690,8 @@ function techTreeSVG() {
   const eras = TECH_ERAS.map((n, e) => `<text x="${38 + e * 108}" y="${H - 6}" text-anchor="middle">${n}</text>`).join('');
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${edges}${nodes}${eras}</svg>`;
 }
-function openWorkshop() {  if (playerDead) return;
+function openWorkshop() {
+  if (playerDead) return;
   workshopOpen = true;
   document.getElementById('workshop-overlay').classList.remove('hidden');
   renderWorkshop();
@@ -9903,16 +10041,17 @@ Object.assign(window.__lp, {
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
-  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued },
+  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
   weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
-  prey: Prey, spawnPrey, huntPrey, killPrey,
+  prey: Prey, spawnPrey, huntPrey, killPrey, overnightTech,
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
   sfx: { log: sfxLog, weather: weatherSound },
-  hero: { lod: refreshHeroLod, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls },
+  hero: { lod: refreshHeroLod, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
+    gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible }) },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
