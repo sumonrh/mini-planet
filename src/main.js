@@ -3756,8 +3756,7 @@ function sfxShot(w) {
   if (big) noiseBurst(0.5, 0.14, 300, 'lowpass', 0.06);
   chime(big ? 150 : 260);
 }
-function weatherSound(id) {
-  if (muted) return;
+function weatherSound(id) {  if (muted) return;
   logSfx('weather:' + id);
   if (id === 'thunder') {
     noiseBurst(0.5, 0.3, 380, 'lowpass');
@@ -3777,6 +3776,12 @@ function weatherSound(id) {
     noiseBurst(1.4, 0.2, 500, 'lowpass');
     noiseBurst(0.5, 0.12, 1800, 'bandpass', 0.3);
   }
+}
+function workshopClatter() {
+  if (muted) return;
+  logSfx('workshop');
+  for (let i = 0; i < 4; i++) noiseBurst(0.07, 0.12, 2600, 'bandpass', i * 0.11);
+  chime(760); setTimeout(() => chime(1040), 120);
 }
 
 // ---------- wonders / HUD ----------
@@ -3925,11 +3930,11 @@ function renderJournal() {
   } else if (journalTab === 'almanac') {
     addHeading('ACTIVE');
     if (!Weather.active.length) addRow('No active weather warnings', '☀️');
-    for (const h of Weather.active) addRow(HAZARDS[h.id]?.name || h.id, HAZARDS[h.id]?.icon || '⚠️');
+    for (const h of Weather.active) addRow(HAZARDS[h.id]?.name || h.id, hazardIcon(h.id) || '⚠️');
     addHeading('FORECAST');
     for (const f of Weather.forecast.length ? Weather.forecast : [{ day: Life.day + 1, id: Weather.next }]) {
       const hz = f.id ? HAZARDS[f.id] : null;
-      addRow(hz ? `${hz.name} — ${hz.desc}` : 'Clear / mild', hz ? hz.icon : '☀️');
+      addRow(hz ? `${hz.name} — ${hz.desc}` : 'Clear / mild', hz ? hazardIcon(f.id) : '☀️');
     }
     addHeading('COUNTERS READY');
     addRow(hazardCounterTags(Weather.next || 'thunder').join(' · ') || 'None yet', '🛡️');
@@ -3984,7 +3989,7 @@ function toggleJournal(force) {
 renderCollection();
 
 // ---------- inventory + survival meters (step 1: food/energy/cold + health/remedy) ----------
-const inv = { wood: 0, stone: 0, gold: 0, food: 2, fish: 0, wool: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
+const inv = { wood: 0, stone: 0, gold: 0, food: 2, fish: 0, wool: 0, fur: 0, leather: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
 const meters = { energy: 100, cold: 0, health: 100, hunger: 100, warmth: 100, morale: 80 };
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
@@ -4655,7 +4660,7 @@ tickers.push((t, dt) => updateBears(t, dt));
 
 // ---------- villagers: one friendly face per zone, each happy to trade ----------
 // Gold has no wild source — villagers are how it enters the traveler's pack.
-const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fish: '🐟', wool: '🐑', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
+const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fish: '🐟', wool: '🐑', fur: '🟫', leather: '🟤', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
 const fmtItems = (obj) => Object.entries(obj).map(([k, n]) => `${n} ${ITEM_ICON[k] || k}`).join(' + ') || '—';
 function makeVillager({ coat = 0xe8a33d, hat = 'straw', hatColor = 0xe8d27a, skin = 0xf2c49b } = {}) {
   const g = new THREE.Group();
@@ -5243,6 +5248,7 @@ function startResearch(id) {
     toast(`📋 ${t.name} queued — starts when the bench frees up.`);
   }
   chime(560);
+  try { workshopClatter(); } catch { /* audio */ }
   renderStats(); renderWorkshop();
 }
 function grantInsight(n, why) {
@@ -5292,6 +5298,7 @@ function applyTech(id) {
   try { applyHeroToolGear(); } catch { /* gear not built yet */ }
   toast(`✅ ${t.name} unlocked!`);
   chime(880);
+  try { workshopClatter(); } catch { /* audio */ }
   pushStory(`Researched ${t.name}. ${t.desc}`, '🔬');
   renderStats(); renderWorkshop();
   saveCheckpoint();
@@ -5318,6 +5325,16 @@ function tickResearch(dt) {
 tickers.push((t, dt) => tickResearch(dt));
 
 // ---------- weather & hazards ----------
+const HAZARD_SAFE = {
+  blizzard: '[SNOW]', thunder: '[STORM]', tornado: '[WIND]', flood: '[FLOOD]',
+  drought: '[DRY]', eruption: '[ASH]', wildfire: '[FIRE]', hail: '[HAIL]', wolves: '[WOLF]',
+};
+function hazardIcon(id) {
+  const h = HAZARDS[id];
+  if (!h) return '';
+  try { if (settings.hazardIcons === 'safe') return HAZARD_SAFE[id] || `[${String(id).toUpperCase()}]`; } catch { /* early */ }
+  return h.icon;
+}
 const HAZARDS = {
   blizzard: { icon: '❄️', name: 'Blizzard', seasons: [3], dur: 34, desc: 'Snow and wind. Cold everywhere.', counters: ['warm clothes', 'barn', 'storm shutters'] },
   thunder: { icon: '⛈️', name: 'Thunderstorm', seasons: [0, 2], dur: 28, desc: 'Rain, wind and lightning.', counters: ['storm shutters', 'lightning rod'] },
@@ -5477,7 +5494,7 @@ function startHazard(id) {
   if (id === 'blizzard') Life.blizzard = true;
   if (id === 'drought') Life.drought = true;
   if (id === 'flood') Life.flood = true;
-  toast(`${h.icon} ${h.name.toUpperCase()}! ${h.desc} Prepare now!`);
+  toast(`${hazardIcon(id)} ${h.name.toUpperCase()}! ${h.desc} Prepare now!`);
   chime(180);
   try { weatherSound(id); } catch { /* audio */ }
   pushStory(`${h.icon} ${h.name} struck. ${h.desc}`, h.icon);
@@ -5765,7 +5782,7 @@ function repairWeapon(id) {
   saveCheckpoint();
   return true;
 }
-const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0, rustled: null, honest: 0, feared: 0, kind: 0 };
+const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, boars: 0, captured: 0, recovered: 0, rustled: null, honest: 0, feared: 0, kind: 0 };
 function addRep(dim, n = 1) {
   if (!['honest', 'feared', 'kind'].includes(dim)) return;
   Threats[dim] = (Threats[dim] || 0) + n;
@@ -5845,7 +5862,20 @@ function buyAmmo(kind, n = 1) {
   Ammo[kind] = (Ammo[kind] || 0) + n;
   toast(`🔫 +${n} ${kind}.`);
   chime(500);
+  try { workshopClatter(); } catch { /* audio */ }
   renderStats(); renderLoadout();
+}
+function craftLeather() {
+  if (!Home.workshop) { toast('🔧 Build a workshop first (K/H).'); return false; }
+  if ((inv.fur || 0) < 2) { toast('🟫 Need 2 fur — hunt a boar in Fernwood.'); return false; }
+  inv.fur -= 2;
+  inv.leather = (inv.leather || 0) + 1;
+  toast('🟤 Cured 2 fur into 1 leather.');
+  try { workshopClatter(); } catch { /* audio */ }
+  renderStats();
+  try { renderWorkshop(); } catch { /* closed */ }
+  saveCheckpoint();
+  return true;
 }
 // tracer + muzzle flash
 const _tracers = [];
@@ -5983,7 +6013,7 @@ function saveProgression() {
       robbersDrivenOff: Threats.robbersDrivenOff || 0, thefts: Threats.thefts || 0,
       bounties: Threats.bounties || 0, reputation: Threats.reputation || 0,
       wolvesCulled: Threats.wolvesCulled || 0, bearsBested: Threats.bearsBested || 0,
-      venison: Threats.venison || 0, captured: Threats.captured || 0, recovered: Threats.recovered || 0,
+      venison: Threats.venison || 0, boars: Threats.boars || 0, captured: Threats.captured || 0, recovered: Threats.recovered || 0,
       honest: Threats.honest || 0, feared: Threats.feared || 0, kind: Threats.kind || 0,
       rustled: Threats.rustled ? { kind: Threats.rustled.kind, day: Threats.rustled.day } : null,
     },
@@ -6026,7 +6056,7 @@ function restoreProgression(p) {
     UnlockedWeapons.length = 0;
     for (const id of p.unlockedWeapons) if (WEAPONS[id]) UnlockedWeapons.push(id);
   }
-  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0, honest: 0, feared: 0, kind: 0 }, p.threats);
+  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, boars: 0, captured: 0, recovered: 0, honest: 0, feared: 0, kind: 0 }, p.threats);
   if (p.threats?.rustled) {
     Threats.rustled = { ...p.threats.rustled, pos: latLonToVec3(13, 158, 0).normalize() };
     try { addHerdTrail(); } catch { /* scene not ready */ }
@@ -7285,6 +7315,40 @@ function makeDeer() {
   };
   return g;
 }
+function makeBoar() {
+  const g = new THREE.Group();
+  const hideM = furM('boar', 0x4a3a2e, ['#2e241c', '#6e5440', '#8a705a'], { n: 90, rMin: 1, rMax: 2.8, aMax: 0.45 });
+  const darkM = mat(0x221a14), tuskM = mat(0xf3e9dc);
+  const body = new THREE.Group(); body.position.set(0, 0.78, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.5, 10, 8), hideM, 0, 0, 0);
+  torso.scale.set(1.05, 0.85, 1.45); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.34, 9, 7), hideM, 0, 0.08, 0.58, false)); // shoulder hump
+  const head = new THREE.Group(); head.position.set(0, 0.02, 0.8); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.26, 9, 7), hideM, 0, 0, 0.1, false));
+  head.add(mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.28, 7), hideM, 0, -0.04, 0.3, false)); // snout
+  head.add(mesh(new THREE.BoxGeometry(0.24, 0.08, 0.12), darkM, 0, -0.08, 0.46, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.04, 6, 5), darkM, sx * 0.17, 0.08, 0.2, false));
+    const tusk = mesh(new THREE.ConeGeometry(0.035, 0.22, 5), tuskM, sx * 0.12, -0.14, 0.34, false);
+    tusk.rotation.x = -1.1; tusk.rotation.z = sx * 0.25; head.add(tusk);
+    const ear = mesh(new THREE.ConeGeometry(0.1, 0.22, 5), hideM, sx * 0.24, 0.19, 0.02, false);
+    ear.rotation.z = sx * 0.9; head.add(ear);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.16, -0.72); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.03, 0.02, 0.35, 5), darkM, 0, -0.12, -0.08, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.26, 0.48], [-0.26, 0.48], [0.28, -0.45], [-0.28, -0.45]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.52, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.09, 0.06, 0.42, 6), hideM, 0, -0.2, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.14, 0.09, 0.16), darkM, 0, -0.44, 0.02, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.userData.anim = {
+    legs, head, tail, body, bodyBob: 0.035, cadence: 6, amp: 0.5,
+    graze: 0.5, grazeSpeed: 0.4, headDrop: 0.12, tailAmp: 0.25, tailSpeed: 2.5,
+  };
+  return g;
+}
 function makeHare(base = 0xc9a070, tones = ['#b9885a', '#f3e9dc']) {
   const g = new THREE.Group();
   const fur = furM('hare' + base, base, tones, { n: 55, rMin: 1, rMax: 2.2, aMax: 0.25 });
@@ -8077,15 +8141,16 @@ tickers.push((t, dt) => {
 // --- huntable wildlife: deer and hare that flee, can be hunted for meat ---
 const Prey = [];
 const PREY_INFO = {
-  deer: { name: 'Deer', icon: '🦌', hp: 45, food: 3, pelt: 1, scale: 1.0 },
-  hare: { name: 'Hare', icon: '🐇', hp: 16, food: 1, pelt: 0, scale: 1.0 },
+  deer: { name: 'Deer', icon: '🦌', hp: 45, food: 3, pelt: 1, fur: 0, scale: 1.0 },
+  hare: { name: 'Hare', icon: '🐇', hp: 16, food: 1, pelt: 0, fur: 0, scale: 1.0 },
+  boar: { name: 'Boar', icon: '🐗', hp: 75, food: 4, pelt: 1, fur: 2, scale: 1.0 },
 };
 function spawnPrey(kind, lat, lon) {
   const info = PREY_INFO[kind];
   if (!info) return null;
   const base = latLonToVec3(lat, lon, 0).normalize();
   const pos = base.clone().multiplyScalar(R + heightFor(base) + 0.08);
-  const mesh = kind === 'deer' ? makeDeer() : makeHare();
+  const mesh = kind === 'deer' ? makeDeer() : kind === 'boar' ? makeBoar() : makeHare();
   mesh.scale.setScalar(info.scale);
   mesh.position.copy(pos);
   scene.add(mesh);
@@ -8150,13 +8215,15 @@ function killPrey(p) {
   const meat = Math.max(1, info.food - (wounded ? 1 : 0));
   inv.food = (inv.food || 0) + meat;
   if (info.pelt) inv.wool = (inv.wool || 0) + info.pelt;
+  if (info.fur) inv.fur = (inv.fur || 0) + info.fur;
   const clean = (p.shotHits || 0) > 0 && p.shotHits <= 2 && !wounded;
   if (clean) { inv.food++; grantInsight(1, 'Clean shot'); }
   Threats.venison = (Threats.venison || 0) + (p.kind === 'deer' ? 2 : 1);
+  if (p.kind === 'boar') Threats.boars = (Threats.boars || 0) + 1;
   Life.stats.hunted = (Life.stats.hunted || 0) + 1;
   burst(p.mesh.position.clone(), 0xe8c96a, 18, 2.2);
   chime(620);
-  toast(`${info.icon} ${p.name} hunted! (+${meat}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''})${clean ? ' — clean shot! +1🍎' : wounded ? ' — trailed and finished' : ''}`);
+  toast(`${info.icon} ${p.name} hunted! (+${meat}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''}${info.fur ? `, +${info.fur} fur` : ''})${clean ? ' — clean shot! +1🍎' : wounded ? ' — trailed and finished' : ''}`);
   if (clean) pushStory(`A clean shot brought down a ${p.name}.`, '🎯');
   grantInsight(2, `Hunted a ${p.name}`);
   saveCheckpoint();
@@ -8184,7 +8251,7 @@ function updatePrey(t, dt) {
     let moveDir = null, speed = 0;
     if (flatP.length() < (p.fleeT > 0 ? 12 : 8)) {
       moveDir = flatP.clone().normalize().negate();
-      const base = p.kind === 'hare' ? 6.0 : 5.0;
+      const base = p.kind === 'hare' ? 6.0 : p.kind === 'boar' ? 4.2 : 5.0;
       speed = p.wounded ? base * (p.fleeT > 4 ? 0.9 : 0.45) : base;
     } else {
       p.wt -= dt;
@@ -8229,7 +8296,7 @@ function updatePrey(t, dt) {
   }
 }
 tickers.push((t, dt) => updatePrey(t, dt));
-for (const [k, la, lo] of [['deer', 17, 150], ['deer', 11, 162], ['deer', 4, 146], ['hare', 5, 45], ['hare', 9, 33]]) spawnPrey(k, la, lo);
+for (const [k, la, lo] of [['deer', 17, 150], ['deer', 11, 162], ['deer', 4, 146], ['hare', 5, 45], ['hare', 9, 33], ['boar', 14, 168], ['boar', 7, 154]]) spawnPrey(k, la, lo);
 
 // --- bounty board ---
 const BOUNTIES = [
@@ -8238,6 +8305,7 @@ const BOUNTIES = [
   { id: 'wolves', name: 'Cull 2 wolves', icon: '🐺', target: 2, get: () => Threats.wolvesCulled || 0, gold: 4, insight: 2 },
   { id: 'venison', name: 'Bring 2 venison', icon: '🦌', target: 2, get: () => Threats.venison || 0, gold: 5, insight: 2 },
   { id: 'bear', name: 'Best a polar bear', icon: '🐻', target: 1, get: () => Threats.bearsBested || 0, gold: 6, insight: 3 },
+  { id: 'boar', name: 'Hunt 2 boar', icon: '🐗', target: 2, get: () => Threats.boars || 0, gold: 6, insight: 3 },
   { id: 'fish', name: 'Catch 3 fish', icon: '🐟', target: 3, get: () => Life.stats.fishCaught || 0, gold: 4, insight: 2 },
 ];
 const BountyClaimed = {};
@@ -8792,8 +8860,11 @@ function retireToHeir() {
   tools.axe = Math.max(tools.axe || 1, 1.3);
   Life.chapter = 0; Life.age = 20; Life.seenCards = []; pendingTrait = null;
   applyHeroChapter(0);
-  inv.wood = 0; inv.stone = 0; inv.gold = 2; inv.food = 4; inv.fish = 0; inv.wool = 0; inv.remedy = 1;
-  inv.egg = 0; inv.milk = 0; inv.meal = 1;
+  const ng = Math.max(0, (Life.gen || 1) - 1);
+  inv.wood = 8 + ng * 4; inv.stone = 4 + ng * 3; inv.gold = 3 + ng * 2; inv.food = 6 + ng * 2;
+  inv.fish = 0; inv.wool = 0; inv.fur = 0; inv.leather = 1 + ng; inv.remedy = 2;
+  inv.egg = 0; inv.milk = 0; inv.meal = 2;
+  Ammo.bullets = Math.max(Ammo.bullets || 0, 3 + ng * 2);
   meters.energy = 100; meters.health = 100; meters.cold = 0; meters.hunger = 90; meters.warmth = 100; meters.morale = 90;
   Home.dmg = {};
   for (let i = wolves.length - 1; i >= 0; i--) {
@@ -9455,8 +9526,9 @@ const SETTINGS_DEFS = [
   { id: 'textSize', name: 'Text size', desc: 'HUD and journal text', opts: ['normal', 'large'], labels: { normal: 'Normal', large: 'Large 🔎' } },
   { id: 'contrast', name: 'High contrast', desc: 'Stronger panels and outlines', opts: ['normal', 'high'], labels: { normal: 'Normal', high: 'High ◐' } },
   { id: 'hazardPause', name: 'Pause on hazard', desc: 'Freeze the game when a hazard begins', opts: [false, true], labels: { false: 'Off', true: 'On ⏸️' } },
+  { id: 'hazardIcons', name: 'Hazard icons', desc: 'Colorblind-safe text badges', opts: ['emoji', 'safe'], labels: { emoji: 'Emoji', safe: 'Safe [STORM]' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -9637,7 +9709,7 @@ function applySave(s, respawn) {
   if (meters.hunger === undefined) meters.hunger = 100;
   if (meters.warmth === undefined) meters.warmth = 100;
   if (meters.morale === undefined) meters.morale = 80;
-  for (const k of ['fish', 'egg', 'milk', 'meal']) if (inv[k] === undefined) inv[k] = 0;
+  for (const k of ['fish', 'egg', 'milk', 'meal', 'fur', 'leather']) if (inv[k] === undefined) inv[k] = 0;
   if (s.life) restoreLife(s.life);
   if (s.tools) Object.assign(tools, s.tools);
   for (const sn of s.npcs || []) {
@@ -10126,9 +10198,9 @@ function renderWeatherChip() {
   const ic = document.getElementById('weather-icon');
   const tx = document.getElementById('weather-text');
   const nx = document.getElementById('weather-next');
-  if (ic) ic.textContent = active ? active.icon : today ? today.icon : (isNight() ? '🌙' : '☀️');
+  if (ic) ic.textContent = active ? hazardIcon(Weather.active[0].id) : today ? hazardIcon(Weather.today) : (isNight() ? '🌙' : '☀️');
   if (tx) tx.textContent = active ? active.name : today ? today.name : 'Clear skies';
-  if (nx) nx.textContent = next ? `· next ${next.icon}` : (Home.radio ? '· 4-day forecast' : Home.weatherStation ? '· 3-day forecast' : '');
+  if (nx) nx.textContent = next ? `· next ${hazardIcon(Weather.next)}` : (Home.radio ? '· 4-day forecast' : Home.weatherStation ? '· 3-day forecast' : '');
 }
 tickers.push((t) => {
   if (t - lastJourneyHud < 0.4) return;
@@ -10251,6 +10323,15 @@ function renderWorkshop() {
       b.onclick = () => buyAmmo(kind, kind === 'arrows' || kind === 'stones' ? 4 : 2);
       list.appendChild(b);
     }
+    const lh = document.createElement('div');
+    lh.className = 'tech-era';
+    lh.textContent = 'Leatherworking';
+    list.appendChild(lh);
+    const lb = document.createElement('button');
+    lb.className = 'tech-card';
+    lb.innerHTML = `<span class="tech-main"><span class="tech-name">Cure Leather</span><span class="tech-desc">2🟫 fur → 1🟤 leather · have ${inv.leather || 0} leather, ${inv.fur || 0} fur</span></span><span class="tech-cost">Craft</span>`;
+    lb.onclick = () => craftLeather();
+    list.appendChild(lb);
   }
 }
 function openAlmanac() {
@@ -10268,7 +10349,7 @@ function renderAlmanac() {
   const box = document.getElementById('almanac-body');
   if (!box) return;
   box.innerHTML = '';
-  const active = Weather.active.map((h) => HAZARDS[h.id]).filter(Boolean);
+  const active = Weather.active.map((h) => (HAZARDS[h.id] ? { ...HAZARDS[h.id], id: h.id } : null)).filter(Boolean);
   if (active.length) {
     const h = document.createElement('div');
     h.className = 'journal-eyebrow';
@@ -10277,7 +10358,7 @@ function renderAlmanac() {
     for (const hz of active) {
       const row = document.createElement('div');
       row.className = 'almanac-row hazard';
-      row.innerHTML = `<span class="when">${hz.icon}</span><span class="what"><b>${hz.name}</b> — ${hz.desc}</span>`;
+      row.innerHTML = `<span class="when">${hazardIcon(hz.id)}</span><span class="what"><b>${hz.name}</b> — ${hz.desc}</span>`;
       box.appendChild(row);
     }
   }
@@ -10291,7 +10372,7 @@ function renderAlmanac() {
     const hz = f.id ? HAZARDS[f.id] : null;
     const row = document.createElement('div');
     row.className = 'almanac-row';
-    row.innerHTML = `<span class="when">Day ${f.day}</span><span class="what">${hz ? `${hz.icon} ${hz.name}` : '☀️ Clear / mild'}</span>`;
+    row.innerHTML = `<span class="when">Day ${f.day}</span><span class="what">${hz ? `${hazardIcon(f.id)} ${hz.name}` : '☀️ Clear / mild'}</span>`;
     if (hz) {
       const counters = hazardCounterTags(f.id);
       const c = document.createElement('span');
@@ -10551,9 +10632,9 @@ Object.assign(window.__lp, {
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
   recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables,
-  counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing,
+  counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
-  prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech,
+  prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech, craftLeather, preyInfo: PREY_INFO,
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
