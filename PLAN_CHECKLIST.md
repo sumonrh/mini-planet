@@ -13,14 +13,14 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Weather director with 2–4 day forecast, almanac, mercy cooldown and difficulty scaling (`progtest`, `journeytest`)
 - [x] **Seeded daily-run forecast** (`progtest`: same seed/day reproduces; browser `weapontest`)
 - [x] In-world telegraph: cloud bank, fleeing birds, tracks, sheltering herd, NPC rumor (`progtest`, `weapontest`, screenshot)
-- [x] Blizzard, thunderstorm, tornado, flood, drought, eruption, wildfire (spreading, now damages buildings unless firebreak), hail (`progtest` start/end for all eight; wildfire building damage + firebreak test)
+- [x] Blizzard, thunderstorm, tornado, flood, drought, eruption, wildfire (spreading across cells, **to tree nodes** and buildings unless firebreak), hail (`progtest` start/end for all eight; wildfire tree/building tests)
 - [x] Flood washes out bridges and strands animals; waters recede (`progtest`, `weapontest`)
-- [x] Live VFX for snow/rain/ash/hail, lightning, floodwater, wildfire cells, lava flow and tornado, with **telegraphed lightning strike rings** (`progtest`, `weapontest` screenshots)
+- [x] Live VFX for snow/rain/ash/hail, lightning, floodwater, wildfire cells, **route-blocking lava flow**, and tornado, with **telegraphed lightning strike rings** (`progtest`, `weapontest`)
 - [x] Counters: storm shutters, cellar, well, irrigation, steam pump, barn, ash mask, **heat gear**, firebreak, lightning rod, sandbags, hail netting, scarecrow (`progtest` hazard-counter matrix)
 - [x] Pause-on-hazard accessibility option (`progtest`)
 
 ## Threats
-- [x] Night robbers, toll robbers, rustlers, poachers with pay/fight/intimidate/free choices (`journeytest`, `progtest`)
+- [x] Night robbers, toll robbers, rustlers, poachers with pay/fight/intimidate/free choices, and **night thieves steal tool upgrades** (`journeytest`, `progtest`)
 - [x] **Named wanted outlaws** with custody status and delivery bounties (`progtest`, `weapontest`)
 - [x] Rustler steals livestock; tracks lead to a recovery quest (`progtest`)
 - [x] Alive-bounty capture pays more than a kill (`progtest`, `weapontest`)
@@ -52,7 +52,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Cozy/Standard/Frontier difficulty (**Cozy halves incoming damage**) plus separate **Harsh Weather**, **Thieves & rustlers** and **Permadeath** toggles (`progtest`)
 - [x] Reduced flash/shake, large text, high contrast, colorblind-safe hazard badges (`[STORM]`), pause-on-hazard (`progtest`, `weapontest`)
 - [x] Chapter intro cards, almanac, loadout, bounty and journal overlays (`journeytest`)
-- [x] Single-file build deployed to Firebase with live SHA256 verification
+- [x] Single-file build deployed to Firebase with live SHA256 verification; **pacing is 300 s days and 8 days/season (32-day year)** (`progtest`, `weapontest`)
 
 ## Known scope notes
 - Hazards are recoverable and telegraphed; guns remain loud late-game tools rather than a power fantasy.

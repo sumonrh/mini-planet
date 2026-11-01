@@ -4983,8 +4983,8 @@ function closeTrade() {
 // --- time, seasons, sky ---
 const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
 const SEASON_ICON = ['🌸', '☀️', '🍂', '❄️'];
-const DAY_LEN = 240; // real seconds per full day
-const DAYS_PER_SEASON = 6;
+const DAY_LEN = 300; // real seconds per full day (plan §10 pacing)
+const DAYS_PER_SEASON = 8;
 const CLOTHES = ['Rags', 'Tunic', 'Parka', 'Festive Garb'];
 const Life = {
   day: 1, t: 0.3, clothes: 0, gen: 1, ring: false, spouse: null,
@@ -5171,7 +5171,7 @@ function tickChapters() {
   if (pendingTrait && pendingTrait.length) return; // wait for the life choice
   if (Life._chapterAt && performance.now() - Life._chapterAt < 5000) return;
   if (chapterGoalsMet()) advanceChapter();
-  const expectedAge = 20 + (Life.day - 1) / 24 * 2; // gentle aging between chapters
+  const expectedAge = 20 + (Life.day - 1) / (DAYS_PER_SEASON * 4) * 2; // gentle aging between chapters
   if (!Number.isFinite(Life.age)) Life.age = 20;
   Life.age = Math.max(Life.age, Math.min(70, Math.round(expectedAge)));
 }
@@ -5614,6 +5614,30 @@ function burnHomestead() {
   pushStory(`Wildfire damaged the ${id}.`, '🔥');
   return id;
 }
+function burnTree(nd) {
+  if (!nd || nd.depleted) return false;
+  nd.charred = true;
+  depleteNode(nd);
+  const p = nd.shakeRoot ? nd.shakeRoot.position.clone() : player.position.clone();
+  burst(p, 0xff6a2a, 16, 2);
+  toast('🔥 Wildfire caught a tree!');
+  pushStory('A tree went up in the wildfire.', '🔥');
+  return true;
+}
+function burnNearbyTrees() {
+  if (!hazardProps || hazardProps.id !== 'wildfire' || !hazardProps.cells) return 0;
+  let burned = 0;
+  for (const cell of hazardProps.cells) {
+    for (const nd of nodes) {
+      if (nd.depleted || !nd.shakeRoot) continue;
+      if (nd.shakeRoot.position.distanceTo(cell.mesh.position) < 2.6) {
+        if (burnTree(nd)) burned++;
+        if (burned >= 2) return burned;
+      }
+    }
+  }
+  return burned;
+}
 function startHazard(id) {  const h = hazardById(id);
   if (!h) return;
   clearTelegraph();
@@ -5851,6 +5875,7 @@ tickers.push((t, dt) => {
       if (!Home.firebreak && player.position.distanceTo(p) < 3) damagePlayer(2, p);
     }
     if (h.id === 'wildfire' && Math.random() < dt * 0.045) burnHomestead();
+    if (h.id === 'wildfire' && Math.random() < dt * 0.09) burnNearbyTrees();
     if (h.id === 'flood' && Home.plots.some((p) => p.crop) && !Home.pump && !Home.irrigation && !Home.sandbags && Math.random() < dt * 0.08) {
       const p = Home.plots.find((x) => x.crop); if (p) { p.crop = false; p.growth = 0; p.water = false; refreshPlotMeshes(); toast('🌊 Floodwater drowned a crop! (pump/irrigation helps)'); }
     }
@@ -8199,6 +8224,20 @@ function recoverHerd() {
   renderStats();
   return true;
 }
+function stealTool(r) {
+  const kinds = [];
+  if ((tools.axe || 1) > 1.05) kinds.push('axe');
+  if ((tools.pick || 1) > 1.05) kinds.push('pick');
+  if (!kinds.length) return false;
+  const k = kinds[(Math.random() * kinds.length) | 0];
+  const before = tools[k];
+  tools[k] = Math.max(1, Math.round((before - 0.25) * 100) / 100);
+  Threats.stolenTool = { tool: k, amount: Math.round((before - tools[k]) * 100) / 100, day: Life.day, thief: r?.name || 'A thief' };
+  toast(`🪓 ${r?.name || 'The thief'} stole your ${k} upgrade! (repair your tools)`);
+  pushStory(`${r?.name || 'A thief'} made off with part of your ${k} upgrade.`, '🪓');
+  renderStats();
+  return true;
+}
 function captureRobber(r) {
   if (!r || r.kindTag !== 'robber') return false;
   const reward = { gold: 6, insight: 4 };
@@ -8286,6 +8325,8 @@ function updateRobbers(t, dt) {
       if (r.pos.distanceTo(home) < 4.5) {
         if (r.kind === 'rustler' && animals.length) {
           rustleHerd(r);
+          r.state = 'flee';
+        } else if (r.kind !== 'rustler' && stealTool(r)) {
           r.state = 'flee';
         } else {
           const stolenFood = Math.min(inv.food || 0, 2);
@@ -10917,11 +10958,13 @@ try {
 } catch { try { showTitle(); } catch { /* no DOM */ } }
 Object.assign(window.__lp, {
   bears, animals, wolves, meters, useRemedy, attackBear, damagePlayer, saveCheckpoint, loadSave, applySave,
+  playerPos: () => playerPos.clone(),
   spawnAnimal, spawnDog, spawnWolves,
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
   settingsDefs: SETTINGS_DEFS, autoRespawn: () => !settings.permadeath,
+  pacing: { dayLen: DAY_LEN, daysPerSeason: DAYS_PER_SEASON, yearDays: DAYS_PER_SEASON * 4 },
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
   homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
   rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
@@ -10931,8 +10974,10 @@ Object.assign(window.__lp, {
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
   bridges, floodWashout, releaseStranded,
   lightning: { spawn: spawnLightningStrike, resolve: resolveLightningStrike, strikes: () => Weather.strikes },
-  burnHomestead,
-  recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables,
+  burnHomestead, burnTree, burnNearbyTrees, lavaBlock: blockLavaMovement,
+  lavaCells: () => (hazardProps && hazardProps.flow) ? hazardProps.flow : [],
+  wildfireCells: () => (hazardProps && hazardProps.cells) ? hazardProps.cells : [],
+  recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables, stealTool,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
   weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
@@ -11498,6 +11543,36 @@ function updateBoatControl(dt) {
   return nn;
 }
 
+function blockLavaMovement() {
+  const flow = (typeof hazardProps !== 'undefined' && hazardProps && hazardProps.flow) ? hazardProps.flow : null;
+  if (!flow || !flow.length) return false;
+  const n = playerPos.clone().normalize();
+  let lavaToastT = player.userData._lavaToast || 0;
+  for (const cell of flow) {
+    if (!cell.mesh) continue;
+    const to = playerPos.clone().sub(cell.mesh.position);
+    to.addScaledVector(n, -to.dot(n));
+    const d = to.length();
+    if (d > 1.7) continue;
+    let dir = to;
+    if (d < 1e-3) {
+      dir = playerPos.clone().sub(cell.pos || cell.mesh.position);
+      dir.addScaledVector(n, -dir.dot(n));
+    }
+    if (dir.lengthSq() < 1e-6) dir = V3(1, 0, 0);
+    dir.normalize();
+    let np = cell.mesh.position.clone().normalize().addScaledVector(dir, 1.9 / R).normalize();
+    playerPos.copy(np).multiplyScalar(R + heightFor(np) + 0.1);
+    moveTargetN = null;
+    const now = performance.now();
+    if (now - lavaToastT > 1500) {
+      player.userData._lavaToast = now;
+      toast('🌋 The lava flow blocks the way — go around.');
+    }
+    return true;
+  }
+  return false;
+}
 function updatePlayer(dt) {
   const n = playerPos.clone().normalize();
   if (playerDead) {
@@ -11576,6 +11651,7 @@ function updatePlayer(dt) {
   if (hopH < 0) { hopH = 0; playerVel = 0; }
   // RPG auto-action: walk into range, then work/fight on cooldown
   try { updateAutoTask(dt); } catch { /* noop */ }
+  try { if (blockLavaMovement()) { clearAutoTask(); } } catch { /* no hazard */ }
   // target ring pulse
   try {
     if (targetRing.visible) {
