@@ -3537,8 +3537,17 @@ function refreshHeroLod(forceFar) {
   const locked = player.userData.lodLock;
   const d = (typeof camera !== 'undefined' && camera && player.position) ? camera.position.distanceTo(player.position) : 0;
   const far = locked !== null && locked !== undefined ? locked : d > 24;
+  // portrait/full detail is reserved for photo mode and very close inspection;
+  // gameplay hides the tiniest cosmetic meshes to stay inside the 65-call budget.
+  const lockPortrait = player.userData.portraitLock;
+  const portrait = !far && (lockPortrait !== null && lockPortrait !== undefined ? lockPortrait : (!!(typeof photoMode !== 'undefined' && photoMode) || d < 4.2));
   for (const grp of g.lodDetails) grp.visible = !!grp.userData.allowed && !far;
-  player.userData.lodLevel = far ? 2 : 1;
+  if (g.microLod) for (const m of g.microLod) m.visible = portrait;
+  player.userData.lodLevel = portrait ? 0 : far ? 2 : 1;
+}
+function setHeroPortrait(on) {
+  player.userData.portraitLock = !!on;
+  refreshHeroLod();
 }
 function measureHeroDrawCalls() {
   const hidden = [];
@@ -3567,6 +3576,7 @@ function applyHeroToolGear() {
   const g = player.userData.gear;
   if (!g) return;
   const ranged = Loadout.ranged && WEAPONS[Loadout.ranged];
+  if (g.rifleG) g.rifleG.visible = !!ranged;
   if (g.rod) g.rod.userData.allowed = fishingTier() >= 1 && !ranged;
   if (g.sawTool) g.sawTool.userData.allowed = buildingTier() >= 1;
   if (g.drillTool) g.drillTool.userData.allowed = buildingTier() >= 2;
@@ -3635,6 +3645,24 @@ function bakeHeroLOD(root) {
   let n = 0;
   root.traverse((o) => { if (o.isMesh) n++; });
   root.userData.meshCount = n;
+  // Mark the tiniest cosmetic meshes as gameplay-LOD trim (portrait keeps them).
+  const protectedNodes = new Set();
+  const protect = (o) => { if (o) o.traverse((x) => protectedNodes.add(x)); };
+  protect(root.userData.head);
+  protect(root.userData.axe);
+  for (const s of root.userData.scarf || []) protect(s);
+  protect(root.userData.gear?.rifleG);
+  const candidates = [];
+  root.traverse((o) => {
+    if (!o.isMesh || protectedNodes.has(o) || o.userData.noMerge) return;
+    o.geometry.computeBoundingSphere?.();
+    const r = o.geometry.boundingSphere?.radius || 1;
+    candidates.push({ mesh: o, r });
+  });
+  candidates.sort((a, b) => a.r - b.r);
+  root.userData.microLod = candidates.slice(0, 22).map((c) => c.mesh);
+  root.userData.microLodCount = root.userData.microLod.length;
+  if (root.userData.gear) root.userData.gear.microLod = root.userData.microLod;
   return n;
 }
 bakeHeroLOD(player);
@@ -5320,6 +5348,7 @@ function hazardWard(id) {
   if (Home.lightningRod && id === 'thunder') ward += 0.5;
   if (Home.sandbags && id === 'flood') ward += 0.5;
   if (Home.hailNetting && id === 'hail') ward += 0.5;
+  if (Home.firebreak && id === 'wildfire') ward += 0.5;
   ward += Research.stormWard || 0;
   return Math.min(0.85, ward);
 }
@@ -6503,6 +6532,7 @@ function buildMiscMeshes() {
   }
   if (Home.telegraph) {
     const g = new THREE.Group();
+    g.userData.prop = 'telegraph';
     g.add(mesh(new THREE.CylinderGeometry(0.07, 0.09, 3.4, 6), mat(0x6b4a2f), 0, 1.7, 0));
     g.add(mesh(new THREE.BoxGeometry(1.2, 0.08, 0.08), mat(0x8a6238), 0, 3.0, 0));
     g.add(mesh(new THREE.BoxGeometry(1.0, 0.06, 0.06), mat(0x8a6238), 0, 2.75, 0));
@@ -6513,6 +6543,7 @@ function buildMiscMeshes() {
   }
   if (Home.radio) {
     const g = new THREE.Group();
+    g.userData.prop = 'radio';
     g.add(mesh(new THREE.BoxGeometry(0.8, 0.6, 0.5), mat(0x4a4038), 0, 0.95, 0));
     g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 2.8, 4), mat(0x8e9aa3, { metalness: 0.6 }), 0, 2.4, 0));
     for (let i = 0; i < 3; i++) g.add(mesh(new THREE.TorusGeometry(0.3 + i * 0.22, 0.015, 4, 12), mat(0x9aa0a6), 0, 2.4, 0, false));
@@ -6522,6 +6553,7 @@ function buildMiscMeshes() {
   }
   if (Home.lightningRod) {
     const g = new THREE.Group();
+    g.userData.prop = 'lightningRod';
     g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.6, 6), mat(0x8e9aa3, { metalness: 0.7 }), 0, 1.8, 0));
     g.add(mesh(new THREE.ConeGeometry(0.12, 0.4, 6), mat(0xd9b34a, { metalness: 0.8 }), 0, 3.75, 0));
     g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 4), mat(0x5a5a66), 0.12, 3.3, 0, false));
@@ -6530,6 +6562,7 @@ function buildMiscMeshes() {
   }
   if (Home.sandbags) {
     const g = new THREE.Group();
+    g.userData.prop = 'sandbags';
     for (let i = 0; i < 5; i++) {
       const bag = mesh(new THREE.SphereGeometry(0.26, 7, 5), mat(0x9a8a62), (i % 2) * 0.34 - 0.17, 0.18 + Math.floor(i / 2) * 0.3, 0, false);
       bag.scale.set(1.3, 0.7, 0.8);
@@ -6539,12 +6572,14 @@ function buildMiscMeshes() {
   }
   if (Home.hailNetting) {
     const g = new THREE.Group();
+    g.userData.prop = 'hailNetting';
     for (const sx of [-1, 1]) g.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.6, 4), mat(0x7a5230), sx * 1.5, 0.8, 0));
     g.add(mesh(new THREE.PlaneGeometry(3.1, 2.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xd9f2ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }), 0, 1.55, 0, false));
     placeAt(g, -5.5, 57, 0, 0.1);
   }
   if (Home.scarecrow) {
     const g = new THREE.Group();
+    g.userData.prop = 'scarecrow';
     g.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.9, 5), mat(0x6b4a2f), 0, 0.95, 0));
     g.add(mesh(new THREE.BoxGeometry(1.3, 0.08, 0.08), mat(0x6b4a2f), 0, 1.45, 0));
     g.add(mesh(new THREE.BoxGeometry(0.42, 0.55, 0.22), mat(0xa6472f), 0, 1.2, 0, false));
@@ -10208,7 +10243,9 @@ Object.assign(window.__lp, {
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
-  life: Life, home: Home, research: Research, weather: Weather, threats: Threats,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
+  life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
+  homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
+  rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
   weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
@@ -10218,8 +10255,8 @@ Object.assign(window.__lp, {
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
   sfx: { log: sfxLog, weather: weatherSound },
-  hero: { lod: refreshHeroLod, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
-    gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible }) },
+  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
+    gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
