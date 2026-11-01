@@ -242,6 +242,18 @@ body.custom-cursor #scene { cursor: none; }
   border-color: var(--cur, #ffd97a);
   box-shadow: 0 0 0 1px rgba(0,0,0,0.35), 0 3px 14px rgba(0,0,0,0.5);
 }
+#cursor.aiming .cursor-ring {
+  width: 44px; height: 44px; background: transparent;
+  border-color: #ffd97a; border-width: 1px;
+  box-shadow: 0 0 10px rgba(255,217,122,0.35);
+}
+#cursor.aiming .cursor-ring::before,
+#cursor.aiming .cursor-ring::after {
+  content: ''; position: absolute; background: #ffd97a; opacity: 0.9;
+}
+#cursor.aiming .cursor-ring::before { left: 50%; top: -8px; width: 1px; height: 14px; transform: translateX(-50%); box-shadow: 0 52px 0 #ffd97a; }
+#cursor.aiming .cursor-ring::after { top: 50%; left: -8px; height: 1px; width: 14px; transform: translateY(-50%); box-shadow: 52px 0 0 #ffd97a; }
+#cursor.aiming .cursor-ico { opacity: 0; }
 #cursor.hot .cursor-ico { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 #cursor.hot .cursor-label { opacity: 0.95; }
 #cursor.dragging .cursor-ring { width: 18px; height: 18px; opacity: 0.6; }
@@ -485,7 +497,7 @@ body.touch #biome-label h1 { font-size: 34px; }
 #weather-next { opacity: 0.7; font-size: 10.5px; margin-left: 4px; }
 /* ---------- research / almanac / loadout ---------- */
 .wide-card { min-width: min(580px, calc(100vw - 40px)); max-height: 86vh; overflow-y: auto; }
-#workshop-overlay, #almanac-overlay, #loadout-overlay, #trait-overlay, #robber-overlay {
+#workshop-overlay, #almanac-overlay, #loadout-overlay, #trait-overlay, #robber-overlay, #bounty-overlay {
   position: fixed; inset: 0; z-index: 50;
   display: flex; align-items: center; justify-content: center;
   background: rgba(5, 12, 18, 0.55); backdrop-filter: blur(3px);
@@ -552,7 +564,7 @@ body.touch #biome-label h1 { font-size: 34px; }
 }
 .jtab:hover { background: rgba(255,255,255,0.12); }
 .jtab.active { background: #ffd97a; color: #2a2000; border-color: #ffd97a; font-weight: 700; }
-#trait-body, #robber-choices, #loadout-body, #almanac-body { display: flex; flex-direction: column; gap: 8px; }
+#trait-body, #robber-choices, #loadout-body, #almanac-body, #bounty-body { display: flex; flex-direction: column; gap: 8px; }
 .trait-btn, .loadout-btn, .robber-btn {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,217,122,0.4);

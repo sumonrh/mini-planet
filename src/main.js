@@ -3227,6 +3227,7 @@ const player = new THREE.Group();
   feather.rotation.z = -0.5;
   head.add(feather);
   player.userData.capParts = [cap, brim, feather];
+  for (const p of player.userData.capParts) p.userData.noMerge = true;
 
   // ---- backpack: frame, pockets, bedroll, canteen ----
   const pack = new THREE.Group();
@@ -3285,6 +3286,7 @@ const player = new THREE.Group();
   }
   head.add(greyHair);
   const longCoat = mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.45, 12), mat(0x6e6a52), 0, 0.02, 0, false);
+  longCoat.userData.noMerge = true; // toggled by chapter
   torsoG.add(longCoat);
   player.userData.gear = { hatG, satchel, goggles, rifleG, beard, greyHair, longCoat };
   player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
@@ -3401,6 +3403,63 @@ function applyHeroRanged(w) {
   const g = player.userData.gear;
   if (g) g.rifleG.visible = !!w;
 }
+// Merge static meshes inside each joint group by material: keeps the articulated
+// rig, but collapses the many tiny details into a few draw calls (LOD pass).
+function mergeGeometryList(meshes) {
+  const geos = [];
+  let hasUV = true;
+  for (const m of meshes) {
+    m.updateMatrix();
+    let g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+    g.applyMatrix4(m.matrix);
+    if (!g.attributes.uv) hasUV = false;
+    geos.push(g);
+  }
+  const total = geos.reduce((n, g) => n + g.attributes.position.count, 0);
+  const pos = new Float32Array(total * 3), nor = new Float32Array(total * 3);
+  const uv = hasUV ? new Float32Array(total * 2) : null;
+  let o = 0;
+  for (const g of geos) {
+    const p = g.attributes.position, n = g.attributes.normal;
+    pos.set(p.array, o * 3);
+    if (n) nor.set(n.array, o * 3);
+    if (uv && g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+    o += p.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  if (uv) out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.computeBoundingSphere();
+  return out;
+}
+function mergeDirectMeshes(group) {
+  const byMat = new Map();
+  for (const c of group.children) {
+    if (!c.isMesh || c.userData.noMerge || c.children.length || !c.geometry?.attributes?.position) continue;
+    if (Array.isArray(c.material)) continue;
+    if (!byMat.has(c.material)) byMat.set(c.material, []);
+    byMat.get(c.material).push(c);
+  }
+  for (const [material, list] of byMat) {
+    if (list.length < 2) continue;
+    const merged = new THREE.Mesh(mergeGeometryList(list), material);
+    merged.castShadow = list.some((m) => m.castShadow);
+    merged.receiveShadow = list.some((m) => m.receiveShadow);
+    for (const m of list) group.remove(m);
+    group.add(merged);
+  }
+}
+function bakeHeroLOD(root) {
+  const groups = [];
+  root.traverse((o) => { if (o.isGroup) groups.push(o); });
+  for (const g of groups) mergeDirectMeshes(g);
+  let n = 0;
+  root.traverse((o) => { if (o.isMesh) n++; });
+  root.userData.meshCount = n;
+  return n;
+}
+bakeHeroLOD(player);
 applyHeroChapter(0);
 let playerPos = latLonToVec3(2, 50, 0); // open path south of the farmstead, clear of buildings
 let faceTarget = [12, 40]; // where the camera looks on load
@@ -3692,7 +3751,7 @@ function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', in
     setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
     try {
       const rw = equippedRanged();
-      setText('rpg-weapon', rw ? `${rw.name} · ${Ammo[rw.ammo] || 0}` : equippedMelee().name);
+      setText('rpg-weapon', rw ? `${rw.name} · ${ensureMag(rw)}/${magCapacity(rw)} (${Ammo[rw.ammo] || 0})` : equippedMelee().name);
     } catch { setText('rpg-weapon', rpgWeaponDef().name); }
     setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
     try { setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP · 💡${Research.insight}`); } catch { /* early boot */ }
@@ -4046,6 +4105,7 @@ function killBear(b) {
   if (activeTask?.interact?.bear === b) clearAutoTask();
   if (b.cub) { toast('The cub yelps and plays dead… it will scamper off soon.'); if (onGainXp) onGainXp(10, b.mesh.position.clone()); }
   else {
+    Threats.bearsBested = (Threats.bearsBested || 0) + 1;
     toast('🐻‍❄️ You bested the polar bear! Rest — health recovers slowly. (+2 food)');
     addItem('food', 2);
     if (onGainXp) onGainXp(45, b.mesh.position.clone());
@@ -4940,15 +5000,17 @@ function spawnHazardProps(id) {
   } else if (id === 'wildfire') {
     const g = new THREE.Group();
     const fm = new THREE.MeshStandardMaterial({ color: 0xff7a2a, emissive: 0xff4a00, emissiveIntensity: 1.5, flatShading: true });
+    const cells = [];
     for (let i = 0; i < 7; i++) {
       const a = (i / 7) * Math.PI * 2;
       const p = home.clone().addScaledVector(V3(-up.z, 0, up.x), Math.cos(a) * rand(5, 9)).addScaledVector(new THREE.Vector3().crossVectors(up, V3(-up.z, 0, up.x)), Math.sin(a) * rand(5, 9)).normalize();
       const f = mesh(new THREE.ConeGeometry(rand(0.4, 0.8), rand(1.2, 2.2), 6), fm, 0, 0, 0, false);
       orientOnSphere(f, p.clone().multiplyScalar(R + heightFor(p) + 0.6), rand(6));
       g.add(f);
+      cells.push({ mesh: f, pos: p });
     }
     scene.add(g);
-    hazardProps = { id, g };
+    hazardProps = { id, g, cells, lastSpread: 0, fireM: fm };
   } else if (id === 'eruption') {
     const g = new THREE.Group();
     const glow = new THREE.PointLight(0xff5a1a, 30, 40);
@@ -4959,8 +5021,19 @@ function spawnHazardProps(id) {
     const crater = latLonToVec3(8, 328, 0).normalize();
     orientOnSphere(lava, crater.clone().multiplyScalar(R + heightFor(crater) + 0.35), 0);
     g.add(lava);
+    // a short lava flow down the slope, blocking the direct route
+    const flow = [];
+    const flowM = new THREE.MeshBasicMaterial({ color: 0xff6a1a, transparent: true, opacity: 0.7, depthWrite: false });
+    for (let i = 0; i < 6; i++) {
+      const la = 10 - i * 1.15, lo = 327 + i * 0.7;
+      const p = latLonToVec3(la, lo, 0).normalize();
+      const cell = mesh(new THREE.CircleGeometry(rand(1.0, 1.7), 12).rotateX(-Math.PI / 2), flowM, 0, 0, 0, false);
+      orientOnSphere(cell, p.clone().multiplyScalar(R + heightFor(p) + 0.28), rand(6));
+      g.add(cell);
+      flow.push({ mesh: cell, pos: p });
+    }
     scene.add(g);
-    hazardProps = { id, g, glow, lava };
+    hazardProps = { id, g, glow, lava, flow, lavaT: 0 };
   }
 }
 function spawnHazardFX(id) {
@@ -4990,10 +5063,31 @@ tickers.push((t, dt) => {
     hp.water.scale.set(k, 1, k);
     hp.water.material.opacity = 0.38 + Math.sin(t * 1.1) * 0.05;
   } else if (hp.id === 'wildfire') {
-    for (const f of hp.g.children) { f.scale.y = 1 + Math.sin(t * 9 + f.position.x) * 0.15; }
-    if (Math.random() < dt * 1.2) burst(hp.g.children[0]?.position.clone().add(player.position.clone().normalize().multiplyScalar(2)) || player.position.clone(), 0xff7a2a, 2, 1.2);
+    for (const c of hp.cells) c.mesh.scale.y = 1 + Math.sin(t * 9 + c.pos.x) * 0.15;
+    hp.lastSpread = (hp.lastSpread || 0) + dt;
+    if (!Home.firebreak && hp.lastSpread > 1.3 && hp.cells.length < 18) {
+      hp.lastSpread = 0;
+      const src = hp.cells[hp.cells.length - 1];
+      const dir = V3(rand(-1, 1), 0, rand(-1, 1)).normalize();
+      const p = src.pos.clone().addScaledVector(dir, 1.7).normalize();
+      const f = mesh(new THREE.ConeGeometry(rand(0.35, 0.7), rand(1.0, 1.8), 6), hp.fireM, 0, 0, 0, false);
+      orientOnSphere(f, p.clone().multiplyScalar(R + heightFor(p) + 0.55), rand(6));
+      hp.g.add(f);
+      hp.cells.push({ mesh: f, pos: p });
+      if (Math.random() < dt * 2) burst(p.clone().multiplyScalar(R + heightFor(p) + 1), 0xff7a2a, 2, 1.2);
+    }
+    hp.dmgT = Math.max(0, (hp.dmgT || 0) - dt);
+    if (!Home.firebreak && hp.dmgT <= 0) {
+      const near = hp.cells.find((c) => player.position.distanceTo(c.mesh.position) < 2.6);
+      if (near) { damagePlayer(3, near.mesh.position); hp.dmgT = 1.1; }
+    }
   } else if (hp.id === 'eruption' && hp.glow) {
     hp.glow.intensity = 26 + Math.sin(t * 5) * 8;
+    hp.lavaT = Math.max(0, (hp.lavaT || 0) - dt);
+    if (hp.lavaT <= 0) {
+      const near = (hp.flow || []).find((c) => player.position.distanceTo(c.mesh.position) < 1.8);
+      if (near) { damagePlayer(3, near.mesh.position); hp.lavaT = 1.1; }
+    }
   }
 });
 tickers.push((t, dt) => {
@@ -5067,11 +5161,50 @@ const WEAPONS = {
 const UnlockedWeapons = ['hatchet', 'sling'];
 const Loadout = { melee: 'hatchet', ranged: null };
 const Ammo = { stones: 8, arrows: 0, bolts: 0, bullets: 0, shells: 0 };
-const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [] };
+const Mag = {}; // rounds loaded per ranged weapon
+let reloadT = 0, reloadWeaponId = null;
+const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0 };
 function weaponById(id) { return WEAPONS[id] || null; }
 function equippedMelee() { return WEAPONS[Loadout.melee] || WEAPONS.hatchet; }
 function equippedRanged() { return Loadout.ranged ? WEAPONS[Loadout.ranged] : null; }
 function ammoCount(w) { return w && w.ammo ? (Ammo[w.ammo] || 0) : 0; }
+function magCapacity(w) {
+  if (!w) return 0;
+  if (w.id === 'shotgun') return 2;
+  if (w.id === 'rifle') return 6;
+  if (w.id === 'musket' || w.id === 'crossbow' || w.id === 'bow' || w.id === 'sling') return 1;
+  return 1;
+}
+function ensureMag(w) {
+  if (w && Mag[w.id] === undefined) Mag[w.id] = magCapacity(w);
+  return w ? Mag[w.id] : 0;
+}
+function startReload() {
+  const w = equippedRanged();
+  if (!w) return false;
+  if (reloadT > 0) return false;
+  ensureMag(w);
+  if (Mag[w.id] >= magCapacity(w)) { toast('🔫 Already loaded.'); return false; }
+  if (ammoCount(w) <= 0) { toast(`🔫 No ${w.ammo} left — craft more at the workshop (K).`); return false; }
+  reloadWeaponId = w.id;
+  reloadT = w.reload || (w.id === 'musket' ? 3.0 : w.id === 'shotgun' ? 2.2 : w.id === 'crossbow' ? 2.0 : 1.4);
+  toast(`🔁 Reloading ${w.name}…`);
+  chime(420);
+  return true;
+}
+function tickReload(dt) {
+  if (reloadT <= 0) return;
+  reloadT = Math.max(0, reloadT - dt);
+  if (reloadT === 0 && reloadWeaponId) {
+    const w = WEAPONS[reloadWeaponId];
+    if (w) Mag[w.id] = magCapacity(w);
+    reloadWeaponId = null;
+    toast('🔫 Loaded.');
+    chime(620);
+    renderStats();
+  }
+}
+tickers.push((t, dt) => tickReload(dt));
 function meleeMult() { return equippedMelee().dmg; }
 function unlockWeapon(id) {
   const w = WEAPONS[id];
@@ -5087,6 +5220,7 @@ function equipWeapon(id) {
   if (!w) return;
   if (!UnlockedWeapons.includes(id)) { toast(`🔒 ${w.name} is not unlocked yet.`); return; }
   if (w.melee) Loadout.melee = id; else Loadout.ranged = id;
+  if (w.ranged) ensureMag(w);
   // keep the axe visual tier in step with the melee weapon
   if (w.melee) {
     RPG.weapon = Math.min(3, w.tier);
@@ -5125,28 +5259,41 @@ tickers.push((t, dt) => {
 function fireAt(target) {
   const w = equippedRanged();
   if (!w || playerDead) return false;
-  if (playerAttackCd > 0) return false;
+  if (playerAttackCd > 0 || reloadT > 0) return false;
+  ensureMag(w);
+  if (Mag[w.id] <= 0) { startReload(); return false; }
   if (ammoCount(w) <= 0) { toast(`🔫 Out of ${w.ammo} — craft more at the workshop (K).`); return false; }
   Ammo[w.ammo]--;
+  Mag[w.id]--;
   playerAttackCd = Math.max(0.3, w.rate);
   startAttack();
   const n = player.position.clone().normalize();
   const muzzle = player.position.clone().addScaledVector(n, 1.25).addScaledVector(facing, 0.45);
   burst(muzzle, 0xffd97a, 5, 1.2);
   chime(w.tier >= 3 ? 180 : 300);
+  if (Mag[w.id] <= 0) setTimeout(() => startReload(), 250);
   setTimeout(() => {
     if (!target || target.dead || target.hp <= 0) return;
     const d = player.position.distanceTo(target.mesh.position);
     if (d > w.range + 2) return;
-    let dmg = Math.round(24 * w.dmg * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03));
-    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical shot!'); }
-    target.hp -= dmg;
+    const pellets = w.id === 'shotgun' ? 3 : 1;
+    let total = 0;
+    for (let p = 0; p < pellets; p++) {
+      const falloff = w.id === 'shotgun' ? Math.max(0.3, 1 - d / (w.range * 1.5)) : 1;
+      let dmg = Math.round((24 * w.dmg / pellets) * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03) * falloff);
+      if (critBuff > 0 && p === 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical shot!'); }
+      target.hp -= dmg;
+      total += dmg;
+      const off = pellets > 1 ? target.mesh.position.clone().add(V3(rand(-1, 1), rand(0, 1), rand(-1, 1))) : target.mesh.position.clone().add(V3(0, 1.0, 0));
+      tracer(muzzle, off);
+    }
     target.hitFlash = 1;
-    tracer(muzzle, target.mesh.position.clone().add(V3(0, 1.0, 0)));
-    spawnPopup(target.mesh.position.clone(), `-${dmg}`, '#ffd97a');
+    spawnPopup(target.mesh.position.clone(), `-${total}`, '#ffd97a');
     chime(240);
     if (target.kindTag === 'robber') {
       if (target.hp <= 0) killRobber(target);
+    } else if (target.kindTag === 'prey') {
+      if (target.hp <= 0) killPrey(target);
     } else if (target.adult !== undefined) {
       if (target.hp <= 0) killBear(target);
       else if (target.cub) target.fleeTarget = target.pos.clone().add(V3(rand(-2, 2), 0, rand(-2, 2)));
@@ -5155,6 +5302,38 @@ function fireAt(target) {
     if (w.tier >= 2 && isNight() && Math.random() < 0.2 && !wolves.length) { Life.wolfRaid = 1; toast('🐺 The shot echoes — something answers.'); }
     renderStats();
   }, 120);
+  return true;
+}
+function manualFire(x, y) {
+  if (!started || paused || playerDead) return false;
+  const w = equippedRanged();
+  if (!w) { toast('🎒 No ranged weapon equipped — open Loadout (L).'); return false; }
+  const it = pickInteractableAt(x, y);
+    if (it && taskIsCombat(it)) {
+    const target = it.bear || it.wolf || it.robber || it.prey;
+    if (target) { fireAt(target); return true; }
+  }
+  // manual shot at the ground under the cursor
+  if (playerAttackCd > 0) return false;
+  if (reloadT > 0) { toast('🔁 Still reloading…'); return false; }
+  ensureMag(w);
+  if (Mag[w.id] <= 0) { startReload(); return false; }
+  if (ammoCount(w) <= 0) { toast(`🔫 Out of ${w.ammo}.`); return false; }
+  clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
+  const hit = planetMesh ? clickRay.intersectObject(planetMesh, false)[0] : null;
+  if (!hit) return false;
+  Ammo[w.ammo]--; Mag[w.id]--;
+  playerAttackCd = Math.max(0.3, w.rate);
+  startAttack();
+  const n = player.position.clone().normalize();
+  const muzzle = player.position.clone().addScaledVector(n, 1.25).addScaledVector(facing, 0.45);
+  const pellets = w.id === 'shotgun' ? 3 : 1;
+  for (let p = 0; p < pellets; p++) tracer(muzzle, hit.point.clone().add(V3(rand(-0.8, 0.8), rand(-0.4, 0.8), rand(-0.8, 0.8))));
+  burst(muzzle, 0xffd97a, 6, 1.2);
+  burst(hit.point.clone(), 0xffd97a, 4, 0.8);
+  chime(w.tier >= 3 ? 180 : 300);
+  if (Mag[w.id] <= 0) setTimeout(() => startReload(), 250);
+  renderStats();
   return true;
 }
 
@@ -5170,9 +5349,15 @@ function saveProgression() {
       queue: Research.queue ? { ...Research.queue } : null,
     },
     tools: { ...tools },
-    loadout: { ...Loadout }, ammo: { ...Ammo }, unlockedWeapons: [...UnlockedWeapons],
+    loadout: { ...Loadout }, ammo: { ...Ammo }, mag: { ...Mag }, unlockedWeapons: [...UnlockedWeapons],
     pendingTrait: pendingTrait ? [...pendingTrait] : null,
-    threats: { robbersDrivenOff: Threats.robbersDrivenOff || 0, thefts: Threats.thefts || 0, bounties: Threats.bounties || 0, reputation: Threats.reputation || 0 },
+    threats: {
+      robbersDrivenOff: Threats.robbersDrivenOff || 0, thefts: Threats.thefts || 0,
+      bounties: Threats.bounties || 0, reputation: Threats.reputation || 0,
+      wolvesCulled: Threats.wolvesCulled || 0, bearsBested: Threats.bearsBested || 0,
+      venison: Threats.venison || 0,
+    },
+    bountiesClaimed: { ...BountyClaimed },
     weather: { next: Weather.next, forecast: Weather.forecast.map((f) => ({ ...f })), history: [...Weather.history], lastMajorDay: Weather.lastMajorDay },
     homeTech: {
       workshop: !!Home.workshop, windmill: !!Home.windmill, sawmill: !!Home.sawmill, mill: !!Home.mill,
@@ -5200,11 +5385,14 @@ function restoreProgression(p) {
   if (p.tools) Object.assign(tools, p.tools);
   if (p.loadout) Object.assign(Loadout, p.loadout);
   if (p.ammo) Object.assign(Ammo, p.ammo);
+  if (p.mag) Object.assign(Mag, p.mag);
+  reloadT = 0; reloadWeaponId = null;
   if (Array.isArray(p.unlockedWeapons) && p.unlockedWeapons.length) {
     UnlockedWeapons.length = 0;
     for (const id of p.unlockedWeapons) if (WEAPONS[id]) UnlockedWeapons.push(id);
   }
-  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0 }, p.threats);
+  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0 }, p.threats);
+  if (p.bountiesClaimed) Object.assign(BountyClaimed, p.bountiesClaimed);
   if (p.pendingTrait) pendingTrait = [...p.pendingTrait];
   if (p.weather) {
     Weather.next = p.weather.next || null;
@@ -5939,6 +6127,11 @@ addInteract({
   id: 'home-workshop', pos: homeSpot(2.6, 55, 1), kind: '🔧 WORKSHOP',
   label: () => (Home.workshop ? 'Research & craft (K)' : 'Workshop — build it (H)'),
   onUse: () => openWorkshop(),
+});
+addInteract({
+  id: 'home-bounty', pos: homeSpot(0, 59.5, 1), kind: '🎯 BOUNTY BOARD',
+  label: () => `Bounties (B) · ${Threats.robbersDrivenOff} robbers driven off`,
+  onUse: () => openBounty(),
 });
 addInteract({ id: 'home-bed', pos: homeSpot(-2, 56, 1.2), kind: '🛏️ REST', label: () => 'Sleep until dawn', onUse: () => sleepUntilMorning() });
 addInteract({ id: 'home-fire', pos: homeSpot(-3, 58, 1), kind: '🔥 COOKPOT', label: () => 'Cook a meal (2 produce)', onUse: () => cookMeal() });
@@ -6789,6 +6982,7 @@ function killWolf(w) {
   scene.remove(w.mesh);
   if (w.interact) { const jx = interactables.indexOf(w.interact); if (jx >= 0) interactables.splice(jx, 1); }
   burst(w.mesh.position.clone(), 0xffffff, 20, 2.5);
+  Threats.wolvesCulled = (Threats.wolvesCulled || 0) + 1;
   addItem('food', 2);
   meters.morale = Math.min(100, (meters.morale ?? 80) + 5);
   Life.grief = Math.max(0, (Life.grief || 0) - 0.3);
@@ -7025,7 +7219,179 @@ tickers.push((t, dt) => {
 });
 
 
-// --- ambient wildlife: harmless wanderers that make each biome feel inhabited ---
+// --- huntable wildlife: deer and hare that flee, can be hunted for meat ---
+const Prey = [];
+const PREY_INFO = {
+  deer: { name: 'Deer', icon: '🦌', hp: 45, food: 3, pelt: 1, scale: 1.0 },
+  hare: { name: 'Hare', icon: '🐇', hp: 16, food: 1, pelt: 0, scale: 1.0 },
+};
+function spawnPrey(kind, lat, lon) {
+  const info = PREY_INFO[kind];
+  if (!info) return null;
+  const base = latLonToVec3(lat, lon, 0).normalize();
+  const pos = base.clone().multiplyScalar(R + heightFor(base) + 0.08);
+  const mesh = kind === 'deer' ? makeDeer() : makeHare();
+  mesh.scale.setScalar(info.scale);
+  mesh.position.copy(pos);
+  scene.add(mesh);
+  const p = {
+    kind, name: info.name, icon: info.icon, mesh, pos, lat, lon,
+    facing: V3(-base.z, 0, base.x).normalize(), hp: info.hp, maxHp: info.hp,
+    wt: rand(2, 5), tgt: null, phase: rand(6), dead: false, kindTag: 'prey',
+  };
+  const it = {
+    id: 'prey' + kind + Date.now() % 100000 + (Math.random() * 999 | 0), pos: pos.clone(), prey: p, radius: 4.2,
+    kind: `${info.icon} ${info.name.toUpperCase()}`,
+    label: () => `${info.name} ❤ ${Math.max(0, Math.ceil(p.hp))} — hunt (click / E)`,
+    onUse: () => huntPrey(p),
+  };
+  p.interact = it;
+  addInteract(it);
+  Prey.push(p);
+  return p;
+}
+function huntPrey(p) {
+  if (!p || p.dead) return;
+  if (p.interact) setAutoTask(p.interact);
+}
+function attackPrey(p) {
+  if (!p || p.dead || playerDead) return;
+  if (player.position.distanceTo(p.mesh.position) > 4.6) return toast('⚠️ Too far — step closer.');
+  if (playerAttackCd > 0) return;
+  playerAttackCd = Math.max(0.35, window.__rpgSwing || 0.55);
+  startAttack();
+  setTimeout(() => {
+    if (!p || p.dead || playerDead) return;
+    if (player.position.distanceTo(p.mesh.position) > 5.2) return;
+    let dmg = Math.round(20 * meleeMult());
+    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; }
+    p.hp -= dmg;
+    spawnPopup(p.mesh.position.clone(), `-${dmg}`, '#ffd97a');
+    chime(300);
+    if (p.hp <= 0) killPrey(p);
+    else { p.fleeT = 8; toast(`${p.name} bolts!`); }
+    renderStats();
+  }, 180);
+}
+function killPrey(p) {
+  if (!p || p.dead) return;
+  p.dead = true;
+  const info = PREY_INFO[p.kind];
+  scene.remove(p.mesh);
+  if (p.interact) { const ix = interactables.indexOf(p.interact); if (ix >= 0) interactables.splice(ix, 1); }
+  const px = Prey.indexOf(p); if (px >= 0) Prey.splice(px, 1);
+  if (activeTask?.interact === p.interact) clearAutoTask();
+  inv.food = (inv.food || 0) + info.food;
+  if (info.pelt) inv.wool = (inv.wool || 0) + info.pelt;
+  Threats.venison = (Threats.venison || 0) + (p.kind === 'deer' ? 2 : 1);
+  Life.stats.hunted = (Life.stats.hunted || 0) + 1;
+  burst(p.mesh.position.clone(), 0xe8c96a, 18, 2.2);
+  chime(620);
+  toast(`${info.icon} ${p.name} hunted! (+${info.food}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''})`);
+  grantInsight(2, `Hunted a ${p.name}`);
+  saveCheckpoint();
+  renderStats();
+  setTimeout(() => spawnPrey(p.kind, p.lat, p.lon), 55000);
+}
+function updatePrey(t, dt) {
+  for (const p of Prey) {
+    if (p.dead) continue;
+    const n = p.pos.clone().normalize();
+    const toP = player.position.clone().sub(p.pos);
+    const flatP = toP.addScaledVector(n, -toP.dot(n));
+    p.fleeT = Math.max(0, (p.fleeT || 0) - dt);
+    let moveDir = null, speed = 0;
+    if (flatP.length() < (p.fleeT > 0 ? 12 : 8)) {
+      moveDir = flatP.clone().normalize().negate(); speed = p.kind === 'hare' ? 6.0 : 5.0;
+    } else {
+      p.wt -= dt;
+      if (p.wt <= 0 || !p.tgt) {
+        p.wt = rand(3, 7);
+        const side = V3(rand(-1, 1), 0, rand(-1, 1)).normalize();
+        p.tgt = n.clone().multiplyScalar(R).addScaledVector(side, 6).normalize();
+      }
+      const toT = p.tgt.clone().sub(p.pos);
+      const flat = toT.addScaledVector(n, -toT.dot(n));
+      if (flat.length() > 1) { moveDir = flat.normalize(); speed = 1.2; }
+    }
+    if (moveDir) {
+      const stepped = tangentStep(p.pos, moveDir, dt * speed);
+      if (stepped) p.facing.lerp(stepped, 0.2).normalize();
+      p.pos.copy(p.pos.clone().normalize().multiplyScalar(R + heightFor(p.pos.clone().normalize()) + 0.08));
+    }
+    const nn = p.pos.clone().normalize();
+    p.mesh.position.copy(p.pos).addScaledVector(nn, Math.abs(Math.sin(t * 5 + p.phase)) * 0.04);
+    p.facing.addScaledVector(nn, -p.facing.dot(nn)).normalize();
+    faceAlong(p.mesh, p.pos, p.facing);
+    const moved = p.lastPos ? p.pos.distanceTo(p.lastPos) : 0;
+    (p.lastPos || (p.lastPos = p.pos.clone())).copy(p.pos);
+    animateAnimal(p.mesh, t, Math.min(1, moved / Math.max(1e-4, dt * 5)), dt);
+    if (p.interact) p.interact.pos.copy(p.mesh.position);
+  }
+}
+tickers.push((t, dt) => updatePrey(t, dt));
+for (const [k, la, lo] of [['deer', 17, 150], ['deer', 11, 162], ['deer', 4, 146], ['hare', 5, 45], ['hare', 9, 33]]) spawnPrey(k, la, lo);
+
+// --- bounty board ---
+const BOUNTIES = [
+  { id: 'robber', name: 'Drive off a robber', icon: '⚠️', target: 1, get: () => Threats.robbersDrivenOff || 0, gold: 4, insight: 2 },
+  { id: 'wolves', name: 'Cull 2 wolves', icon: '🐺', target: 2, get: () => Threats.wolvesCulled || 0, gold: 4, insight: 2 },
+  { id: 'venison', name: 'Bring 2 venison', icon: '🦌', target: 2, get: () => Threats.venison || 0, gold: 5, insight: 2 },
+  { id: 'bear', name: 'Best a polar bear', icon: '🐻‍❄️', target: 1, get: () => Threats.bearsBested || 0, gold: 6, insight: 3 },
+  { id: 'fish', name: 'Catch 3 fish', icon: '🐟', target: 3, get: () => Life.stats.fishCaught || 0, gold: 4, insight: 2 },
+];
+const BountyClaimed = {};
+let bountyOpen = false;
+function openBounty() {
+  if (playerDead) return;
+  bountyOpen = true;
+  document.getElementById('bounty-overlay').classList.remove('hidden');
+  renderBounty();
+  chime(520);
+}
+function closeBounty() {
+  bountyOpen = false;
+  document.getElementById('bounty-overlay').classList.add('hidden');
+}
+function claimBounty(id) {
+  const b = BOUNTIES.find((x) => x.id === id);
+  if (!b || BountyClaimed[id]) return;
+  if ((b.get() || 0) < b.target) { toast('🎯 Not done yet.'); return; }
+  BountyClaimed[id] = true;
+  inv.gold = (inv.gold || 0) + b.gold;
+  Threats.bounties = (Threats.bounties || 0) + 1;
+  grantInsight(b.insight, `Bounty: ${b.name}`);
+  toast(`🎯 Bounty claimed — ${b.name}! (+${b.gold}🪙, +${b.insight}💡)`);
+  chime(880);
+  saveCheckpoint();
+  renderBounty();
+  renderStats();
+}
+function renderBounty() {
+  const body = document.getElementById('bounty-body');
+  if (!body) return;
+  body.innerHTML = '';
+  for (const b of BOUNTIES) {
+    const prog = Math.min(b.target, b.get() || 0);
+    const claimed = !!BountyClaimed[b.id];
+    const row = document.createElement('div');
+    row.className = 'almanac-row' + (claimed ? '' : prog >= b.target ? ' hazard' : '');
+    row.innerHTML = `<span class="when">${b.icon}</span><span class="what"><b>${b.name}</b> — ${prog}/${b.target}</span>`;
+    if (claimed) {
+      const s = document.createElement('span'); s.className = 'ok'; s.textContent = 'claimed ✓'; row.appendChild(s);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'loadout-btn';
+      btn.style.width = 'auto'; btn.style.padding = '5px 12px'; btn.style.fontSize = '11px';
+      btn.disabled = prog < b.target;
+      btn.textContent = prog >= b.target ? 'Claim' : 'In progress';
+      btn.onclick = () => claimBounty(b.id);
+      row.appendChild(btn);
+    }
+    body.appendChild(row);
+  }
+}
+
 const ambientWanderers = [];
 function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase = rand(Math.PI * 2)) {
   const home = latLonToVec3(lat, lon, 0).normalize();
@@ -8468,9 +8834,9 @@ function clearAutoTask() {
 }
 function taskIsCombat(it) {
   if (!it) return false;
-  if (it.bear || it.wolf || it.robber) return true;
+  if (it.bear || it.wolf || it.robber || it.prey) return true;
   const k = (it.kind || '');
-  return k.includes('BEAR') || k.includes('WOLF') || k.includes('ROBBER');
+  return k.includes('BEAR') || k.includes('WOLF') || k.includes('ROBBER') || k.includes('DEER') || k.includes('HARE');
 }
 function taskIsGather(it) { return !!(it && it.node); }
 function taskIsWonder(it) { return !!(it && it.id && ['flame', 'harvest', 'oasis', 'bell', 'light', 'scan', 'aurora', 'plant'].includes(it.id)); }
@@ -8515,11 +8881,12 @@ function updateAutoTask(dt) {
   if (activeTask.timer > 0) return;
   if (taskIsCombat(it)) {
     activeTask.timer = Math.max(0.3, rangedReady ? rw.rate : window.__rpgSwing || 0.55);
-    const target = it.bear || it.wolf || it.robber;
+    const target = it.bear || it.wolf || it.robber || it.prey;
     if (rangedReady && d <= rw.range && fireAt(target)) return;
     if (it.bear) attackBear(it.bear);
     else if (it.wolf) attackWolf(it.wolf);
     else if (it.robber) attackRobber(it.robber);
+    else if (it.prey) attackPrey(it.prey);
   } else if (taskIsGather(it)) {
     // one full swung chop per cycle; the hit lands on the contact frame
     activeTask.timer = CHOP_DUR + 0.08;
@@ -8650,7 +9017,7 @@ function showTitle() {
   started = false; paused = true;
   questHide();
   closeTrade(); closeBuild(); toggleJournal(false);
-  closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber();
+  closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber(); closeBounty();
   document.getElementById('help-overlay').classList.add('hidden');
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
@@ -8848,7 +9215,10 @@ function renderWorkshop() {
       b.className = 'tech-card' + (done ? ' done' : '');
       b.disabled = !av.ok;
       const cost = Object.entries(t.cost).map(([k, n]) => `${n}${ITEM_ICON[k] || k}`).join(' ') + (t.insight ? ` + ${t.insight}💡` : '');
-      b.innerHTML = `<span class="tech-main"><span class="tech-name">${t.name}</span><span class="tech-desc">${t.desc}${done ? '' : (av.ok ? '' : ` — ${av.why}`)}</span></span><span class="tech-cost">${done ? '✓' : cost}</span>`;
+      const reqTxt = t.req.length ? `Requires ${t.req.map((r) => TECH.find((x) => x.id === r)?.name || r).join(' + ')}. ` : '';
+      b.style.marginLeft = `${era * 10}px`;
+      b.style.borderLeft = era > 0 ? `2px solid rgba(255,217,122,${0.18 + era * 0.08})` : '';
+      b.innerHTML = `<span class="tech-main"><span class="tech-name">${t.name}</span><span class="tech-desc">${reqTxt}${t.desc}${done ? '' : (av.ok ? '' : ` — ${av.why}`)}</span></span><span class="tech-cost">${done ? '✓' : cost}</span>`;
       b.onclick = () => startResearch(t.id);
       list.appendChild(b);
     }
@@ -8979,10 +9349,16 @@ function renderLoadout() {
     const b = document.createElement('button');
     b.className = 'loadout-btn' + (Loadout.ranged === w.id ? ' equipped' : '');
     b.disabled = !UnlockedWeapons.includes(w.id);
-    b.innerHTML = `<strong>${w.name}${Loadout.ranged === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(1)}× · range ${w.range} · ${w.ammo}: ${Ammo[w.ammo] || 0}</span>`;
+    b.innerHTML = `<strong>${w.name}${Loadout.ranged === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(1)}× · range ${w.range} · mag ${ensureMag(w)}/${magCapacity(w)} · ${w.ammo}: ${Ammo[w.ammo] || 0}</span>`;
     b.onclick = () => equipWeapon(w.id);
     box.appendChild(b);
   }
+  const reloadBtn = document.createElement('button');
+  reloadBtn.className = 'loadout-btn';
+  reloadBtn.innerHTML = `<strong>Reload (X)</strong><span>${reloadT > 0 ? `Reloading… ${reloadT.toFixed(1)}s` : (equippedRanged() ? `Load ${magCapacity(equippedRanged())} rounds from ${Ammo[equippedRanged().ammo] || 0} reserve` : 'Equip a ranged weapon first')}</span>`;
+  reloadBtn.disabled = !equippedRanged();
+  reloadBtn.onclick = () => startReload();
+  box.appendChild(reloadBtn);
   addGroup('AMMUNITION');
   for (const [kind, label] of [['bullets', 'Cartridges 🔫'], ['shells', 'Shells 💥'], ['arrows', 'Arrows 🏹'], ['bolts', 'Bolts ⚡'], ['stones', 'Sling stones 🪨']]) {
     const row = document.createElement('div');
@@ -9062,8 +9438,8 @@ function closeRobber() {
 }
 function handleEscape() {
   if (!started) return; // title screen: nothing to do
-  if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen) {
-    closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber();
+  if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) {
+    closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber(); closeBounty();
     return;
   }
   if (npcOpen || buildOpen) { closeTrade(); closeBuild(); return; }
@@ -9103,9 +9479,11 @@ Object.assign(window.__lp, {
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
   tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight },
-  weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt },
+  weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice },
   hazard: (id) => startHazard(id), spawnRobber, killRobber, openRobber: openRobberDialog,
+  prey: Prey, spawnPrey, huntPrey, killPrey,
+  bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
@@ -9142,7 +9520,7 @@ Object.defineProperties(window.__lp, {
  // ---------- input ----------
 const keys = {};
 addEventListener('keydown', (e) => {
-  if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'Digit1', 'Digit2', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     moveTargetN = null; // manual steering cancels click-to-move
@@ -9153,7 +9531,8 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyK') { workshopOpen ? closeWorkshop() : openWorkshop(); return; }
   if (e.code === 'KeyN') { almanacOpen ? closeAlmanac() : openAlmanac(); return; }
   if (e.code === 'KeyL') { loadoutOpen ? closeLoadout() : openLoadout(); return; }
-  if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen) return;
+  if (e.code === 'KeyB') { bountyOpen ? closeBounty() : openBounty(); return; }
+  if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) return;
   if (e.code === 'Digit1' && !playerDead) { equipWeapon(Loadout.melee); return; }
   if (e.code === 'Digit2' && !playerDead) {
     if (Loadout.ranged) equipWeapon(Loadout.ranged);
@@ -9169,6 +9548,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { if (!playerDead) tryDash(); return; }
   if (e.code === 'KeyF' && !playerDead) eatFood();
   if (e.code === 'KeyR' && !playerDead) useRemedy();
+  if (e.code === 'KeyX' && !playerDead) { startReload(); return; }
   if (e.code === 'KeyH' && !playerDead && !npcOpen) { buildOpen ? closeBuild() : openBuild(); }
   if (e.code === 'KeyM') toggleGlobe();
   if (e.code === 'KeyJ') toggleJournal();
@@ -9207,6 +9587,7 @@ const CURSOR_COLORS = {
 function cursorIconFor(it) {
   if (!it) return null;
   if (it.bear) return it.bear.cub ? 'paw' : 'sword';
+  if (it.prey) return 'paw';
   if (it.wolf || it.robber) return 'sword';
   if (it.npc) return 'talk';
   if (it.node) {
@@ -9243,6 +9624,7 @@ function cursorLabelFor(it) {
   if (!it) return '';
   if (it.node) return `${it.node.verb} ${it.node.name}`;
   if (it.bear) return it.bear.cub ? 'Shoo cub' : 'Fight bear';
+  if (it.prey) return `Hunt ${it.prey.name}`;
   if (it.wolf) return 'Fight wolf';
   if (it.robber) return 'Confront robber';
   if (it.npc) return `Talk to ${it.npc.name}`;
@@ -9268,7 +9650,7 @@ const _lastCursorCam = new THREE.Vector3();
 const isTouchDevice = 'ontouchstart' in window;
 function hideContextCursor() {
   cursorShown = false;
-  if (cursorEl) { cursorEl.classList.remove('on', 'hot', 'dragging'); }
+  if (cursorEl) { cursorEl.classList.remove('on', 'hot', 'dragging', 'aiming'); }
 }
 const _pickV = new THREE.Vector3(), _pickTop = new THREE.Vector3(), _pickUp = new THREE.Vector3();
 function pickInteractableAt(x, y) {
@@ -9381,12 +9763,24 @@ function clickToMove(x, y) {
   moveTargetN = hits[0].point.clone().normalize();
   burst(hits[0].point.clone(), 0xffffff, 8, 1.2); // ripple where you pointed
 }
-canvas.addEventListener('pointerdown', (e) => { dragging = true; px = e.clientX; py = e.clientY; downX = e.clientX; downY = e.clientY; downT = performance.now(); downOnCanvas = true; ac(); });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button === 2) {
+    e.preventDefault();
+    try { cursorEl?.classList.add('aiming'); } catch { /* noop */ }
+    if (started && !paused && !playerDead) manualFire(e.clientX, e.clientY);
+    return;
+  }
+  dragging = true; px = e.clientX; py = e.clientY; downX = e.clientX; downY = e.clientY; downT = performance.now(); downOnCanvas = true; ac();
+});
 addEventListener('pointerup', (e) => {
+  try { cursorEl?.classList.remove('aiming'); } catch { /* noop */ }
+  if (e.button === 2) return;
   dragging = false;
   if (downOnCanvas && Math.hypot(e.clientX - downX, e.clientY - downY) < 6 && performance.now() - downT < 500) clickToMove(e.clientX, e.clientY);
   downOnCanvas = false;
 });
+addEventListener('pointercancel', () => { try { cursorEl?.classList.remove('aiming'); } catch { /* noop */ } });
 addEventListener('pointermove', (e) => {
   if (!dragging) return;
   const yawDelta = (e.clientX - px) * 0.005 * camFactor();
@@ -9458,6 +9852,9 @@ document.getElementById('btn-globe').onclick = toggleGlobe;
 document.getElementById('btn-workshop').onclick = () => (workshopOpen ? closeWorkshop() : openWorkshop());
 document.getElementById('btn-almanac').onclick = () => (almanacOpen ? closeAlmanac() : openAlmanac());
 document.getElementById('btn-loadout').onclick = () => (loadoutOpen ? closeLoadout() : openLoadout());
+document.getElementById('btn-bounty').onclick = () => (bountyOpen ? closeBounty() : openBounty());
+document.getElementById('btn-close-bounty').onclick = closeBounty;
+document.getElementById('btn-bounty-leave').onclick = closeBounty;
 document.getElementById('btn-close-workshop').onclick = closeWorkshop;
 document.getElementById('btn-workshop-leave').onclick = closeWorkshop;
 document.getElementById('btn-close-almanac').onclick = closeAlmanac;

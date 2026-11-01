@@ -60,6 +60,7 @@
     <button id="btn-workshop" class="round-btn" title="Workshop (K)">🔧</button>
     <button id="btn-almanac" class="round-btn" title="Almanac (N)">🧭</button>
     <button id="btn-loadout" class="round-btn" title="Loadout (L)">🎒</button>
+    <button id="btn-bounty" class="round-btn" title="Bounty board (B)">🎯</button>
     <button id="btn-sound" class="round-btn" title="Sound on/off">🔊</button>
     <button id="btn-help" class="round-btn" title="Help">⚙</button>
   </div>
@@ -141,6 +142,8 @@
     <span><kbd>K</kbd> workshop</span>
     <span><kbd>N</kbd> almanac</span>
     <span><kbd>L</kbd> loadout</span>
+    <span><kbd>X</kbd> reload</span>
+    <span><kbd>B</kbd> bounties</span>
     <span><kbd>M</kbd> globe</span>
   </div>
 
@@ -157,7 +160,8 @@
         <li><b>Life chapters:</b> Arrival → Roots → Family → Mastery → Legacy. Each chapter unlocks a life trait. Open <kbd>J</kbd> for the journal story, family, technology and almanac tabs.</li>
         <li><b>Weather:</b> press <kbd>N</kbd> for the almanac. Forecasts warn you about blizzards, thunderstorms, floods, droughts, eruptions, wildfires and hail — build storm shutters, a cellar, a well, irrigation, a pump or an ash mask before they hit.</li>
         <li><b>Research:</b> press <kbd>K</kbd> to open the workshop. Earn insight by discovering things, surviving hazards and completing chapters; research tools, buildings and firearms. Build the Workshop on the homestead board (<kbd>H</kbd>) once researched.</li>
-        <li><b>Weapons:</b> press <kbd>L</kbd> for the loadout. Melee: hatchet → iron axe → war axe → halberd. Ranged: sling → bow → crossbow → musket → lever rifle → shotgun. Craft ammo at the workshop; gunshots are loud and can call wolves.</li>
+        <li><b>Weapons:</b> press <kbd>L</kbd> for the loadout. Melee: hatchet → iron axe → war axe → halberd. Ranged: sling → bow → crossbow → musket → lever rifle → shotgun. Right-click to aim/fire manually, <kbd>X</kbd> to reload, left-click a predator for auto-engage. Craft ammo at the workshop; gunshots are loud and can call wolves.</li>
+        <li><b>Bounties &amp; hunting:</b> press <kbd>B</kbd> for the bounty board. Deer and hares roam the forest and fields — hunt them for meat and pelts. Bounties reward robbers driven off, wolves culled, venison, bears and fish.</li>
         <li><b>Threats:</b> bears, wolves, and night robbers, tolls and rustlers. Confront robbers to pay, fight or intimidate. Lanterns, dogs and fences deter them.</li>
         <li><b>Fernwood:</b> tend the eternal flame 3×.</li>
         <li><b>Clover Fields:</b> water and harvest the rows.</li>
@@ -250,6 +254,18 @@
       <h2 id="robber-title">A robber blocks the path.</h2>
       <p id="robber-line" class="journal-sub"></p>
       <div id="robber-choices"></div>
+    </div>
+  </div>
+
+  <!-- Bounty board -->
+  <div id="bounty-overlay" class="hidden">
+    <div class="help-card npc-card wide-card">
+      <button id="btn-close-bounty" class="journal-close" title="Close (Esc)">×</button>
+      <div class="journal-eyebrow">🎯 BOUNTY BOARD</div>
+      <h2>Work worth doing.</h2>
+      <p class="journal-sub">Robbers, predators and wild game. Claim the reward when the job is done.</p>
+      <div id="bounty-body"></div>
+      <button id="btn-bounty-leave">Back outside 👋</button>
     </div>
   </div>
 
