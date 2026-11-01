@@ -5266,7 +5266,112 @@ const HAZARDS = {
 const Weather = {
   today: null, next: null, forecast: [], history: [], lastMajorDay: -99,
   active: [], wind: 0, temp: 16, flash: 0,
+  telegraph: null,
 };
+// --- in-world hazard telegraph: clouds, fleeing birds, sheltering animals, NPC rumor ---
+let telegraphFX = null;
+function telegraphRumor(id) {
+  const h = HAZARDS[id];
+  const who = (typeof NPCS !== 'undefined' && NPCS.length) ? NPCS[(id.length + Life.day) % NPCS.length] : null;
+  const name = who ? who.name : 'A neighbour';
+  const lines = {
+    blizzard: '“Sky’s gone greasy. Snow by tomorrow — get the herd in.”',
+    thunder: '“Hear that? The birds are flying inland. Storm’s brewing.”',
+    tornado: '“The wind has teeth today. Cellar’s the place to be.”',
+    flood: '“River’s up and the frogs have gone quiet. Sandbags, friend.”',
+    drought: '“No dew again. The well will be working overtime.”',
+    eruption: '“Ash on the wind from Ember Heights. Cover the water.”',
+    wildfire: '“Smoke on the ridge — wind’s pushing it our way.”',
+    hail: '“Clouds are lumpy. Net the rows before tomorrow.”',
+  };
+  return `${name}: ${lines[id] || `“${h?.name || 'Rough weather'} is coming.”`}`;
+}
+function clearTelegraph() {
+  if (telegraphFX) {
+    if (telegraphFX.clouds) scene.remove(telegraphFX.clouds);
+    if (telegraphFX.tracks) scene.remove(telegraphFX.tracks);
+    if (telegraphFX.birds) for (const b of telegraphFX.birds) scene.remove(b.mesh);
+    telegraphFX = null;
+  }
+  Weather.telegraph = null;
+  Life.wildlifeShelter = false;
+  for (const a of animals || []) a.sheltering = false;
+}
+function setTelegraph(id, silent) {  clearTelegraph();
+  if (!id || !HAZARDS[id]) return;
+  const h = HAZARDS[id];
+  const rumor = telegraphRumor(id);
+  Weather.telegraph = { id, day: Life.day, birds: 6, shelter: true, tracks: true, rumor, startedAt: performance.now() };
+  Life.telegraphRumor = rumor;
+  Life.wildlifeShelter = true;
+  for (const a of animals || []) a.sheltering = true;
+  // cloud bank over the homestead
+  const clouds = new THREE.Group();
+  const cloudM = new THREE.MeshStandardMaterial({ color: 0x59636e, transparent: true, opacity: 0.35, flatShading: true, roughness: 1 });
+  for (let i = 0; i < 7; i++) {
+    const p = new THREE.Vector3(rand(-6, 6), rand(-1, 1.5), rand(-6, 6));
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(rand(2.2, 4.2), 8, 6), cloudM);
+    puff.position.copy(p);
+    puff.scale.y = 0.5;
+    clouds.add(puff);
+  }
+  const up = homeSpot(HOME.lat, HOME.lon, 0).normalize();
+  orientOnSphere(clouds, up.clone().multiplyScalar(R + 14), 0);
+  scene.add(clouds);
+  // fresh animal tracks in the dooryard (seasonal warning sign)
+  const tracks = new THREE.Group();
+  const trackM = mat(0x3a3026);
+  for (let i = 0; i < 5; i++) {
+    const print = mesh(new THREE.BoxGeometry(0.16, 0.02, 0.22), trackM, (i % 2 ? 0.22 : -0.22), 0.02, -i * 0.45, false);
+    print.rotation.y = (i % 2 ? 0.25 : -0.25);
+    tracks.add(print);
+  }
+  orientOnSphere(tracks, homeSpot(-4.2, 57.8, 0.06), 0);
+  scene.add(tracks);
+  // birds flee inland in a loose flock
+  const birds = [];
+  const birdM = mat(0x2a3138, { flatShading: true });
+  for (let i = 0; i < 6; i++) {
+    const { g, wl, wr } = makeBirdMesh(0.7, 0x2a3138, 0x3a4249, ['#2a3138', '#4a525a']);
+    g.visible = true;
+    scene.add(g);
+    birds.push({ mesh: g, wl, wr, ph: rand(Math.PI * 2), r: rand(7, 12), h: rand(5, 9), sp: rand(0.5, 0.9) });
+  }
+  telegraphFX = { clouds, cloudM, birds, up, tracks, t: 0 };
+  if (!silent) {
+    toast(`🗣️ ${rumor}`);
+    chime(260);
+    pushStory(`${h.icon} Sign of ${h.name.toLowerCase()} — ${rumor}`, '🌫️');
+  }
+  try { renderWeatherChip(); } catch { /* early */ }
+}
+tickers.push((t, dt) => {
+  if (!telegraphFX) return;
+  const fx = telegraphFX;
+  fx.t += dt;
+  const grow = Math.min(1, fx.t / 45);
+  fx.cloudM.opacity = 0.32 + 0.4 * grow;
+  fx.clouds.rotation.y += dt * 0.03;
+  const up = fx.up;
+  const east = V3(-up.z, 0, up.x).normalize();
+  const north = new THREE.Vector3().crossVectors(up, east).normalize();
+  for (const b of fx.birds) {
+    b.ph += dt * b.sp;
+    const rad = b.r + fx.t * 0.05;
+    const p = up.clone().multiplyScalar(R + b.h + Math.sin(fx.t * 1.4 + b.ph) * 0.4)
+      .addScaledVector(east, Math.cos(b.ph) * rad)
+      .addScaledVector(north, Math.sin(b.ph) * rad);
+    b.mesh.position.copy(p);
+    const dir = east.clone().multiplyScalar(-Math.sin(b.ph)).addScaledVector(north, Math.cos(b.ph)).addScaledVector(up, 0.04).normalize();
+    faceAlong(b.mesh, p, dir);
+    const w = b;
+    if (w && w.wl) {
+      const flap = Math.sin(fx.t * 11 + b.ph) * 0.65;
+      wingFlap(w.wl, flap); wingFlap(w.wr, flap);
+    }
+  }
+});
+
 function hazardById(id) { return HAZARDS[id] || null; }
 function pickHazard() {
   const s = seasonNow();
@@ -5293,10 +5398,12 @@ function rollForecast() {
     Weather.forecast.push({ day: Life.day + i + 1, id: i === 0 ? next : (i === 1 && Math.random() < 0.55 ? pickHazard() : null) });
   }
   Life.forecast = next;
+  setTelegraph(next);
 }
 function startHazard(id) {
   const h = hazardById(id);
   if (!h) return;
+  clearTelegraph();
   Weather.active = Weather.active.filter((x) => x.id !== id);
   Weather.active.push({ id, t: 0, dur: h.dur });
   Weather.today = id;
@@ -5315,6 +5422,7 @@ function startHazard(id) {
   if (Weather.history.length > 40) Weather.history.shift();
   if (id === 'wolves') { Life.wolfRaid = 1 + Math.min(2, Life.gen - 1); toast('🐺 Howls on the wind — the pack comes tonight.'); }
   Weather.lastMajorDay = Life.day;
+  if (settings.hazardPause) { try { setTimeout(() => openPause(), 350); } catch { /* early */ } }
 }
 function hazardCounterTags(id) {
   const tags = [];
@@ -5591,7 +5699,7 @@ function repairWeapon(id) {
   saveCheckpoint();
   return true;
 }
-const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0 };
+const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0, rustled: null };
 function weaponById(id) { return WEAPONS[id] || null; }
 function equippedMelee() { return WEAPONS[Loadout.melee] || WEAPONS.hatchet; }
 function equippedRanged() { return Loadout.ranged ? WEAPONS[Loadout.ranged] : null; }
@@ -5804,7 +5912,8 @@ function saveProgression() {
       robbersDrivenOff: Threats.robbersDrivenOff || 0, thefts: Threats.thefts || 0,
       bounties: Threats.bounties || 0, reputation: Threats.reputation || 0,
       wolvesCulled: Threats.wolvesCulled || 0, bearsBested: Threats.bearsBested || 0,
-      venison: Threats.venison || 0,
+      venison: Threats.venison || 0, captured: Threats.captured || 0, recovered: Threats.recovered || 0,
+      rustled: Threats.rustled ? { kind: Threats.rustled.kind, day: Threats.rustled.day } : null,
     },
     bountiesClaimed: { ...BountyClaimed },
     weather: { next: Weather.next, forecast: Weather.forecast.map((f) => ({ ...f })), history: [...Weather.history], lastMajorDay: Weather.lastMajorDay },
@@ -5845,7 +5954,11 @@ function restoreProgression(p) {
     UnlockedWeapons.length = 0;
     for (const id of p.unlockedWeapons) if (WEAPONS[id]) UnlockedWeapons.push(id);
   }
-  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0 }, p.threats);
+  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0 }, p.threats);
+  if (p.threats?.rustled) {
+    Threats.rustled = { ...p.threats.rustled, pos: latLonToVec3(13, 158, 0).normalize() };
+    try { addHerdTrail(); } catch { /* scene not ready */ }
+  } else Threats.rustled = null;
   if (p.bountiesClaimed) Object.assign(BountyClaimed, p.bountiesClaimed);
   if (p.pendingTrait) pendingTrait = [...p.pendingTrait];
   if (p.weather) {
@@ -5853,6 +5966,7 @@ function restoreProgression(p) {
     Weather.forecast = (p.weather.forecast || []).map((f) => ({ ...f }));
     Weather.history = [...(p.weather.history || [])];
     Weather.lastMajorDay = p.weather.lastMajorDay ?? -99;
+    if (typeof setTelegraph === 'function') setTelegraph(Weather.next, true);
   }
   if (p.homeTech) Object.assign(Home, p.homeTech);
   if (typeof applyHeroChapter === 'function') applyHeroChapter(Life.chapter || 0);
@@ -7303,11 +7417,15 @@ tickers.push((t, dt) => {
   const barnC = homeSpot(-5, 55, 0);
   for (const a of animals) {
     a.wt -= dt;
-    if (a.wt <= 0) { a.wt = rand(2, 5); a.tgt = barnC.clone().add(V3(rand(-2.5, 2.5), 0, rand(-2.5, 2.5))); }
+    a.sheltering = !!Life.wildlifeShelter;
+    if (Life.wildlifeShelter) {
+      // hazard sign: herd and flock head for the barn
+      a.tgt = barnC.clone().add(V3(((a.phase || 0) % 1) * 2 - 1, 0, ((a.phase || 0) % 1) * 2 - 1));
+    } else if (a.wt <= 0) { a.wt = rand(2, 5); a.tgt = barnC.clone().add(V3(rand(-2.5, 2.5), 0, rand(-2.5, 2.5))); }
     const toT = a.tgt.clone().sub(a.pos);
     const walking = toT.length() > 0.4;
     if (walking) {
-      const d = tangentStep(a.pos, toT, dt * 1.1);
+      const d = tangentStep(a.pos, toT, dt * (a.sheltering ? 2.2 : 1.1));
       if (d) a.facing.lerp(d, 0.2).normalize();
     }
     const n = a.pos.clone().normalize();
@@ -7527,7 +7645,28 @@ function killAnimal(a, byWolf) {
   meters.morale = Math.max(0, (meters.morale ?? 80) - 12);
   chime(150);
   toast(byWolf ? `🐺 A ${a.kind} was taken by wolves!` : `☠️ Lost a ${a.kind}.`);
+  if (byWolf) addDeadLivestock(a);
   renderStats();
+}
+function addDeadLivestock(a) {
+  const g = new THREE.Group();
+  g.add(mesh(new THREE.BoxGeometry(0.9, 0.35, 0.55), mat(0x6b6258), 0, 0.18, 0, false));
+  g.add(mesh(new THREE.SphereGeometry(0.3, 8, 6), mat(0xcfc7ba), 0.42, 0.25, 0.2, false));
+  for (let i = 0; i < 3; i++) g.add(mesh(new THREE.BoxGeometry(0.1, 0.08, 0.3), mat(0xd9d2c4), -0.3 + i * 0.25, 0.04, -0.35, false));
+  orientOnSphere(g, homeSpot(-3.4, 53.5, 0.06), rand(6));
+  scene.add(g);
+  const it = {
+    id: 'dead-livestock' + Date.now() % 10000, pos: g.position.clone(), kind: '🐑 DEAD LIVESTOCK', radius: 3.6,
+    label: () => `Dead ${a.kind} — salvage what you can`,
+    onUse: () => {
+      scene.remove(g);
+      const jx = interactables.indexOf(it); if (jx >= 0) interactables.splice(jx, 1);
+      inv.food = (inv.food || 0) + 1;
+      toast(`🐑 You salvage a little meat and hide (+1🍎).`);
+      renderStats();
+    },
+  };
+  addInteract(it);
 }
 function updateWolves(t, dt) {
   if (!wolves.length || playerDead) return;
@@ -7696,6 +7835,67 @@ tickers.push((t, dt) => {
   poacherT = rand(140, 220);
   if (Math.random() < 0.5) spawnPoacher();
 });
+function rustleHerd(r) {
+  if (!animals.length) return false;
+  const stolen = animals.pop();
+  if (stolen?.mesh) scene.remove(stolen.mesh);
+  if (stolen?.interact) { const ax = interactables.indexOf(stolen.interact); if (ax >= 0) interactables.splice(ax, 1); }
+  Threats.rustled = { kind: stolen?.kind || 'cow', day: Life.day, pos: latLonToVec3(13, 158, 0).normalize() };
+  addHerdTrail();
+  toast(`🐄 ${r?.name || 'A rustler'} drove off your ${ANIMAL_INFO[stolen?.kind]?.name || 'animal'}! Follow the tracks.`);
+  pushStory(`A rustler took a ${ANIMAL_INFO[stolen?.kind]?.name || 'animal'}; tracks lead into Fernwood.`, '🐄');
+  renderStats();
+  return true;
+}
+let herdTrail = null;
+function addHerdTrail() {
+  if (!Threats.rustled) return;
+  if (herdTrail) {
+    const ix = interactables.indexOf(herdTrail);
+    if (ix >= 0) interactables.splice(ix, 1);
+    herdTrail = null;
+  }
+  const n = Threats.rustled.pos.clone().normalize();
+  const pos = n.clone().multiplyScalar(R + heightFor(n) + 0.1);
+  const kindName = ANIMAL_INFO[Threats.rustled.kind]?.name || 'animal';
+  herdTrail = {
+    id: 'herd-trail', pos, kind: '🐄 TRACKS', radius: 4.2,
+    label: () => `Follow the tracks — recover your ${kindName}`,
+    onUse: () => recoverHerd(),
+  };
+  addInteract(herdTrail);
+}
+function recoverHerd() {
+  const st = Threats.rustled;
+  if (!st) return false;
+  spawnAnimal(st.kind, true);
+  Threats.rustled = null;
+  Threats.recovered = (Threats.recovered || 0) + 1;
+  Threats.reputation = (Threats.reputation || 0) + 1;
+  inv.gold = (inv.gold || 0) + 2;
+  grantInsight(3, 'Recovered the herd');
+  if (herdTrail) { const ix = interactables.indexOf(herdTrail); if (ix >= 0) interactables.splice(ix, 1); herdTrail = null; }
+  toast('🐄 You found the herd behind the ridge. It trots home (+2🪙).');
+  pushStory('Followed the rustler’s tracks and brought the herd home.', '🐄');
+  saveCheckpoint();
+  renderStats();
+  return true;
+}
+function captureRobber(r) {
+  if (!r || r.kindTag !== 'robber') return false;
+  const reward = { gold: 6, insight: 4 };
+  inv.gold = (inv.gold || 0) + reward.gold;
+  Threats.captured = (Threats.captured || 0) + 1;
+  Threats.reputation = (Threats.reputation || 0) + 2;
+  grantInsight(reward.insight, 'Alive bounty');
+  removeRobber(r, false);
+  toast(`🤝 You bring ${r.name} in alive — +6🪙, +4💡, reputation +2.`);
+  pushStory(`Brought a robber in alive for the bounty.`, '🤝');
+  saveCheckpoint();
+  renderStats();
+  return true;
+}
+
 function removeRobber(r, reward) {
   const ix = Threats.robbers.indexOf(r);
   if (ix >= 0) Threats.robbers.splice(ix, 1);
@@ -7763,11 +7963,16 @@ function updateRobbers(t, dt) {
       if (stepped) r.facing.lerp(stepped, 0.2).normalize();
       if (pd < 4.4 && !r.demanded) { r.demanded = true; r.state = 'wait'; openRobberDialog(r); }
       if (r.pos.distanceTo(home) < 4.5) {
-        const stolenFood = Math.min(inv.food || 0, 2);
-        if (stolenFood) inv.food -= stolenFood;
-        if (inv.gold > 0) inv.gold -= 1;
-        Threats.thefts++;
-        toast(`💰 ${r.name} stole ${stolenFood}🍎 and 1🪙! (lanterns/dog/fences deter them)`);
+        if (r.kind === 'rustler' && animals.length) {
+          rustleHerd(r);
+          r.state = 'flee';
+        } else {
+          const stolenFood = Math.min(inv.food || 0, 2);
+          if (stolenFood) inv.food -= stolenFood;
+          if (inv.gold > 0) inv.gold -= 1;
+          Threats.thefts++;
+          toast(`💰 ${r.name} stole ${stolenFood}🍎 and 1🪙! (lanterns/dog/fences deter them)`);
+        }
         r.state = 'flee';
         renderStats();
       }
@@ -7953,6 +8158,7 @@ for (const [k, la, lo] of [['deer', 17, 150], ['deer', 11, 162], ['deer', 4, 146
 // --- bounty board ---
 const BOUNTIES = [
   { id: 'robber', name: 'Drive off a robber', icon: '⚠️', target: 1, get: () => Threats.robbersDrivenOff || 0, gold: 4, insight: 2 },
+  { id: 'alive', name: 'Bring 2 robbers in alive', icon: '🤝', target: 2, get: () => Threats.captured || 0, gold: 8, insight: 4 },
   { id: 'wolves', name: 'Cull 2 wolves', icon: '🐺', target: 2, get: () => Threats.wolvesCulled || 0, gold: 4, insight: 2 },
   { id: 'venison', name: 'Bring 2 venison', icon: '🦌', target: 2, get: () => Threats.venison || 0, gold: 5, insight: 2 },
   { id: 'bear', name: 'Best a polar bear', icon: '🐻', target: 1, get: () => Threats.bearsBested || 0, gold: 6, insight: 3 },
@@ -9161,8 +9367,9 @@ const SETTINGS_DEFS = [
   { id: 'effects', name: 'Flashes & shake', desc: 'Reduced is easier on the eyes', opts: ['full', 'reduced'], labels: { full: 'Full ✨', reduced: 'Reduced 🧘' } },
   { id: 'textSize', name: 'Text size', desc: 'HUD and journal text', opts: ['normal', 'large'], labels: { normal: 'Normal', large: 'Large 🔎' } },
   { id: 'contrast', name: 'High contrast', desc: 'Stronger panels and outlines', opts: ['normal', 'high'], labels: { normal: 'Normal', high: 'High ◐' } },
+  { id: 'hazardPause', name: 'Pause on hazard', desc: 'Freeze the game when a hazard begins', opts: [false, true], labels: { false: 'Off', true: 'On ⏸️' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal' };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -10181,6 +10388,12 @@ function openRobberDialog(r) {
     });
     return;
   }
+  if (r.hp <= r.maxHp * 0.6) {
+    add('Spare — alive bounty', 'Bring them in alive for a larger reward (+6🪙, +4💡).', () => {
+      closeRobber();
+      captureRobber(r);
+    });
+  }
   add('Pay the toll', 'Lose 3🪙 or 2🍎 and they leave.', () => {
     if (inv.gold >= 3) inv.gold -= 3; else if (inv.food >= 2) inv.food -= 2; else { toast('You have nothing worth taking.'); return; }
     r.state = 'leave'; closeRobber(); saveCheckpoint(); toast('💰 They take the toll and vanish into the dark.');
@@ -10249,7 +10462,9 @@ Object.assign(window.__lp, {
   weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
+  recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing,
+  telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
   prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech,
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
   retire: { ready: hearthRetireReady, go: retireToHeir },
