@@ -144,8 +144,8 @@
   <!-- Controls hint -->
   <div id="controls-hint" class="pill-dark">
     <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
-    <span><kbd>Shift</kbd> dash</span>
-    <span><kbd>Q</kbd> sprint</span>
+    <span><kbd>Shift</kbd> run</span>
+    <span><kbd>Q</kbd> dash</span>
     <span>click / <kbd>E</kbd> auto-act &amp; fight</span>
     <span><kbd>F</kbd> eat</span>
     <span><kbd>R</kbd> heal</span>
@@ -169,7 +169,7 @@
         <li><b>Dock &amp; boats:</b> build a <b>Dock</b> at a shoreline, then a <b>Raft</b> at the dock. Research <b>Boatbuilding</b> to upgrade the raft into a proper boat. Board at the dock, sail with WASD and press <kbd>E</kbd> to fish or step ashore.</li>
         <li><b>Fishing grounds:</b> 15 named grounds — ponds, coasts, reefs, deep water and the aurora ice hole — each with its own species. Fish from a shore marker, the skiff, or your raft/boat. Discovered species and grounds are listed in Journal → Almanac.</li>
         <li><b>Hunting:</b> deer, hares, boars, bears, wolves and the wild creatures of every biome can be hunted for <b>🍖 meat</b>. Research <b>Bowyer</b> for the bow and arrows, then <b>Hunting Rifle</b> for the lever-action rifle.</li>
-        <li><b>Dash:</b> <kbd>Shift</kbd> rolls through danger (brief invulnerability). Dodging a swipe at the last moment triggers a <b>Clean Dodge</b> + critical hits.</li>
+        <li><b>Run &amp; dash:</b> hold <kbd>Shift</kbd> to run (it burns energy). Tap <kbd>Q</kbd> to dash — a short roll through danger with brief invulnerability. Dodging a swipe at the last moment triggers a <b>Clean Dodge</b> + critical hits.</li>
         <li><b>Levels:</b> chopping, fighting, fishing, cooking and wonders earn XP. Level up for perks and better weapons (Rusty Hatchet → Starforged Blade).</li>
         <li><b>Fast travel:</b> press <kbd>M</kbd> for the globe, then click any shore to teleport there.</li>
         <li><b>Life chapters:</b> Arrival → Roots → Family → Mastery → Legacy. Each chapter unlocks a life trait. Open <kbd>J</kbd> for the journal story, family, technology and almanac tabs.</li>
@@ -191,12 +191,12 @@
         <li><b>Gather:</b> your axe is always in hand — click any pine, palm, or orchard tree and the hero fells it and splits the trunk automatically. Nodes regrow.</li>
         <li><b>Sea skiff:</b> follow the trail south from Shell Cove to the shore skiff. Click it (or <kbd>E</kbd>) to board, sail with WASD, and click/press <kbd>E</kbd> in open water to cast and again to reel in a 🐟. Click shore (or <kbd>E</kbd>) to step off.</li>
         <li><b>Move:</b> WASD, arrow keys, or click anywhere on the planet to walk there.</li>
-        <li><b>Survive:</b> sprinting burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
+        <li><b>Survive:</b> running burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
         <li><b>Live:</b> hunger drains slowly now — explore first, eat later. Press <kbd>H</kbd> for the homestead board: build hut → farmhouse, dig a well, plant plots, raise animals.</li>
         <li><b>Family:</b> befriend Lena or Marina with gifts, craft a sunstone ring, marry, raise kids — every mouth adds upkeep. Hire hands, survive droughts, floods, tornadoes and wolf packs, then retire into your heir.</li>
         <li><b>Bears & wolves:</b> adults flash ❗ before a heavy swipe — dash away or take the hit. Click a predator once and your hero fights automatically. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Save anytime from the pause menu (<kbd>Esc</kbd> → Save Game); death returns you to your last save.</li>
       </ul>
-      <p class="muted">WASD/arrows move · click map to walk · click target to auto-act · Shift dash · Q sprint · space hop · E auto-act/fight · F eat food · R remedy · M globe travel · J journal · Esc menu · drag mouse to orbit</p>
+      <p class="muted">WASD/arrows move · click map to walk · click target to auto-act · Shift run · Q dash · space hop · E auto-act/fight · F eat food · R remedy · M globe travel · J journal · Esc menu · drag mouse to orbit</p>
       <button id="btn-close-help">Start exploring</button>
     </div>
   </div>
@@ -324,7 +324,7 @@
         <div id="slot-list"></div>
         <button id="btn-slot-back" class="menu-btn menu-btn-small">← Back</button>
       </div>
-      <div class="title-footer">click / E once to auto-act · Shift dash · K research · N almanac · L loadout · H build · J journal · Esc menu</div>
+      <div class="title-footer">click / E once to auto-act · Shift run · Q dash · K research · N almanac · L loadout · H build · J journal · Esc menu</div>
     </div>
   </div>
 

@@ -3261,8 +3261,8 @@ const player = new THREE.Group();
   for (const s of [-1, 1]) {
     const arm = new THREE.Group();
     arm.position.set(s * 0.355, 0.56, 0);
-    arm.rotation.z = s * -0.10;
-    arm.userData.baseZ = s * -0.10;
+    arm.rotation.z = s * 0.12;
+    arm.userData.baseZ = s * 0.12;
     arm.add(mesh(new THREE.SphereGeometry(0.135, 10, 8), coat, 0, 0, 0, false)); // shoulder
     arm.add(mesh(new THREE.CylinderGeometry(0.095, 0.085, 0.32, 9), coat, 0, -0.16, 0));
     const elbow = new THREE.Group();
@@ -3274,9 +3274,9 @@ const player = new THREE.Group();
     const wrist = new THREE.Group();
     wrist.position.y = -0.28;
     elbow.add(wrist);
-    wrist.add(mesh(new THREE.SphereGeometry(0.09, 9, 7), leatherL, 0, -0.02, 0.01));
-    wrist.add(mesh(new THREE.BoxGeometry(0.10, 0.10, 0.13), leatherL, 0, -0.07, 0.04));
-    wrist.add(mesh(new THREE.SphereGeometry(0.033, 6, 5), leatherL, s * 0.055, -0.03, 0.07, false));
+    wrist.add(mesh(new THREE.SphereGeometry(0.10, 9, 7), skin, 0, -0.02, 0.01));
+    wrist.add(mesh(new THREE.BoxGeometry(0.11, 0.11, 0.14), skin, 0, -0.075, 0.045));
+    wrist.add(mesh(new THREE.SphereGeometry(0.036, 6, 5), skin, s * 0.06, -0.03, 0.075, false));
     if (s > 0) {
       // trusty axe: carved handle, leather grip, bearded steel head
       const axe = new THREE.Group();
@@ -3596,7 +3596,7 @@ const player = new THREE.Group();
     P.torso.position.y = 1.02 + bob - ageF * 0.02 - (pose ? (pose.crouch || 0) * 0.42 : 0) - swimBlend * 0.25;
     P.torso.position.z = pose ? pose.lunge : 0;
     P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16 + ageF * 0.06 + hunch + swimBlend * 1.05) - P.torso.rotation.x) * kPose;
-    P.torso.rotation.y += (((moving ? s * 0.07 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
+    P.torso.rotation.y += (((moving ? s * 0.10 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
     P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0) + dashF * 0.12) - P.torso.rotation.z) * kPose;
     P.chest.scale.y = 1 + Math.sin(idleT * (1.9 - ageF * 0.6)) * 0.012 * idleF;
 
@@ -3605,21 +3605,22 @@ const player = new THREE.Group();
     P.head.rotation.x += (((moving ? 0.04 : Math.sin(idleT * 0.5) * 0.03) + (pose ? pose.headPitch : 0) + headTilt - swimBlend * 0.75) - P.head.rotation.x) * kPose;
     P.head.rotation.z += ((moving ? -s * 0.015 : 0) - P.head.rotation.z) * k;
 
-    // arms: counter-swing, then the chop/slash pose takes over
+    // arms: big, readable human counter-swing; the chop/slash pose overrides it
     const grip = pose ? pose.grip : 0;
-    const armAmp = (1 - grip) * (0.40 + runF * 0.25);
+    const armAmp = (1 - grip) * (moving ? 0.82 + runF * 0.36 : 0);
     const armLTarget = (s * armAmp) + (pose ? pose.shL : 0);
     const armRTarget = (-s * armAmp) + (pose ? pose.shR : 0);
     P.armL.rotation.x += (armLTarget - P.armL.rotation.x) * kPose;
     P.armR.rotation.x += (armRTarget - P.armR.rotation.x) * kPose;
     P.armL.rotation.z += ((P.armL.userData.baseZ + 0.30 * grip + 0.42 * wadeBlend) - P.armL.rotation.z) * kPose;
     P.armR.rotation.z += ((P.armR.userData.baseZ - 0.30 * grip - 0.42 * wadeBlend) - P.armR.rotation.z) * kPose;
-    const elbL = (pose ? pose.elL : -0.30) - (moving ? Math.sin(phase) * 0.16 : 0);
-    const elbR = (pose ? pose.elR : -0.30) + (moving ? Math.sin(phase + Math.PI) * 0.16 : 0);
+    const elbowBend = moving ? 0.18 + runF * 0.22 : 0;
+    const elbL = (pose ? pose.elL : -0.30 - elbowBend - Math.max(0, -s) * (0.38 + runF * 0.22));
+    const elbR = (pose ? pose.elR : -0.30 - elbowBend - Math.max(0, s) * (0.38 + runF * 0.22));
     P.elbowL.rotation.x += (elbL - P.elbowL.rotation.x) * kPose;
     P.elbowR.rotation.x += (elbR - P.elbowR.rotation.x) * kPose;
-    P.wristR.rotation.x += (((pose ? pose.wrist : 0) + 0.16) - P.wristR.rotation.x) * kPose;
-    P.wristL.rotation.x += ((pose ? -0.15 : 0) - P.wristL.rotation.x) * kPose;
+    P.wristR.rotation.x += (((pose ? pose.wrist : s * 0.12) + 0.16) - P.wristR.rotation.x) * kPose;
+    P.wristL.rotation.x += ((pose ? -0.15 : -s * 0.12) - P.wristL.rotation.x) * kPose;
     if (swimBlend > 0.02) {
       const stroke = Math.sin(swimPhase) * 1.15 * swimBlend;
       P.armL.rotation.x += ((-1.25 + stroke) - P.armL.rotation.x) * k;
@@ -4634,7 +4635,7 @@ function onUse(it) {
 
 // ---------- polar-bear combat + health ----------
 // Adults (scale >= 0.9) guard their ground: wander home, chase inside 7u,
-// telegraph a heavy swipe inside 3u (dodge with Shift!), swipe for 10–16 damage.
+// telegraph a heavy swipe inside 3u (dodge with Q!), swipe for 10-16 damage.
 // Cubs never attack — they flee.
 // One click/E locks the bear: the hero pursues and auto-swings until it falls.
 // Health regens slowly out of combat; 🌿 remedy heals fast.
@@ -4830,7 +4831,7 @@ function updateBears(t, dt) {
         // engaged so the bear can't double-turn and snap.
         engaged = true;
         // strike range: face the traveler, telegraph the heavy swipe (red flash +
-        // rear-up), then land it — dash (Shift) through the flash for a Clean Dodge.
+        // rear-up), then land it - dash (Q) through the flash for a Clean Dodge.
         // Committed aim: track fast while open, barely track mid-windup so a
         // late dash actually dodges (and bears can't snap-turn mid-swing).
         const flat = toPlayer.addScaledVector(n, -toPlayer.dot(n));
@@ -4844,7 +4845,7 @@ function updateBears(t, dt) {
             setTimeout(() => {
               if (!b.dead && !playerDead && player.position.distanceTo(b.mesh.position) < BEAR_STRIKE + 0.6) {
                 damagePlayer(Math.round(10 + Math.random() * 6), b.mesh.position);
-                toast('🐻‍❄️ The bear swipes you! Tap the bear to fight back — or dodge (Shift)!');
+                toast('🐻‍❄️ The bear swipes you! Tap the bear to fight back — or dodge (Q)!');
               }
             }, 140);
           }
@@ -8938,7 +8939,7 @@ function updateWolves(t, dt) {
           w.atkCd = 1.5;
           if (w.huntsPlayer && !playerDead && w.pos.distanceTo(player.position) < 2.6) {
             damagePlayer(Math.round(6 + Math.random() * 5), w.mesh.position);
-            toast('🐺 The wolf snaps at you! Tap it to fight back — or dodge (Shift)!');
+            toast('🐺 The wolf snaps at you! Tap it to fight back — or dodge (Q)!');
           }
         }
       } else if (w.atkCd <= 0) {
@@ -12029,9 +12030,11 @@ Object.assign(window.__lp, {
     const head = axe.children.find((c) => c.geometry && c.geometry.type === 'ExtrudeGeometry');
     if (head) player.worldToLocal(head.getWorldPosition(hp));
     return {
-      chopT, attackT,
-      armR: player.userData.armR.rotation.x, elbowR: player.userData.elbowR.rotation.x,
-      wristR: player.userData.wristR.rotation.x, torsoYaw: player.userData.torso.rotation.y,
+      chopT, attackT, dashT, dashCd,
+      armR: player.userData.armR.rotation.x, armL: player.userData.armL.rotation.x,
+      elbowR: player.userData.elbowR.rotation.x, elbowL: player.userData.elbowL.rotation.x,
+      wristR: player.userData.wristR.rotation.x, wristL: player.userData.wristL.rotation.x,
+      torsoYaw: player.userData.torso.rotation.y,
       axe: [ap.x, ap.y, ap.z].map((v) => +v.toFixed(2)),
       head: [hp.x, hp.y, hp.z].map((v) => +v.toFixed(2)),
     };
@@ -12076,7 +12079,7 @@ addEventListener('keydown', (e) => {
     if (t && setAutoTask(t)) return;
     if (currentTarget) (currentTarget.onUse || onUse)(currentTarget);
   }
-  if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { if (!playerDead) tryDash(); return; }
+  if (e.code === 'KeyQ' && !playerDead) { if (!e.repeat) tryDash(); return; }
   if (e.code === 'KeyF' && !playerDead) eatFood();
   if (e.code === 'KeyR' && !playerDead) useRemedy();
   if (e.code === 'KeyX' && !playerDead) { startReload(); return; }
@@ -12385,7 +12388,7 @@ if ('ontouchstart' in window) {
   hold('btn-hop', () => { if (started && !paused) keys.Space = true; }, () => (keys.Space = false));
   hold('btn-eat', () => { if (started && !paused) eatFood(); });
   hold('btn-heal', () => { if (started && !paused) useRemedy(); });
-  hold('btn-run', () => { if (started && !paused) keys.KeyQ = true; }, () => (keys.KeyQ = false));
+  hold('btn-run', () => { if (started && !paused) keys.ShiftLeft = true; }, () => (keys.ShiftLeft = false));
 }
 let globeMode = false;
 let photoMode = null; // { dist, height, side, aim } — QA portrait camera
@@ -12521,7 +12524,7 @@ function updateBoatControl(dt) {
   if (Math.hypot(jx, jy) < 0.15) { jx = 0; jy = 0; }
   ix += jx; iz += -jy;
   if (jx || jy) moveTargetN = null;
-  const trimmed = keys.KeyQ && meters.energy > 0;
+  const trimmed = (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0;
   const craftSpeed = craftMode === 'dock' ? (Home.boat ? 7.4 : 3.6) : 5.4;
   let speed = craftSpeed * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1);
   if (meters.energy <= 0) speed *= 0.55;
@@ -12638,7 +12641,7 @@ function updatePlayer(dt) {
   ix += jx; iz += -jy;
   if (jx || jy) moveTargetN = null; // joystick steers, cancels click-to-move
   if (jx || jy) { if (activeTask && !taskIsCombat(activeTask.interact)) clearAutoTask(); }
-  const running = keys.KeyQ && meters.energy > 0 ? 1.7 : 1;
+  const running = (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0 ? 1.7 : 1;
   const waterH = heightFor(n);
   const inWater = waterH < 0.12; // lagoon floor + reef shelf lie below the ocean skin
   const swimming = waterH < -0.1; // deep water: swim instead of wade
@@ -12703,8 +12706,8 @@ function updatePlayer(dt) {
   } catch { /* noop */ }
   const nn = playerPos.clone().normalize();
   const surfH = heightFor(nn) + 0.1 + hopH + (swimming ? (0.02 - heightFor(nn)) : inWater ? -0.35 : 0);
-  // survival meters: sprinting burns energy, standing still restores, arctic chills
-  const sprinting = !!(ix || iz) && keys.KeyQ && meters.energy > 0;
+  // survival meters: running burns energy, standing still restores, arctic chills
+  const sprinting = !!(ix || iz) && (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0;
   if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt);
   else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 7 * dt);
   // footstep dust / wading splash: the world answers every step
