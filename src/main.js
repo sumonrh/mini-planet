@@ -718,7 +718,7 @@ function gatherHit(nd) {
     if (!nd.home) nd.home = nd.shakeRoot.position.clone();
     nd.shake = 1; // vibrate
   }
-  if (chopT <= 0) startChop(); // swing tool / hands (impact-queued hits keep their swing)
+  if (chopT <= 0) startChop(null, nodeGatherAction(nd)); // swing tool / hands
   const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1);  nd.prog += power;
   // juice: hits escalate — bigger shake, higher chime, brighter burst
   const th = splitting ? 2 : nd.need;
@@ -804,9 +804,19 @@ let camShake = 0; // impact kick
 function addShake(a) { camShake = Math.min(0.45, camShake + a); }
 let gripBlend = 0; // 0 = arms free, 1 = both hands closed on the axe handle
 let wadeBlend = 0; // 0 = dry stride, 1 = high-stepping wade
-function startChop(nd) {
+let swimBlend = 0, swimPhase = 0; // 0 = dry, 1 = swimming stroke
+let gatherAction = 'chop';
+function nodeGatherAction(nd) {
+  if (!nd) return 'chop';
+  if (nd.item === 'wool' || nd.verb === 'Shear') return 'shear';
+  if (nd.verb === 'Pick' || nd.item === 'remedy' || nd.verb === 'Gather') return 'pick';
+  if (nd.verb === 'Mine' || nd.item === 'stone') return 'chop';
+  return 'chop';
+}
+function startChop(nd, action) {
   chopT = 0.0001;
   chopQueue = nd ? { nd, fired: false } : null;
+  gatherAction = action || nodeGatherAction(nd);
 }
 function swingChop(nd) { if (nd) startChop(nd); }
 function startAttack() { attackT = 0.0001; }
@@ -836,20 +846,52 @@ const CHOP = {
   headYaw: [[0, 0], [0.2, -0.18], [0.36, -0.2], [0.48, 0.16], [0.6, 0.2], [0.8, 0.04], [1, 0]],
   headPitch: [[0, 0], [0.2, 0.08], [0.34, 0.1], [0.48, -0.12], [0.56, -0.14], [0.78, 0], [1, 0]],
 };
+const PICK = {
+  yaw: [[0, 0], [0.2, -0.12], [0.45, -0.2], [0.7, -0.05], [1, 0]],
+  pitch: [[0, 0], [0.2, 0.22], [0.45, 0.32], [0.72, 0.16], [1, 0]],
+  roll: [[0, 0], [0.3, -0.12], [0.6, -0.08], [1, 0]],
+  shR: [[0, 0], [0.2, -0.55], [0.45, -0.95], [0.7, -0.4], [1, 0]],
+  shL: [[0, 0], [0.2, -0.15], [0.45, -0.25], [0.7, -0.1], [1, 0]],
+  elR: [[0, -0.35], [0.2, -0.75], [0.45, -0.55], [0.7, -0.5], [1, -0.35]],
+  elL: [[0, -0.35], [0.3, -0.5], [0.7, -0.35], [1, -0.35]],
+  wrist: [[0, 0], [0.3, 0.4], [0.5, 0.7], [0.8, 0.2], [1, 0]],
+  grip: [[0, 0], [0.2, 0.35], [0.7, 0.3], [1, 0]],
+  lunge: [[0, 0], [0.3, -0.04], [0.7, -0.02], [1, 0]],
+  crouch: [[0, 0], [0.2, 0.08], [0.55, 0.2], [0.8, 0.06], [1, 0]],
+  headYaw: [[0, 0], [0.3, 0.14], [0.7, 0.08], [1, 0]],
+  headPitch: [[0, 0], [0.25, 0.28], [0.6, 0.35], [0.85, 0.1], [1, 0]],
+};
+const SHEAR = {
+  yaw: [[0, 0], [0.2, 0.16], [0.5, 0.22], [0.8, 0.05], [1, 0]],
+  pitch: [[0, 0], [0.2, 0.3], [0.5, 0.42], [0.8, 0.18], [1, 0]],
+  roll: [[0, 0], [0.3, 0], [1, 0]],
+  shR: [[0, 0], [0.2, -0.75], [0.5, -0.95], [0.8, -0.55], [1, 0]],
+  shL: [[0, 0], [0.2, -0.7], [0.5, -0.9], [0.8, -0.5], [1, 0]],
+  elR: [[0, -0.35], [0.2, -1.0], [0.5, -0.7], [0.8, -0.6], [1, -0.35]],
+  elL: [[0, -0.35], [0.2, -1.0], [0.5, -0.7], [0.8, -0.6], [1, -0.35]],
+  wrist: [[0, 0], [0.3, 0.6], [0.6, 0.9], [0.85, 0.2], [1, 0]],
+  grip: [[0, 0], [0.2, 0.5], [0.75, 0.45], [1, 0]],
+  lunge: [[0, 0], [0.3, -0.03], [0.7, -0.02], [1, 0]],
+  crouch: [[0, 0], [0.2, 0.16], [0.55, 0.26], [0.8, 0.1], [1, 0]],
+  headYaw: [[0, 0], [0.3, 0.1], [0.7, -0.05], [1, 0]],
+  headPitch: [[0, 0], [0.25, 0.3], [0.6, 0.36], [0.85, 0.12], [1, 0]],
+};
 const _idlePose = {
   active: false, t: 0, yaw: 0, pitch: 0, roll: 0, shR: 0, shL: 0, elR: -0.35, elL: -0.4,
-  wrist: 0, grip: 0, lunge: 0, headYaw: 0, headPitch: 0,
+  wrist: 0, grip: 0, lunge: 0, crouch: 0, headYaw: 0, headPitch: 0, useTool: true,
 };
 function currentChopPose() {
   if (chopT <= 0) return _idlePose;
   const t = Math.min(1, chopT);
+  const set = gatherAction === 'pick' ? PICK : gatherAction === 'shear' ? SHEAR : CHOP;
   return {
-    active: true, t,
-    yaw: kfAt(CHOP.yaw, t), pitch: kfAt(CHOP.pitch, t), roll: kfAt(CHOP.roll, t),
-    shR: kfAt(CHOP.shR, t), shL: kfAt(CHOP.shL, t),
-    elR: kfAt(CHOP.elR, t), elL: kfAt(CHOP.elL, t),
-    wrist: kfAt(CHOP.wrist, t), grip: kfAt(CHOP.grip, t),
-    lunge: kfAt(CHOP.lunge, t), headYaw: kfAt(CHOP.headYaw, t), headPitch: kfAt(CHOP.headPitch, t),
+    active: true, t, useTool: set === CHOP,
+    yaw: kfAt(set.yaw, t), pitch: kfAt(set.pitch, t), roll: kfAt(set.roll, t),
+    shR: kfAt(set.shR, t), shL: kfAt(set.shL, t),
+    elR: kfAt(set.elR, t), elL: kfAt(set.elL, t),
+    wrist: kfAt(set.wrist, t), grip: kfAt(set.grip, t),
+    lunge: kfAt(set.lunge, t), crouch: set.crouch ? kfAt(set.crouch, t) : 0,
+    headYaw: kfAt(set.headYaw, t), headPitch: kfAt(set.headPitch, t),
   };
 }
 // combat: a flatter diagonal slash, separate from the wood chop
@@ -3387,8 +3429,13 @@ const player = new THREE.Group();
     idleT += dt;
     const s = Math.sin(phase), c = Math.cos(phase);
     const k = 1 - Math.exp(-16 * dt);
-    const wading = heightFor(playerPos.clone().normalize()) < 0.12;
+    const waterH = heightFor(playerPos.clone().normalize());
+    const swimmingNow = waterH < -0.1;
+    const wading = waterH < 0.12 && !swimmingNow;
     wadeBlend += ((wading ? 1 : 0) - wadeBlend) * Math.min(1, 4 * dt);
+    swimBlend += ((swimmingNow ? 1 : 0) - swimBlend) * Math.min(1, 5 * dt);
+    if (swimmingNow || inBoat) swimBlend = inBoat ? 0 : swimBlend;
+    swimPhase += dt * (moving ? 6.5 : 1.2);
     const amp = moving ? (0.50 + runF * 0.28) * (1 + 0.45 * wadeBlend) : 0;
 
     const cp = currentChopPose();
@@ -3409,6 +3456,13 @@ const player = new THREE.Group();
     P.kneeR.rotation.x += (kneeR - P.kneeR.rotation.x) * k;
     P.ankleL.rotation.x += ((-P.legL.rotation.x - P.kneeL.rotation.x) * 0.55 + hopF * 0.2 - P.ankleL.rotation.x) * k;
     P.ankleR.rotation.x += ((-P.legR.rotation.x - P.kneeR.rotation.x) * 0.55 + hopF * 0.2 - P.ankleR.rotation.x) * k;
+    if (swimBlend > 0.02) {
+      const kick = Math.sin(swimPhase) * 0.5 * swimBlend;
+      P.legL.rotation.x += (kick - P.legL.rotation.x) * k;
+      P.legR.rotation.x += (-kick - P.legR.rotation.x) * k;
+      P.kneeL.rotation.x += ((0.25 + Math.max(0, kick)) - P.kneeL.rotation.x) * k;
+      P.kneeR.rotation.x += ((0.25 + Math.max(0, -kick)) - P.kneeR.rotation.x) * k;
+    }
 
     // torso: bob, speed lean, walk twist, chop coil/roll, idle breathing
     const idleF = 1 - Math.min(1, sp / 2);
@@ -3422,16 +3476,16 @@ const player = new THREE.Group();
       if (codes.includes('drought') || codes.includes('wildfire')) headTilt -= 0.03;
     } catch { /* weather not ready */ }
     const ageF = Math.min(1, Math.max(0, ((Life.age || 20) - 50) / 20));
-    P.torso.position.y = 1.02 + bob - ageF * 0.02;
+    P.torso.position.y = 1.02 + bob - ageF * 0.02 - (pose ? (pose.crouch || 0) * 0.42 : 0) - swimBlend * 0.25;
     P.torso.position.z = pose ? pose.lunge : 0;
-    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16 + ageF * 0.06 + hunch) - P.torso.rotation.x) * kPose;
+    P.torso.rotation.x += (((moving ? -0.045 - runF * 0.12 : 0) + (pose ? pose.pitch : 0) + hopF * 0.06 + dashF * 0.16 + ageF * 0.06 + hunch + swimBlend * 1.05) - P.torso.rotation.x) * kPose;
     P.torso.rotation.y += (((moving ? s * 0.07 : Math.sin(idleT * 0.45) * 0.02) + (pose ? pose.yaw : 0)) - P.torso.rotation.y) * kPose;
     P.torso.rotation.z += (((moving ? s * 0.02 : 0) + (pose ? pose.roll : 0) + dashF * 0.12) - P.torso.rotation.z) * kPose;
     P.chest.scale.y = 1 + Math.sin(idleT * (1.9 - ageF * 0.6)) * 0.012 * idleF;
 
     // head: counter the torso, look around when idle, track the chop, weather tilt
     P.head.rotation.y += (((moving ? -P.torso.rotation.y * 0.75 : Math.sin(idleT * 0.33) * 0.22) + (pose ? pose.headYaw : 0)) - P.head.rotation.y) * kPose;
-    P.head.rotation.x += (((moving ? 0.04 : Math.sin(idleT * 0.5) * 0.03) + (pose ? pose.headPitch : 0) + headTilt) - P.head.rotation.x) * kPose;
+    P.head.rotation.x += (((moving ? 0.04 : Math.sin(idleT * 0.5) * 0.03) + (pose ? pose.headPitch : 0) + headTilt - swimBlend * 0.75) - P.head.rotation.x) * kPose;
     P.head.rotation.z += ((moving ? -s * 0.015 : 0) - P.head.rotation.z) * k;
 
     // arms: counter-swing, then the chop/slash pose takes over
@@ -3449,6 +3503,16 @@ const player = new THREE.Group();
     P.elbowR.rotation.x += (elbR - P.elbowR.rotation.x) * kPose;
     P.wristR.rotation.x += (((pose ? pose.wrist : 0) + 0.16) - P.wristR.rotation.x) * kPose;
     P.wristL.rotation.x += ((pose ? -0.15 : 0) - P.wristL.rotation.x) * kPose;
+    if (swimBlend > 0.02) {
+      const stroke = Math.sin(swimPhase) * 1.15 * swimBlend;
+      P.armL.rotation.x += ((-1.25 + stroke) - P.armL.rotation.x) * k;
+      P.armR.rotation.x += ((-1.25 - stroke) - P.armR.rotation.x) * k;
+      P.armL.rotation.z += ((0.35) - P.armL.rotation.z) * k;
+      P.armR.rotation.z += ((-0.35) - P.armR.rotation.z) * k;
+      P.elbowL.rotation.x += ((-0.35 - Math.max(0, stroke) * 0.5) - P.elbowL.rotation.x) * k;
+      P.elbowR.rotation.x += ((-0.35 - Math.max(0, -stroke) * 0.5) - P.elbowR.rotation.x) * k;
+    }
+    if (P.axe) P.axe.visible = !(pose && pose.useTool === false);
 
     // scarf: 3-segment spring lag with speed + turn sway
     const gust = Math.min(1, sp / 8);
@@ -4660,29 +4724,88 @@ const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fis
 const fmtItems = (obj) => Object.entries(obj).map(([k, n]) => `${n} ${ITEM_ICON[k] || k}`).join(' + ') || '—';
 function makeVillager({ coat = 0xe8a33d, hat = 'straw', hatColor = 0xe8d27a, skin = 0xf2c49b } = {}) {
   const g = new THREE.Group();
-  g.add(mesh(new THREE.CapsuleGeometry(0.42, 0.75, 3, 8), mat(coat), 0, 1.05, 0));
-  g.add(mesh(new THREE.SphereGeometry(0.37, 9, 7), mat(skin), 0, 1.95, 0));
-  if (hat === 'straw') g.add(mesh(new THREE.ConeGeometry(0.55, 0.42, 9), mat(hatColor), 0, 2.38, 0, false));
-  else if (hat === 'hood') g.add(mesh(new THREE.SphereGeometry(0.43, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(hatColor), 0, 2.0, 0, false));
-  else if (hat === 'cap') g.add(mesh(new THREE.CylinderGeometry(0.3, 0.34, 0.22, 9), mat(hatColor), 0, 2.28, 0, false));
-  else if (hat === 'circlet') g.add(mesh(new THREE.TorusGeometry(0.32, 0.07, 6, 12), mat(hatColor, { metalness: 0.5, roughness: 0.35 }), 0, 2.18, 0, false));
-  else if (hat === 'fur') {
-    g.add(mesh(new THREE.TorusGeometry(0.4, 0.14, 6, 12), mat(hatColor), 0, 1.98, 0, false));
-    g.add(mesh(new THREE.SphereGeometry(0.42, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(coat), 0, 2.02, -0.06, false));
+  const coatM = mat(coat), coatDark = mat(new THREE.Color(coat).multiplyScalar(0.72).getHex());
+  const skinM = mat(skin), skinDark = mat(new THREE.Color(skin).multiplyScalar(0.88).getHex());
+  const pants = mat(0x4a3a2c), leather = mat(0x3f2e20), leatherL = mat(0x6b4a2f);
+  const hairM = mat(0x3a2a1e), eyeM = mat(0x201a16), mouthM = mat(0x8a4a42);
+  // legs + boots
+  for (const s of [-1, 1]) {
+    const hip = new THREE.Group();
+    hip.position.set(s * 0.15, 1.0, 0);
+    hip.add(mesh(new THREE.CylinderGeometry(0.115, 0.095, 0.5, 8), pants, 0, -0.25, 0));
+    hip.add(mesh(new THREE.CylinderGeometry(0.12, 0.13, 0.14, 8), leather, 0, -0.52, 0));
+    hip.add(mesh(new THREE.BoxGeometry(0.19, 0.13, 0.29), leather, 0, -0.6, 0.04, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.18, 0.05, 0.16), leatherL, 0, -0.64, 0.19, false));
+    g.add(hip);
   }
-  // waving arm (right side pivots at the shoulder)
+  // trousers waist + jacket torso
+  g.add(mesh(new THREE.CylinderGeometry(0.29, 0.31, 0.18, 10), pants, 0, 1.02, 0));
+  const torso = new THREE.Group();
+  torso.position.y = 1.0;
+  g.add(torso);
+  torso.add(mesh(new THREE.CylinderGeometry(0.27, 0.31, 0.52, 10), coatM, 0, 0.42, 0));
+  torso.add(mesh(new THREE.CylinderGeometry(0.30, 0.30, 0.08, 10), leather, 0, 0.19, 0)); // belt
+  torso.add(mesh(new THREE.BoxGeometry(0.08, 0.07, 0.04), mat(0xc9a227, { metalness: 0.5 }), 0, 0.19, 0.29, false)); // buckle
+  torso.add(mesh(new THREE.BoxGeometry(0.24, 0.20, 0.03), coatDark, 0, 0.46, 0.27, false)); // chest panel
+  for (const s of [-1, 1]) {
+    const lapel = mesh(new THREE.BoxGeometry(0.075, 0.28, 0.03), coatDark, s * 0.10, 0.44, 0.28, false);
+    lapel.rotation.z = s * 0.16;
+    torso.add(lapel);
+  }
+  // shoulders + arms (right arm pivots at the shoulder for the wave animation)
+  for (const s of [-1, 1]) {
+    torso.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), coatM, s * 0.3, 0.62, 0, false));
+  }
   const arm = new THREE.Group();
-  arm.position.set(0.5, 1.4, 0);
-  arm.add(mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.55, 7), mat(coat), 0, -0.26, 0));
-  arm.add(mesh(new THREE.SphereGeometry(0.12, 7, 6), mat(skin), 0, -0.56, 0, false));
+  arm.position.set(0.42, 1.52, 0);
+  arm.add(mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.34, 7), coatM, 0, -0.17, 0));
+  arm.add(mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.28, 7), coatDark, 0, -0.43, 0));
+  arm.add(mesh(new THREE.SphereGeometry(0.09, 7, 6), skinM, 0, -0.58, 0, false));
   g.add(arm);
-  const armL = mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.55, 7), mat(coat), -0.52, 1.1, 0);
+  const armL = new THREE.Group();
+  armL.position.set(-0.42, 1.52, 0);
+  armL.add(mesh(new THREE.CylinderGeometry(0.085, 0.075, 0.34, 7), coatM, 0, -0.17, 0));
+  armL.add(mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.28, 7), coatDark, 0, -0.43, 0));
+  armL.add(mesh(new THREE.SphereGeometry(0.09, 7, 6), skinM, 0, -0.58, 0, false));
   g.add(armL);
+  // neck + head with a shaped jaw, nose, brows, eyes and mouth
+  g.add(mesh(new THREE.CylinderGeometry(0.10, 0.11, 0.14, 8), skinM, 0, 1.72, 0));
+  const head = new THREE.Group();
+  head.position.set(0, 1.9, 0);
+  g.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.29, 10, 8), skinM, 0, 0.08, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.225, 9, 7), skinM, 0, -0.03, 0.03, false));
+  head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), skinDark, 0, 0.02, 0.27, false)); // nose
+  head.add(mesh(new THREE.BoxGeometry(0.08, 0.014, 0.02), mouthM, 0, -0.11, 0.245, false));
+  for (const s of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.055, 7, 6), skinDark, s * 0.275, 0.06, 0, false)); // ears
+    head.add(mesh(new THREE.SphereGeometry(0.038, 7, 6), eyeM, s * 0.095, 0.10, 0.245, false));
+    head.add(mesh(new THREE.BoxGeometry(0.07, 0.018, 0.02), hairM, s * 0.095, 0.17, 0.245, false)); // brow
+  }
+  head.add(mesh(new THREE.SphereGeometry(0.285, 9, 6, 0, Math.PI * 2, 0, Math.PI * 0.45), hairM, 0, 0.12, -0.02, false)); // hair
+  if (hat === 'straw') {
+    head.add(mesh(new THREE.CylinderGeometry(0.5, 0.56, 0.05, 12), mat(hatColor), 0, 0.31, 0, false));
+    head.add(mesh(new THREE.CylinderGeometry(0.2, 0.26, 0.2, 10), mat(hatColor), 0, 0.39, 0, false));
+    head.add(mesh(new THREE.CylinderGeometry(0.205, 0.27, 0.04, 10), mat(new THREE.Color(hatColor).multiplyScalar(0.7).getHex()), 0, 0.3, 0, false));
+  } else if (hat === 'hood') {
+    head.add(mesh(new THREE.SphereGeometry(0.36, 9, 6, 0, Math.PI * 2, 0, Math.PI / 1.7), mat(hatColor), 0, 0.04, -0.03, false));
+  } else if (hat === 'cap') {
+    head.add(mesh(new THREE.CylinderGeometry(0.235, 0.27, 0.16, 9), mat(hatColor), 0, 0.32, 0, false));
+    head.add(mesh(new THREE.BoxGeometry(0.3, 0.035, 0.16), mat(new THREE.Color(hatColor).multiplyScalar(0.75).getHex()), 0, 0.26, 0.22, false));
+  } else if (hat === 'circlet') {
+    head.add(mesh(new THREE.TorusGeometry(0.25, 0.045, 5, 12).rotateX(Math.PI / 2), mat(hatColor, { metalness: 0.55, roughness: 0.3 }), 0, 0.2, 0, false));
+  } else if (hat === 'fur') {
+    head.add(mesh(new THREE.TorusGeometry(0.3, 0.11, 6, 12).rotateX(Math.PI / 2), mat(hatColor), 0, 0.16, 0, false));
+    head.add(mesh(new THREE.SphereGeometry(0.34, 9, 6, 0, Math.PI * 2, 0, Math.PI / 2), coatM, 0, 0.1, -0.05, false));
+  }
+  // apron / scarf accents break up the silhouette
+  torso.add(mesh(new THREE.BoxGeometry(0.34, 0.36, 0.03), coatDark, 0, 0.16, 0.28, false));
+  torso.add(mesh(new THREE.TorusGeometry(0.19, 0.035, 5, 10).rotateX(Math.PI / 2), mat(0xb84a35), 0, 0.63, 0, false)); // scarf
   // golden "!" marker so travelers can spot a trader from afar
   const markM = new THREE.MeshStandardMaterial({ color: 0xffd97a, emissive: 0xa86a00, emissiveIntensity: 0.9, flatShading: true });
-  const mark = mesh(new THREE.OctahedronGeometry(0.22, 0), markM, 0, 3.1, 0, false);
+  const mark = mesh(new THREE.OctahedronGeometry(0.2, 0), markM, 0, 2.9, 0, false);
   g.add(mark);
-  g.userData.villager = { arm, mark, phase: rand(Math.PI * 2) };
+  g.userData.villager = { arm, armL, head, torso, mark, phase: rand(Math.PI * 2) };
   return g;
 }
 const NPCS = [
@@ -10960,6 +11083,9 @@ Object.assign(window.__lp, {
   wildfireCells: () => (hazardProps && hazardProps.cells) ? hazardProps.cells : [],
   recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables, stealTool,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
+  gather: { start: (kind) => startChop(null, kind), stop: () => { chopT = 0; chopQueue = null; }, kind: () => gatherAction, actionFor: nodeGatherAction, pose: currentChopPose,
+    sample: (kind, t) => { const set = kind === 'pick' ? PICK : kind === 'shear' ? SHEAR : CHOP; return { useTool: set === CHOP, crouch: set.crouch ? kfAt(set.crouch, t) : 0, shR: kfAt(set.shR, t) }; } },
+  makeVillager,
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
   weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
   prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech, craftLeather, preyInfo: PREY_INFO,
@@ -10969,7 +11095,7 @@ Object.assign(window.__lp, {
   sfx: { log: sfxLog, weather: weatherSound },
   legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
-  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
+  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
     gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, heat: !!player.userData.gear?.heatCloak?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
@@ -11583,8 +11709,12 @@ function updatePlayer(dt) {
   if (jx || jy) moveTargetN = null; // joystick steers, cancels click-to-move
   if (jx || jy) { if (activeTask && !taskIsCombat(activeTask.interact)) clearAutoTask(); }
   const running = keys.KeyQ && meters.energy > 0 ? 1.7 : 1;
-  const inWater = heightFor(n) < 0.12; // lagoon floor + reef shelf lie below the ocean skin
-  let speed = (inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1);
+  const waterH = heightFor(n);
+  const inWater = waterH < 0.12; // lagoon floor + reef shelf lie below the ocean skin
+  const swimming = waterH < -0.1; // deep water: swim instead of wade
+  player.userData.inWater = inWater;
+  player.userData.swimming = swimming;
+  let speed = (swimming ? 3.8 : inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1);
   if (meters.energy <= 0) speed *= 0.5; // exhausted: trudge; eat (F) or stand still to recover
   // dash: a short Fleetfoot tumble with i-frames, on a cooldown
   if (dashCd > 0) dashCd -= dt;
@@ -11641,7 +11771,7 @@ function updatePlayer(dt) {
     }
   } catch { /* noop */ }
   const nn = playerPos.clone().normalize();
-  const surfH = heightFor(nn) + 0.1 + hopH + (inWater ? -0.35 : 0);
+  const surfH = heightFor(nn) + 0.1 + hopH + (swimming ? (0.02 - heightFor(nn)) : inWater ? -0.35 : 0);
   // survival meters: sprinting burns energy, standing still restores, arctic chills
   const sprinting = !!(ix || iz) && keys.KeyQ && meters.energy > 0;
   if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt);

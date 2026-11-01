@@ -44,14 +44,14 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Gunshot and weather audio (`progtest` sfx log)
 
 ## Character
-- [x] Settler rig with five gear variants, blinking/expressions and weather/age idles; **jacket and trousers silhouette (no skirt)** (`herotrest`)
+- [x] Settler rig with five gear variants, blinking/expressions and weather/age idles; **jacket and trousers silhouette (no skirt)**; **context-specific gather poses (axe for wood/stone, hand-pick for berries/herbs, crouched shears for wool)**; **wade in shallow water, swim in deep water** (`herotrest`)
 - [x] Three measured LOD levels: portrait 85 calls, gameplay **65 (target ≤65)**, far 55 (`weapontest`)
 
 ## Saves, UX, accessibility
 - [x] Save v2 with v1 migration; all new systems persisted (`progtest`)
 - [x] Cozy/Standard/Frontier difficulty (**Cozy halves incoming damage**) plus separate **Harsh Weather**, **Thieves & rustlers** and **Permadeath** toggles (`progtest`)
 - [x] Reduced flash/shake, large text, high contrast, colorblind-safe hazard badges (`[STORM]`), pause-on-hazard (`progtest`, `weapontest`)
-- [x] Chapter intro cards, almanac, loadout, bounty and journal overlays (`journeytest`)
+- [x] Chapter intro cards, almanac, loadout, bounty and journal overlays (`journeytest`); **detailed villagers/traders with faces, limbs and layered clothing** (`herotrest`: 41-part villager rig)
 - [x] Single-file build deployed to Firebase with live SHA256 verification; **pacing is 300 s days and 8 days/season (32-day year)** (`progtest`, `weapontest`)
 
 ## Known scope notes
