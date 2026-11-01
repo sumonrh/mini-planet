@@ -3361,10 +3361,15 @@ const player = new THREE.Group();
   drillTool.add(mesh(new THREE.BoxGeometry(0.12, 0.12, 0.34), mat(0x4a5d5a), 0, 0, 0, false));
   drillTool.add(mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.3, 5), mat(0x9aa0a6, { metalness: 0.7 }), 0, 0, 0.3, false));
   torsoG.add(drillTool);
+  const holster = new THREE.Group();
+  holster.position.set(-0.3, -0.02, 0.02);
+  holster.add(mesh(new THREE.BoxGeometry(0.1, 0.22, 0.14), mat(0x4a3320), 0, 0, 0, false));
+  holster.add(mesh(new THREE.BoxGeometry(0.03, 0.5, 0.03), mat(0x5a3e2b), 0.03, 0.18, 0, false));
+  torsoG.add(holster);
   player.userData.gear = {
     hatG, satchel, goggles, rifleG, beard, greyHair, longCoat, coatTails, coatFlaps,
-    bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool,
-    lodDetails: [bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, goggles, beard, greyHair],
+    bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster,
+    lodDetails: [bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, goggles, beard, greyHair],
   };
   player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
 
@@ -3565,6 +3570,7 @@ function applyHeroToolGear() {
   if (g.rod) g.rod.userData.allowed = fishingTier() >= 1 && !ranged;
   if (g.sawTool) g.sawTool.userData.allowed = buildingTier() >= 1;
   if (g.drillTool) g.drillTool.userData.allowed = buildingTier() >= 2;
+  if (g.holster) g.holster.userData.allowed = hasTech('holster');
   refreshHeroLod();
 }
 // Merge static meshes inside each joint group by material: keeps the articulated
@@ -3978,7 +3984,7 @@ function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', in
     setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
     try {
       const rw = equippedRanged();
-      setText('rpg-weapon', rw ? `${rw.name} · ${ensureMag(rw)}/${magCapacity(rw)} (${Ammo[rw.ammo] || 0})` : equippedMelee().name);
+      setText('rpg-weapon', rw ? `${rw.name} · ${ensureMag(rw)}/${magCapacity(rw)} (${Ammo[rw.ammo] || 0}) · ⚙${Math.round(weaponCondition(rw.id))}` : `${equippedMelee().name} · ⚙${Math.round(weaponCondition(Loadout.melee))}`);
     } catch { setText('rpg-weapon', rpgWeaponDef().name); }
     setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
     try { setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP · 💡${Research.insight}`); } catch { /* early boot */ }
@@ -4304,6 +4310,7 @@ function attackBear(b) {
     let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * meleeMult());
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical strike!'); }
     b.hp -= dmg;
+    wearWeapon(Loadout.melee, 0.6);
     b.hitFlash = 1;
     burst(b.mesh.position.clone(), 0xffd97a, 14, 2.4);
     spawnPopup(b.mesh.position.clone(), `-${dmg}`, dmg >= 30 ? '#ffb35a' : '#ffffff');
@@ -5070,6 +5077,11 @@ const TECH = [
   { id: 'storm-shutters', era: 2, name: 'Storm Shutters', insight: 3, cost: { wood: 6, stone: 2 }, req: ['workshop'], desc: 'Halve storm and hail damage to buildings/crops.' },
   { id: 'ash-mask', era: 2, name: 'Ash Mask', insight: 3, cost: { wool: 2, stone: 1 }, req: ['workshop'], desc: 'Eruption ash no longer drains health.' },
   { id: 'firebreak', era: 2, name: 'Firebreak', insight: 3, cost: { wood: 4, stone: 4 }, req: ['workshop'], desc: 'Wildfire cannot reach the homestead.' },
+  { id: 'lightning-rod', era: 2, name: 'Lightning Rod', insight: 3, cost: { stone: 4, gold: 2 }, req: ['storm-shutters'], desc: 'Thunderstorms can no longer damage roofs.' },
+  { id: 'sandbags', era: 2, name: 'Sandbags', insight: 3, cost: { wood: 3, stone: 3 }, req: ['irrigation'], desc: 'Floodwater no longer drowns the fields.' },
+  { id: 'hail-netting', era: 2, name: 'Hail Netting', insight: 3, cost: { wood: 2, wool: 3 }, req: ['storm-shutters'], desc: 'Nets over the rows stop hail from flattening crops.' },
+  { id: 'scarecrow', era: 1, name: 'Scarecrow', insight: 2, cost: { wood: 3, wool: 1 }, req: ['hand-tools'], desc: 'A watchful figure: fewer night robbers and rustlers.' },
+  { id: 'holster', era: 1, name: 'Quick-Draw Holster', insight: 2, cost: { wool: 2, wood: 1 }, req: ['copper-tools'], desc: 'Melee swings are 8% faster.' },
   { id: 'windmill', era: 2, name: 'Windmill', insight: 4, cost: { wood: 8, stone: 4, gold: 2 }, req: ['workshop'], desc: 'Research 20% faster; a landmark for the homestead.' },
   { id: 'forge', era: 2, name: 'Forge', insight: 4, cost: { stone: 8, gold: 4 }, req: ['iron-tools'], desc: 'Unlock iron weapons and metal repairs.' },
   { id: 'sawmill', era: 3, name: 'Sawmill', insight: 5, cost: { wood: 10, stone: 6 }, req: ['windmill'], desc: 'Passive +2 wood each dawn.' },
@@ -5175,6 +5187,11 @@ function applyTech(id) {
     case 'radio': Home.radio = true; rebuildHomestead(); break;
     case 'greenhouse': Home.greenhouse = true; break;
     case 'fish-trap': Home.fishTrap = true; break;
+    case 'lightning-rod': Home.lightningRod = true; rebuildHomestead(); break;
+    case 'sandbags': Home.sandbags = true; rebuildHomestead(); break;
+    case 'hail-netting': Home.hailNetting = true; rebuildHomestead(); break;
+    case 'scarecrow': Home.scarecrow = true; rebuildHomestead(); break;
+    case 'holster': if (typeof rpgRefreshMults === 'function') rpgRefreshMults(); break;
     case 'power-tools': tools.axe = Math.max(tools.axe, 2.2); break;
     default: break;
   }
@@ -5283,6 +5300,10 @@ function hazardCounterTags(id) {
   if (Home.weatherStation) tags.push('weather station');
   if (hasTech('ash-mask')) tags.push('ash mask');
   if (Home.firebreak) tags.push('firebreak');
+  if (Home.lightningRod) tags.push('lightning rod');
+  if (Home.sandbags) tags.push('sandbags');
+  if (Home.hailNetting) tags.push('hail netting');
+  if (Home.scarecrow) tags.push('scarecrow');
   return tags;
 }
 function hazardWard(id) {
@@ -5296,6 +5317,9 @@ function hazardWard(id) {
   if (Home.cellar && ['tornado', 'eruption'].includes(id)) ward += 0.4;
   if (Home.barn && id === 'blizzard') ward += 0.15;
   if (Home.weatherStation) ward += 0.1;
+  if (Home.lightningRod && id === 'thunder') ward += 0.5;
+  if (Home.sandbags && id === 'flood') ward += 0.5;
+  if (Home.hailNetting && id === 'hail') ward += 0.5;
   ward += Research.stormWard || 0;
   return Math.min(0.85, ward);
 }
@@ -5458,10 +5482,10 @@ tickers.push((t, dt) => {
         const ground = homeSpot(HOME.lat + rand(-7, 7), HOME.lon + rand(-7, 7), 0.05);
         tracer(ground.clone().addScaledVector(up, 12), ground, 0xdfe9ff);
         burst(ground, 0xffe9a3, 10, 1.8);
-        if (Math.random() < 0.18 && !Home.stormShutters) { const ids = ['house', 'barn', 'cabin'].filter((x) => (x === 'house' ? Home.house : x === 'barn' ? Home.barn : Home.cabin)); if (ids.length) { Home.dmg[ids[(Math.random() * ids.length) | 0]] = true; rebuildHomestead(); toast('⚡ Lightning struck a roof! (storm shutters protect)'); } }
+        if (Math.random() < 0.18 && !Home.stormShutters && !Home.lightningRod) { const ids = ['house', 'barn', 'cabin'].filter((x) => (x === 'house' ? Home.house : x === 'barn' ? Home.barn : Home.cabin)); if (ids.length) { Home.dmg[ids[(Math.random() * ids.length) | 0]] = true; rebuildHomestead(); toast('⚡ Lightning struck a roof! (storm shutters protect)'); } }
       }
     }
-    if (h.id === 'hail' && Math.random() < dt * 0.25 && Home.plots.some((p) => p.crop) && !Home.stormShutters) {
+    if (h.id === 'hail' && Math.random() < dt * 0.25 && Home.plots.some((p) => p.crop) && !Home.stormShutters && !Home.hailNetting) {
       const p = Home.plots.find((x) => x.crop); if (p) { p.crop = false; p.growth = 0; p.water = false; refreshPlotMeshes(); toast('🧊 Hail flattened a crop!'); }
     }
     if (h.id === 'eruption') {
@@ -5473,7 +5497,7 @@ tickers.push((t, dt) => {
       burst(p, 0xff7a2a, 2, 1.0);
       if (!Home.firebreak && player.position.distanceTo(p) < 3) damagePlayer(2, p);
     }
-    if (h.id === 'flood' && Home.plots.some((p) => p.crop) && !Home.pump && !Home.irrigation && Math.random() < dt * 0.08) {
+    if (h.id === 'flood' && Home.plots.some((p) => p.crop) && !Home.pump && !Home.irrigation && !Home.sandbags && Math.random() < dt * 0.08) {
       const p = Home.plots.find((x) => x.crop); if (p) { p.crop = false; p.growth = 0; p.water = false; refreshPlotMeshes(); toast('🌊 Floodwater drowned a crop! (pump/irrigation helps)'); }
     }
     if (h.id === 'drought' && !Home.irrigation && !Home.well && Math.random() < dt * 0.1 && Home.plots.some((p) => p.crop)) {
@@ -5502,7 +5526,42 @@ const UnlockedWeapons = ['hatchet', 'sling'];
 const Loadout = { melee: 'hatchet', ranged: null };
 const Ammo = { stones: 8, arrows: 0, bolts: 0, bullets: 0, shells: 0 };
 const Mag = {}; // rounds loaded per ranged weapon
+const Condition = {}; // 0..100 per weapon; gunsmith repairs wear
 let reloadT = 0, reloadWeaponId = null;
+function weaponCondition(id) {
+  if (!id) return 100;
+  if (Condition[id] === undefined) Condition[id] = 100;
+  return Condition[id];
+}
+function conditionMult(id) { return 0.45 + 0.55 * (weaponCondition(id) / 100); }
+function wearWeapon(id, amount) {
+  if (!id || !WEAPONS[id]) return;
+  const before = weaponCondition(id);
+  Condition[id] = Math.max(0, before - amount);
+  if (before > 0 && Condition[id] <= 0) toast(`🛠️ ${WEAPONS[id].name} is worn out — repair it at the gunsmith (L).`);
+}
+function repairCost(id) {
+  const missing = 100 - weaponCondition(id);
+  return { gold: Math.max(1, Math.ceil(missing / 30)), stone: Math.max(1, Math.ceil(missing / 40)) };
+}
+function repairWeapon(id) {
+  const w = WEAPONS[id];
+  if (!w) return false;
+  if (!Home.gunsmith) { toast('🛠️ Build a Gunsmith to repair weapons (K/H).'); return false; }
+  if (weaponCondition(id) >= 100) { toast(`🛠️ ${w.name} is already in good order.`); return false; }
+  const cost = repairCost(id);
+  if ((inv.gold || 0) < cost.gold || (inv.stone || 0) < cost.stone) {
+    toast(`🛠️ Repair needs ${cost.gold}🪙 + ${cost.stone}🪨.`);
+    return false;
+  }
+  inv.gold -= cost.gold; inv.stone -= cost.stone;
+  Condition[id] = 100;
+  toast(`🛠️ ${w.name} repaired — 100%.`);
+  chime(760);
+  renderStats(); try { renderLoadout(); } catch { /* closed */ }
+  saveCheckpoint();
+  return true;
+}
 const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0 };
 function weaponById(id) { return WEAPONS[id] || null; }
 function equippedMelee() { return WEAPONS[Loadout.melee] || WEAPONS.hatchet; }
@@ -5545,7 +5604,7 @@ function tickReload(dt) {
   }
 }
 tickers.push((t, dt) => tickReload(dt));
-function meleeMult() { return equippedMelee().dmg; }
+function meleeMult() { return equippedMelee().dmg * conditionMult(Loadout.melee); }
 function unlockWeapon(id) {
   const w = WEAPONS[id];
   if (!w || UnlockedWeapons.includes(id)) return;
@@ -5600,11 +5659,13 @@ function fireAt(target) {
   const w = equippedRanged();
   if (!w || playerDead) return false;
   if (playerAttackCd > 0 || reloadT > 0) return false;
+  if (weaponCondition(w.id) <= 0) { toast(`🛠️ ${w.name} is jammed — repair it at the gunsmith (L).`); return false; }
   ensureMag(w);
   if (Mag[w.id] <= 0) { startReload(); return false; }
   if (ammoCount(w) <= 0) { toast(`🔫 Out of ${w.ammo} — craft more at the workshop (K).`); return false; }
   Ammo[w.ammo]--;
   Mag[w.id]--;
+  wearWeapon(w.id, w.id === 'shotgun' ? 1.4 : 0.8);
   playerAttackCd = Math.max(0.3, w.rate);
   startAttack();
   const n = player.position.clone().normalize();
@@ -5621,7 +5682,7 @@ function fireAt(target) {
     let total = 0;
     for (let p = 0; p < pellets; p++) {
       const falloff = w.id === 'shotgun' ? Math.max(0.3, 1 - d / (w.range * 1.5)) : 1;
-      let dmg = Math.round((24 * w.dmg / pellets) * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03) * falloff);
+      let dmg = Math.round((24 * w.dmg / pellets) * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03) * falloff * conditionMult(w.id));
       if (critBuff > 0 && p === 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical shot!'); }
       target.hp -= dmg;
       total += dmg;
@@ -5658,6 +5719,7 @@ function manualFire(x, y) {
   // manual shot at the ground under the cursor
   if (playerAttackCd > 0) return false;
   if (reloadT > 0) { toast('🔁 Still reloading…'); return false; }
+  if (weaponCondition(w.id) <= 0) { toast(`🛠️ ${w.name} is jammed — repair it at the gunsmith (L).`); return false; }
   ensureMag(w);
   if (Mag[w.id] <= 0) { startReload(); return false; }
   if (ammoCount(w) <= 0) { toast(`🔫 Out of ${w.ammo}.`); return false; }
@@ -5678,6 +5740,7 @@ function manualFire(x, y) {
   toHit.addScaledVector(upN, -toHit.dot(upN));
   if (toHit.lengthSq() > 1e-4) { facing.copy(toHit.normalize()); faceAlong(player, player.position, facing); }
   Ammo[w.ammo]--; Mag[w.id]--;
+  wearWeapon(w.id, w.id === 'shotgun' ? 1.4 : 0.8);
   playerAttackCd = Math.max(0.3, w.rate);
   startAttack();
   const n = player.position.clone().normalize();
@@ -5706,7 +5769,7 @@ function saveProgression() {
       queued: Research.queued ? { ...Research.queued } : null,
     },
     tools: { ...tools },
-    loadout: { ...Loadout }, ammo: { ...Ammo }, mag: { ...Mag }, unlockedWeapons: [...UnlockedWeapons],
+    loadout: { ...Loadout }, ammo: { ...Ammo }, mag: { ...Mag }, condition: { ...Condition }, unlockedWeapons: [...UnlockedWeapons],
     pendingTrait: pendingTrait ? [...pendingTrait] : null,
     threats: {
       robbersDrivenOff: Threats.robbersDrivenOff || 0, thefts: Threats.thefts || 0,
@@ -5722,6 +5785,7 @@ function saveProgression() {
       stormShutters: !!Home.stormShutters, weatherStation: !!Home.weatherStation,
       refrigeration: !!Home.refrigeration, firebreak: !!Home.firebreak,
       telegraph: !!Home.telegraph, radio: !!Home.radio, greenhouse: !!Home.greenhouse, fishTrap: !!Home.fishTrap,
+      lightningRod: !!Home.lightningRod, sandbags: !!Home.sandbags, hailNetting: !!Home.hailNetting, scarecrow: !!Home.scarecrow,
     },
   };
 }
@@ -5745,6 +5809,8 @@ function restoreProgression(p) {
   if (p.loadout) Object.assign(Loadout, p.loadout);
   if (p.ammo) Object.assign(Ammo, p.ammo);
   if (p.mag) Object.assign(Mag, p.mag);
+  if (p.condition) Object.assign(Condition, p.condition);
+  for (const id of UnlockedWeapons) if (Condition[id] === undefined) Condition[id] = 100;
   reloadT = 0; reloadWeaponId = null;
   if (Array.isArray(p.unlockedWeapons) && p.unlockedWeapons.length) {
     UnlockedWeapons.length = 0;
@@ -6059,6 +6125,7 @@ const Home = {
   gunsmith: false, irrigation: false, stormShutters: false, weatherStation: false,
   refrigeration: false, firebreak: false, dynamo: false,
   telegraph: false, radio: false, greenhouse: false, fishTrap: false,
+  lightningRod: false, sandbags: false, hailNetting: false, scarecrow: false,
   plots: Array.from({ length: 6 }, () => ({ crop: false, growth: 0, water: false })),
 };
 let homeFirePos = null;
@@ -6453,6 +6520,39 @@ function buildMiscMeshes() {
     placeAt(g, 6.5, 59.2, 0, 0.3);
     addOccluder(g);
   }
+  if (Home.lightningRod) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.6, 6), mat(0x8e9aa3, { metalness: 0.7 }), 0, 1.8, 0));
+    g.add(mesh(new THREE.ConeGeometry(0.12, 0.4, 6), mat(0xd9b34a, { metalness: 0.8 }), 0, 3.75, 0));
+    g.add(mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 4), mat(0x5a5a66), 0.12, 3.3, 0, false));
+    placeAt(g, -3.8, 57.5, 0, 0);
+    addOccluder(g);
+  }
+  if (Home.sandbags) {
+    const g = new THREE.Group();
+    for (let i = 0; i < 5; i++) {
+      const bag = mesh(new THREE.SphereGeometry(0.26, 7, 5), mat(0x9a8a62), (i % 2) * 0.34 - 0.17, 0.18 + Math.floor(i / 2) * 0.3, 0, false);
+      bag.scale.set(1.3, 0.7, 0.8);
+      g.add(bag);
+    }
+    placeAt(g, -4.6, 52.5, 0, 0.15);
+  }
+  if (Home.hailNetting) {
+    const g = new THREE.Group();
+    for (const sx of [-1, 1]) g.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.6, 4), mat(0x7a5230), sx * 1.5, 0.8, 0));
+    g.add(mesh(new THREE.PlaneGeometry(3.1, 2.2).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xd9f2ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }), 0, 1.55, 0, false));
+    placeAt(g, -5.5, 57, 0, 0.1);
+  }
+  if (Home.scarecrow) {
+    const g = new THREE.Group();
+    g.add(mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.9, 5), mat(0x6b4a2f), 0, 0.95, 0));
+    g.add(mesh(new THREE.BoxGeometry(1.3, 0.08, 0.08), mat(0x6b4a2f), 0, 1.45, 0));
+    g.add(mesh(new THREE.BoxGeometry(0.42, 0.55, 0.22), mat(0xa6472f), 0, 1.2, 0, false));
+    g.add(mesh(new THREE.SphereGeometry(0.19, 8, 6), mat(0xd9c48a), 0, 1.7, 0, false));
+    g.add(mesh(new THREE.ConeGeometry(0.3, 0.24, 8), mat(0x8a6b3a), 0, 1.86, 0, false));
+    placeAt(g, 4.2, 60.5, 0, 0.2);
+    addOccluder(g);
+  }
   // fire pit (always) + trough + board
   {
     const g = new THREE.Group();
@@ -6630,7 +6730,7 @@ function overnightCrops() {
     if (!p.bought || !p.crop) continue;
     if (winter && !Life.bless?.flame && !Home.greenhouse) { p.water = false; continue; } // dormant unless greenhouse
     if (Life.drought && !(Home.well && !Home.dmg.well) && !Life.bless?.oasis && !Home.irrigation) { p.water = false; continue; }
-    if (Life.flood && !Home.pump && !Home.irrigation && !Home.fences) { p.crop = false; p.growth = 0; p.water = false; continue; }
+    if (Life.flood && !Home.pump && !Home.irrigation && !Home.sandbags && !Home.fences) { p.crop = false; p.growth = 0; p.water = false; continue; }
     if (p.water) p.growth = Math.min(3, p.growth + fast);
     p.water = false;
   }
@@ -7355,6 +7455,7 @@ function attackWolf(w) {
     let dmg = Math.round((12 + Math.random() * 8) * (tools.axe || 1) * meleeMult());
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical strike!'); }
     w.hp -= dmg;
+    wearWeapon(Loadout.melee, 0.5);
     burst(w.mesh.position.clone(), 0xffd97a, 12, 2);
     spawnPopup(w.mesh.position.clone(), `-${dmg}`, '#ffffff');
     chime(300);
@@ -7596,6 +7697,7 @@ function attackRobber(r) {
     let dmg = Math.round(20 * meleeMult());
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; }
     r.hp -= dmg;
+    wearWeapon(Loadout.melee, 0.5);
     spawnPopup(r.mesh.position.clone(), `-${dmg}`, '#ffd97a');
     chime(280);
     toast(`🪓 You strike the robber for ${dmg}!`);
@@ -7651,7 +7753,7 @@ tickers.push((t, dt) => {
   robberSpawnT = 0;
   // a known/trusted neighbour is a less tempting target
   const repShield = Math.min(0.08, (Threats.reputation || 0) * 0.008);
-  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield;
+  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield - (Home.scarecrow ? 0.05 : 0);
   if (!Threats.robbers.length && Math.random() < chance) spawnRobber(['thief', 'toll', 'rustler'][(Math.random() * 3) | 0]);
 });
 
@@ -7679,7 +7781,7 @@ function spawnPrey(kind, lat, lon) {
   const it = {
     id: 'prey' + kind + Date.now() % 100000 + (Math.random() * 999 | 0), pos: pos.clone(), prey: p, radius: 4.2,
     kind: `${info.icon} ${info.name.toUpperCase()}`,
-    label: () => `${info.name} ❤ ${Math.max(0, Math.ceil(p.hp))} — hunt (click / E)`,
+    label: () => `${p.wounded ? '🩸 Wounded ' : ''}${info.name} ❤ ${Math.max(0, Math.ceil(p.hp))} — ${p.wounded ? 'follow and finish' : 'hunt (click / E)'}`,
     onUse: () => huntPrey(p),
   };
   p.interact = it;
@@ -7703,10 +7805,20 @@ function attackPrey(p) {
     let dmg = Math.round(20 * meleeMult());
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; }
     p.hp -= dmg;
+    wearWeapon(Loadout.melee, 0.4);
     spawnPopup(p.mesh.position.clone(), `-${dmg}`, '#ffd97a');
     chime(300);
     if (p.hp <= 0) killPrey(p);
-    else { p.fleeT = 8; toast(`${p.name} bolts!`); }
+    else {
+      // wounded: it bolts, then tires — follow the blood trail to finish the hunt
+      p.wounded = true;
+      p.fleeT = 9;
+      p.trail = p.trail || [];
+      p.trail.push(p.pos.clone());
+      p.bloodT = 0;
+      toast(`🩸 ${p.name} is wounded and flees! Follow the blood trail.`);
+      pushStory(`Wounded a ${p.name}; the trail leads into the ${p.lat > 8 ? 'forest' : 'fields'}.`, '🩸');
+    }
     renderStats();
   }, 180);
 }
@@ -7718,20 +7830,33 @@ function killPrey(p) {
   if (p.interact) { const ix = interactables.indexOf(p.interact); if (ix >= 0) interactables.splice(ix, 1); }
   const px = Prey.indexOf(p); if (px >= 0) Prey.splice(px, 1);
   if (activeTask?.interact === p.interact) clearAutoTask();
-  inv.food = (inv.food || 0) + info.food;
+  const wounded = !!p.wounded;
+  const meat = Math.max(1, info.food - (wounded ? 1 : 0));
+  inv.food = (inv.food || 0) + meat;
   if (info.pelt) inv.wool = (inv.wool || 0) + info.pelt;
-  const clean = (p.shotHits || 0) > 0 && p.shotHits <= 2;
+  const clean = (p.shotHits || 0) > 0 && p.shotHits <= 2 && !wounded;
   if (clean) { inv.food++; grantInsight(1, 'Clean shot'); }
   Threats.venison = (Threats.venison || 0) + (p.kind === 'deer' ? 2 : 1);
   Life.stats.hunted = (Life.stats.hunted || 0) + 1;
   burst(p.mesh.position.clone(), 0xe8c96a, 18, 2.2);
   chime(620);
-  toast(`${info.icon} ${p.name} hunted! (+${info.food}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''})${clean ? ' — clean shot! +1🍎' : ''}`);
+  toast(`${info.icon} ${p.name} hunted! (+${meat}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''})${clean ? ' — clean shot! +1🍎' : wounded ? ' — trailed and finished' : ''}`);
   if (clean) pushStory(`A clean shot brought down a ${p.name}.`, '🎯');
   grantInsight(2, `Hunted a ${p.name}`);
   saveCheckpoint();
   renderStats();
   setTimeout(() => spawnPrey(p.kind, p.lat, p.lon), 55000);
+}
+function compassTo(worldPos) {
+  const up = player.position.clone().normalize();
+  const east = V3(-up.z, 0, up.x).normalize();
+  const north = new THREE.Vector3().crossVectors(up, east).normalize();
+  const d = worldPos.clone().sub(player.position);
+  d.addScaledVector(up, -d.dot(up));
+  if (d.lengthSq() < 1e-6) return 'right here';
+  const ang = Math.atan2(d.dot(east), d.dot(north));
+  const names = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+  return names[((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8];
 }
 function updatePrey(t, dt) {
   for (const p of Prey) {
@@ -7742,7 +7867,9 @@ function updatePrey(t, dt) {
     p.fleeT = Math.max(0, (p.fleeT || 0) - dt);
     let moveDir = null, speed = 0;
     if (flatP.length() < (p.fleeT > 0 ? 12 : 8)) {
-      moveDir = flatP.clone().normalize().negate(); speed = p.kind === 'hare' ? 6.0 : 5.0;
+      moveDir = flatP.clone().normalize().negate();
+      const base = p.kind === 'hare' ? 6.0 : 5.0;
+      speed = p.wounded ? base * (p.fleeT > 4 ? 0.9 : 0.45) : base;
     } else {
       p.wt -= dt;
       if (p.wt <= 0 || !p.tgt) {
@@ -7763,6 +7890,22 @@ function updatePrey(t, dt) {
     p.mesh.position.copy(p.pos).addScaledVector(nn, Math.abs(Math.sin(t * 5 + p.phase)) * 0.04);
     p.facing.addScaledVector(nn, -p.facing.dot(nn)).normalize();
     faceAlong(p.mesh, p.pos, p.facing);
+    if (p.wounded) {
+      p.bloodT = (p.bloodT || 0) - dt;
+      if (p.bloodT <= 0) {
+        p.bloodT = 0.7;
+        p.trail = p.trail || [];
+        p.trail.push(p.pos.clone());
+        if (p.trail.length > 30) p.trail.shift();
+        burst(p.pos.clone(), 0x8a1a1a, 2, 0.5);
+      }
+      p.trackT = (p.trackT || 0) - dt;
+      if (p.trackT <= 0) {
+        p.trackT = 6;
+        const d = player.position.distanceTo(p.mesh.position);
+        toast(`🩸 Blood trail: the ${p.name.toLowerCase()} is ~${Math.round(d)} paces ${compassTo(p.pos)}.`);
+      }
+    }
     const moved = p.lastPos ? p.pos.distanceTo(p.lastPos) : 0;
     (p.lastPos || (p.lastPos = p.pos.clone())).copy(p.pos);
     animateAnimal(p.mesh, t, Math.min(1, moved / Math.max(1e-4, dt * 5)), dt);
@@ -9098,7 +9241,7 @@ function snapshot() {
     life: saveLife(),
     // v2 top-level systems (also mirrored inside life.progression for v1 compatibility)
     research: progression.research,
-    weapons: { loadout: progression.loadout, ammo: progression.ammo, mag: progression.mag, unlocked: progression.unlockedWeapons },
+    weapons: { loadout: progression.loadout, ammo: progression.ammo, mag: progression.mag, condition: progression.condition, unlocked: progression.unlockedWeapons },
     weather: progression.weather,
     threats: progression.threats,
     hero: { gearSet: Life.chapter || 0, ageLook: 'auto', scars: [...(Life.scars || [])] },
@@ -9124,7 +9267,7 @@ function migrateSave(s) {
     s.v = 2;
     s.research = s.research || p.research || null;
     s.weapons = s.weapons || {
-      loadout: p.loadout || null, ammo: p.ammo || null, mag: p.mag || null, unlocked: p.unlockedWeapons || null,
+      loadout: p.loadout || null, ammo: p.ammo || null, mag: p.mag || null, condition: p.condition || null, unlocked: p.unlockedWeapons || null,
     };
     s.weather = s.weather || p.weather || null;
     s.threats = s.threats || p.threats || null;
@@ -9154,6 +9297,7 @@ function applySave(s, respawn) {
     p.loadout = s.weapons?.loadout || p.loadout;
     p.ammo = s.weapons?.ammo || p.ammo;
     p.mag = s.weapons?.mag || p.mag;
+    p.condition = s.weapons?.condition || p.condition;
     p.unlockedWeapons = s.weapons?.unlocked || p.unlockedWeapons;
     p.weather = s.weather || p.weather;
     p.threats = s.threats || p.threats;
@@ -9239,7 +9383,7 @@ function rpgRefreshMults() {
   const w = rpgWeaponDef();
   window.__rpgChopMult = w.chop * (RPG.perkChop || 1);
   window.__rpgDmgMult = w.dmg;
-  window.__rpgSwing = w.swing;
+  window.__rpgSwing = w.swing * (typeof hasTech === 'function' && hasTech('holster') ? 0.92 : 1);
 }
 rpgRefreshMults();
 function spawnPopup(worldPos, text, color = '#ffe596', big = false) {
@@ -9873,7 +10017,7 @@ function renderLoadout() {
     const b = document.createElement('button');
     b.className = 'loadout-btn' + (Loadout.melee === w.id ? ' equipped' : '');
     b.disabled = !UnlockedWeapons.includes(w.id);
-    b.innerHTML = `<strong>${w.name}${Loadout.melee === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(2)}× damage · ${w.rate.toFixed(2)}s swing</span>`;
+    b.innerHTML = `<strong>${w.name}${Loadout.melee === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(2)}× damage · ${w.rate.toFixed(2)}s swing · ⚙ ${Math.round(weaponCondition(w.id))}%</span>`;
     b.onclick = () => equipWeapon(w.id);
     box.appendChild(b);
   }
@@ -9886,7 +10030,7 @@ function renderLoadout() {
     const b = document.createElement('button');
     b.className = 'loadout-btn' + (Loadout.ranged === w.id ? ' equipped' : '');
     b.disabled = !UnlockedWeapons.includes(w.id);
-    b.innerHTML = `<strong>${w.name}${Loadout.ranged === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(1)}× · range ${w.range} · mag ${ensureMag(w)}/${magCapacity(w)} · ${w.ammo}: ${Ammo[w.ammo] || 0}</span>`;
+    b.innerHTML = `<strong>${w.name}${Loadout.ranged === w.id ? ' · equipped' : ''}</strong><span>${w.desc} · ${w.dmg.toFixed(1)}× · range ${w.range} · mag ${ensureMag(w)}/${magCapacity(w)} · ${w.ammo}: ${Ammo[w.ammo] || 0} · ⚙ ${Math.round(weaponCondition(w.id))}%</span>`;
     b.onclick = () => equipWeapon(w.id);
     box.appendChild(b);
   }
@@ -9896,6 +10040,30 @@ function renderLoadout() {
   reloadBtn.disabled = !equippedRanged();
   reloadBtn.onclick = () => startReload();
   box.appendChild(reloadBtn);
+  addGroup('CONDITION & REPAIR');
+  const worn = UnlockedWeapons.filter((id) => weaponCondition(id) < 100);
+  if (!worn.length) {
+    const row = document.createElement('div');
+    row.className = 'almanac-row';
+    row.innerHTML = `<span class="when">🛠️</span><span class="what">All weapons in good order. Wear comes from combat and gunfire.</span>`;
+    box.appendChild(row);
+  }
+  for (const id of worn) {
+    const w = WEAPONS[id];
+    if (!w) continue;
+    const cost = repairCost(id);
+    const row = document.createElement('div');
+    row.className = 'almanac-row';
+    row.innerHTML = `<span class="when">⚙ ${Math.round(weaponCondition(id))}%</span><span class="what">${w.name}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'loadout-btn';
+    btn.style.width = 'auto'; btn.style.padding = '5px 12px'; btn.style.fontSize = '11px';
+    btn.textContent = Home.gunsmith ? `Repair (${cost.gold}🪙 ${cost.stone}🪨)` : 'Needs gunsmith';
+    btn.disabled = !Home.gunsmith;
+    btn.onclick = () => repairWeapon(id);
+    row.appendChild(btn);
+    box.appendChild(row);
+  }
   addGroup('AMMUNITION');
   for (const [kind, label] of [['bullets', 'Cartridges 🔫'], ['shells', 'Shells 💥'], ['arrows', 'Arrows 🏹'], ['bolts', 'Bolts ⚡'], ['stones', 'Sling stones 🪨']]) {
     const row = document.createElement('div');
@@ -10040,12 +10208,12 @@ Object.assign(window.__lp, {
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
-  life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
-  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
-  weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
+  life: Life, home: Home, research: Research, weather: Weather, threats: Threats,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
+  weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
-  prey: Prey, spawnPrey, huntPrey, killPrey, overnightTech,
+  counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing,
+  prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech,
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
