@@ -3579,6 +3579,10 @@ function renderJournal() {
     addHeading('YOUR STORY');
     for (const s of (Life.story || []).slice(-14)) addRow(`Day ${s.day} · ${s.text}`, s.icon || '✦');
     if (Life.epitaph) addRow(`EPITAPH · ${Life.epitaph}`, '🌅');
+    if (Life.scars && Life.scars.length) {
+      addHeading('SCARS');
+      for (const s of Life.scars.slice(-5)) addRow(s, '🩹');
+    }
     if (Life.chronicle.length) {
       addHeading(`HEARTH CHRONICLE · GEN ${Life.gen}`);
       for (const c of Life.chronicle.slice(-8)) addRow(c, '✦');
@@ -4031,6 +4035,7 @@ function bearLabel(b) {
   return `Bear ❤ ${Math.ceil(b.hp)}/${b.maxHp} — tap to fight`;
 }
 function flashDamage() {
+  if (settings.effects === 'reduced') return;
   const f = document.getElementById('damage-flash');
   if (!f) return;
   f.classList.add('show');
@@ -4115,6 +4120,14 @@ function killBear(b) {
 }
 function killPlayer() {
   if (playerDead) return;
+  // life scars: a death is part of the story, never a punishment
+  Life.scars = Life.scars || [];
+  const scar = `Day ${Life.day}: went down in ${chapterNow().name}. Got up again.`;
+  Life.scars.push(scar);
+  if (Life.scars.length > 12) Life.scars.shift();
+  pushStory(scar, '🩹');
+  Life.chronicle.push(scar);
+  try { grantInsight(1, 'Resilience'); } catch { /* early */ }
   playerDead = true;
   inBoat = false;
   fishStage = 0;
@@ -5142,7 +5155,7 @@ tickers.push((t, dt) => {
     if (h.dur > 0 && h.t >= h.dur) endHazard(h);
   }
   // lightning flash on the sky
-  if (Weather.flash > 0) { scene.background.lerp(new THREE.Color(0xdfe9ff), Weather.flash * 0.5); }
+  if (Weather.flash > 0) { scene.background.lerp(new THREE.Color(0xdfe9ff), Weather.flash * (settings.effects === 'reduced' ? 0.12 : 0.5)); }
 });
 
 // ---------- weapons & loadout ----------
@@ -5528,7 +5541,7 @@ function saveLife() {
     bless: { ...(Life.bless || {}) },
     fishBook: { ...(Life.fishBook || {}) }, recipes: { ...(Life.recipes || {}) }, packBonus,
     chapter: Life.chapter || 0, age: Life.age || 20,
-    story: [...(Life.story || [])], traits: [...(Life.traits || [])], hazardWins: { ...(Life.hazardWins || {}) }, epitaph: Life.epitaph || null,
+    story: [...(Life.story || [])], traits: [...(Life.traits || [])], hazardWins: { ...(Life.hazardWins || {}) }, epitaph: Life.epitaph || null, scars: [...(Life.scars || [])],
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
     home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
@@ -5545,6 +5558,7 @@ function restoreLife(s) {
   Life.traits = [...(s.traits || [])];
   Life.hazardWins = { ...(s.hazardWins || {}) };
   Life.epitaph = s.epitaph || null;
+  Life.scars = [...(s.scars || [])];
   Object.assign(Life.stats, s.stats || {});
   Object.assign(Life.rot, s.rot || {});
   Life.chronicle = [...(s.chronicle || [])];
@@ -8535,8 +8549,9 @@ const SETTINGS_DEFS = [
   { id: 'autosave', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
   { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
   { id: 'difficulty', name: 'Life difficulty', desc: 'How hard the planet pushes back', opts: ['cozy', 'standard', 'frontier'], labels: { cozy: 'Cozy 🌤️', standard: 'Standard ⛅', frontier: 'Frontier 🌩️' } },
+  { id: 'effects', name: 'Flashes & shake', desc: 'Reduced is easier on the eyes', opts: ['full', 'reduced'], labels: { full: 'Full ✨', reduced: 'Reduced 🧘' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard' };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full' };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -9172,8 +9187,31 @@ tickers.push((t) => {
   renderChapterHUD();
   renderWeatherChip();
 });
-function openWorkshop() {
-  if (playerDead) return;
+function techTreeSVG() {
+  const W = 560, H = 190;
+  const pos = new Map();
+  for (let era = 0; era < TECH_ERAS.length; era++) {
+    const arr = TECH.filter((t) => t.era === era);
+    arr.forEach((t, i) => pos.set(t.id, { x: 38 + era * 108, y: 26 + i * 22 }));
+  }
+  let edges = '';
+  for (const t of TECH) for (const r of t.req) {
+    const a = pos.get(r), b = pos.get(t.id);
+    if (a && b) edges += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="rgba(255,217,122,0.28)" stroke-width="1"/>`;
+  }
+  let nodes = '';
+  for (const t of TECH) {
+    const p = pos.get(t.id);
+    if (!p) continue;
+    const done = hasTech(t.id);
+    const av = techAvailable(t).ok;
+    const fill = done ? '#9df0a8' : av ? '#ffd97a' : '#596873';
+    nodes += `<g class="node" data-tech="${t.id}"><circle cx="${p.x}" cy="${p.y}" r="6" fill="${fill}" stroke="#0c1620" stroke-width="1.5"><title>${t.name} — ${t.desc}</title></circle></g>`;
+  }
+  const eras = TECH_ERAS.map((n, e) => `<text x="${38 + e * 108}" y="${H - 6}" text-anchor="middle">${n}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${edges}${nodes}${eras}</svg>`;
+}
+function openWorkshop() {  if (playerDead) return;
   workshopOpen = true;
   document.getElementById('workshop-overlay').classList.remove('hidden');
   renderWorkshop();
@@ -9194,6 +9232,11 @@ function renderWorkshop() {
   if (q) q.textContent = Research.queue
     ? `Researching ${TECH.find((t) => t.id === Research.queue.id)?.name || '…'} ${Math.round((Research.queue.t / Research.queue.dur) * 100)}%`
     : (Home.workshop ? 'Bench idle — choose a technology' : 'Build a Workshop at the homestead board (H)');
+  const tree = document.getElementById('workshop-tree');
+  if (tree) {
+    tree.innerHTML = techTreeSVG();
+    for (const node of tree.querySelectorAll('.node')) node.onclick = () => startResearch(node.dataset.tech);
+  }
   list.innerHTML = '';
   if (!Home.workshop) {
     const note = document.createElement('div');

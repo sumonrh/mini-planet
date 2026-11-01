@@ -591,3 +591,14 @@ body.touch #biome-label h1 { font-size: 34px; }
   #top-right .round-btn { width: 36px; height: 36px; font-size: 15px; }
   #chapter-ribbon, #weather-chip { font-size: 11px; }
 }
+
+/* Research tree overview */
+.tech-tree {
+  width: 100%; height: 175px; margin: 2px 0 10px;
+  background: rgba(0,0,0,0.18); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; overflow: hidden;
+}
+.tech-tree svg { width: 100%; height: 100%; display: block; }
+.tech-tree .node { cursor: pointer; }
+.tech-tree .node:hover circle { filter: brightness(1.4); }
+.tech-tree text { font-family: 'Inter', sans-serif; font-size: 7px; fill: #b9cbd3; }
