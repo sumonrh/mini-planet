@@ -4089,7 +4089,7 @@ function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', in
     updateHeroGear();
     setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
     try {
-      const rw = equippedRanged();
+      const rw = activeRanged();
       setText('rpg-weapon', rw ? `${rw.name} · ${ensureMag(rw)}/${magCapacity(rw)} (${Ammo[rw.ammo] || 0}) · ⚙${Math.round(weaponCondition(rw.id))}` : `${equippedMelee().name} · ⚙${Math.round(weaponCondition(Loadout.melee))}`);
     } catch { setText('rpg-weapon', rpgWeaponDef().name); }
     setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
@@ -4383,10 +4383,10 @@ function damagePlayer(amount, from) {
     chime(990);
     return;
   }
-  meters.health = Math.max(0, meters.health - amount);
+  meters.health = Math.max(0, meters.health - amount * (settings.difficulty === 'cozy' ? 0.5 : 1));
   lastDamageT = combatNow;
   flashDamage();
-  spawnPopup(player.position.clone(), `-${amount}`, '#ff8787');
+  spawnPopup(player.position.clone(), `-${amount * (settings.difficulty === 'cozy' ? 0.5 : 1)}`, '#ff8787');
   burst(player.position.clone(), 0xe03131, 12, 2.2);
   chime(160);
   // knockback: shove the traveler a step away from the swipe
@@ -5367,7 +5367,7 @@ const HAZARDS = {
 const Weather = {
   today: null, next: null, forecast: [], history: [], lastMajorDay: -99,
   active: [], wind: 0, temp: 16, flash: 0,
-  telegraph: null,
+  telegraph: null, strikes: [],
 };
 // --- in-world hazard telegraph: clouds, fleeing birds, sheltering animals, NPC rumor ---
 let telegraphFX = null;
@@ -5550,8 +5550,71 @@ function releaseStranded() {
   for (const a of animals) a.stranded = false;
   Life.floodWash = null;
 }
-function startHazard(id) {
-  const h = hazardById(id);
+function spawnLightningStrike() {
+  const n = player.position.clone().normalize();
+  const east = V3(-n.z, 0, n.x).normalize();
+  const north = new THREE.Vector3().crossVectors(n, east).normalize();
+  const target = n.clone().addScaledVector(east, rand(-7, 7)).addScaledVector(north, rand(-7, 7)).normalize();
+  const pos = target.multiplyScalar(R + heightFor(target) + 0.06);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1.1, 1.5, 28).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0xff6a3a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false })
+  );
+  orientOnSphere(ring, pos, rand(6));
+  scene.add(ring);
+  const strike = { ring, pos, t: 1.15, dur: 1.15, r: 2.4, hit: false };
+  Weather.strikes.push(strike);
+  return strike;
+}
+function resolveLightningStrike(s) {
+  if (!s || s.hit) return;
+  s.hit = true;
+  const up = s.pos.clone().normalize();
+  tracer(s.pos.clone().addScaledVector(up, 14), s.pos, 0xdfe9ff);
+  burst(s.pos.clone(), 0xffe9a3, 16, 2.2);
+  Weather.flash = 1;
+  chime(90);
+  if (player.position.distanceTo(s.pos) <= s.r) {
+    damagePlayer(8, s.pos);
+    toast('⚡ Lightning struck close! Move when the ring appears.');
+  }
+}
+tickers.push((t, dt) => {
+  for (let i = Weather.strikes.length - 1; i >= 0; i--) {
+    const s = Weather.strikes[i];
+    if (!s.hit) {
+      s.t -= dt;
+      const p = 1 - Math.max(0, s.t) / s.dur;
+      s.ring.material.opacity = 0.35 + 0.5 * Math.abs(Math.sin(t * 9));
+      s.ring.scale.setScalar(1 + p * 0.25);
+      if (s.t <= 0) resolveLightningStrike(s);
+    } else {
+      s.t -= dt * 2;
+      s.ring.material.opacity = Math.max(0, s.ring.material.opacity - dt * 3);
+      if (s.t < -0.4) {
+        scene.remove(s.ring);
+        s.ring.geometry.dispose(); s.ring.material.dispose();
+        Weather.strikes.splice(i, 1);
+      }
+    }
+  }
+});
+function burnHomestead() {
+  if (Home.firebreak) return null;
+  const opts = [];
+  if (Home.house > 0 && !Home.dmg.house) opts.push('house');
+  if (Home.barn > 0 && !Home.dmg.barn) opts.push('barn');
+  if (Home.cabin && !Home.dmg.cabin) opts.push('cabin');
+  if (Home.workshop && !Home.dmg.workshop) opts.push('workshop');
+  if (!opts.length) return null;
+  const id = opts[(Math.random() * opts.length) | 0];
+  Home.dmg[id] = true;
+  rebuildHomestead();
+  toast(`🔥 Wildfire caught the ${id}! (firebreak prevents this)`);
+  pushStory(`Wildfire damaged the ${id}.`, '🔥');
+  return id;
+}
+function startHazard(id) {  const h = hazardById(id);
   if (!h) return;
   clearTelegraph();
   Weather.active = Weather.active.filter((x) => x.id !== id);
@@ -5768,12 +5831,10 @@ tickers.push((t, dt) => {
     h.t += dt;
     if (h.dur <= 0 && h.t > 1) { endHazard(h); continue; }
     if (h.id === 'thunder') {
-      if (Math.random() < dt * 0.55) {
+      h.strikeClock = (h.strikeClock || rand(1.2, 2.2)) - dt;
+      if (h.strikeClock <= 0) { h.strikeClock = rand(1.8, 3.4); spawnLightningStrike(); }
+      if (Math.random() < dt * 0.25) {
         Weather.flash = 1; chime(80);
-        const up = player.position.clone().normalize();
-        const ground = homeSpot(HOME.lat + rand(-7, 7), HOME.lon + rand(-7, 7), 0.05);
-        tracer(ground.clone().addScaledVector(up, 12), ground, 0xdfe9ff);
-        burst(ground, 0xffe9a3, 10, 1.8);
         if (Math.random() < 0.18 && !Home.stormShutters && !Home.lightningRod) { const ids = ['house', 'barn', 'cabin'].filter((x) => (x === 'house' ? Home.house : x === 'barn' ? Home.barn : Home.cabin)); if (ids.length) { Home.dmg[ids[(Math.random() * ids.length) | 0]] = true; rebuildHomestead(); toast('⚡ Lightning struck a roof! (storm shutters protect)'); } }
       }
     }
@@ -5789,6 +5850,7 @@ tickers.push((t, dt) => {
       burst(p, 0xff7a2a, 2, 1.0);
       if (!Home.firebreak && player.position.distanceTo(p) < 3) damagePlayer(2, p);
     }
+    if (h.id === 'wildfire' && Math.random() < dt * 0.045) burnHomestead();
     if (h.id === 'flood' && Home.plots.some((p) => p.crop) && !Home.pump && !Home.irrigation && !Home.sandbags && Math.random() < dt * 0.08) {
       const p = Home.plots.find((x) => x.crop); if (p) { p.crop = false; p.growth = 0; p.water = false; refreshPlotMeshes(); toast('🌊 Floodwater drowned a crop! (pump/irrigation helps)'); }
     }
@@ -5816,6 +5878,7 @@ const WEAPONS = {
 };
 const UnlockedWeapons = ['hatchet', 'sling'];
 const Loadout = { melee: 'hatchet', ranged: null };
+const WeaponState = { mode: 'melee' };
 const Ammo = { stones: 8, arrows: 0, bolts: 0, bullets: 0, shells: 0 };
 const Mag = {}; // rounds loaded per ranged weapon
 const Condition = {}; // 0..100 per weapon; gunsmith repairs wear
@@ -5863,6 +5926,16 @@ function addRep(dim, n = 1) {
 function weaponById(id) { return WEAPONS[id] || null; }
 function equippedMelee() { return WEAPONS[Loadout.melee] || WEAPONS.hatchet; }
 function equippedRanged() { return Loadout.ranged ? WEAPONS[Loadout.ranged] : null; }
+function activeRanged() { return WeaponState.mode === 'ranged' ? equippedRanged() : null; }
+function toggleWeapon() {
+  if (!Loadout.ranged) { toast('🎒 No ranged weapon equipped — open Loadout (L).'); return; }
+  WeaponState.mode = WeaponState.mode === 'ranged' ? 'melee' : 'ranged';
+  const w = WeaponState.mode === 'ranged' ? equippedRanged() : equippedMelee();
+  toast(`🔄 ${w.name} ready (Tab swaps).`);
+  chime(WeaponState.mode === 'ranged' ? 720 : 520);
+  renderStats();
+  try { renderLoadout(); } catch { /* closed */ }
+}
 function ammoCount(w) { return w && w.ammo ? (Ammo[w.ammo] || 0) : 0; }
 function magCapacity(w) {
   if (!w) return 0;
@@ -5916,6 +5989,7 @@ function equipWeapon(id) {
   if (!w) return;
   if (!UnlockedWeapons.includes(id)) { toast(`🔒 ${w.name} is not unlocked yet.`); return; }
   if (w.melee) Loadout.melee = id; else Loadout.ranged = id;
+  WeaponState.mode = w.melee ? 'melee' : 'ranged';
   if (w.ranged) ensureMag(w);
   // keep the axe visual tier in step with the melee weapon
   if (w.melee) {
@@ -5966,7 +6040,7 @@ tickers.push((t, dt) => {
   }
 });
 function fireAt(target) {
-  const w = equippedRanged();
+  const w = activeRanged();
   if (!w || playerDead) return false;
   if (playerAttackCd > 0 || reloadT > 0) return false;
   if (weaponCondition(w.id) <= 0) { toast(`🛠️ ${w.name} is jammed — repair it at the gunsmith (L).`); return false; }
@@ -6019,8 +6093,8 @@ function fireAt(target) {
 }
 function manualFire(x, y) {
   if (!started || paused || playerDead) return false;
-  const w = equippedRanged();
-  if (!w) { toast('🎒 No ranged weapon equipped — open Loadout (L).'); return false; }
+  const w = activeRanged();
+  if (!w) { toast(Loadout.ranged ? '🔄 Melee active — press Tab to draw the gun.' : '🎒 No ranged weapon equipped — open Loadout (L).'); return false; }
   const it = pickInteractableAt(x, y);
     if (it && taskIsCombat(it)) {
     const target = it.bear || it.wolf || it.robber || it.prey;
@@ -6121,6 +6195,7 @@ function restoreProgression(p) {
   }
   if (p.tools) Object.assign(tools, p.tools);
   if (p.loadout) Object.assign(Loadout, p.loadout);
+  WeaponState.mode = Loadout.ranged ? 'ranged' : 'melee';
   if (p.ammo) Object.assign(Ammo, p.ammo);
   if (p.mag) Object.assign(Mag, p.mag);
   if (p.condition) Object.assign(Condition, p.condition);
@@ -10020,7 +10095,7 @@ function updateAutoTask(dt) {
   if (taskIsWonder(it) && byId(it.id)?.done && it.id !== 'plant') { clearAutoTask(); return; }
   const d = player.position.distanceTo(it.pos);
   const reach = (it.radius || 3.6) + 0.6;
-  const rw = equippedRanged();
+  const rw = activeRanged();
   const rangedReady = !!rw && ammoCount(rw) > 0;
   // stop at a working distance, not at the outer interact radius
   const stopD = it.node ? 1.7 : (taskIsCombat(it) ? (rangedReady ? Math.min(11, rw.range * 0.72) : 3.4) : Math.min(reach, 2.5));
@@ -10841,7 +10916,7 @@ try {
   } else showTitle();
 } catch { try { showTitle(); } catch { /* no DOM */ } }
 Object.assign(window.__lp, {
-  bears, animals, wolves, meters, useRemedy, attackBear, saveCheckpoint, loadSave, applySave,
+  bears, animals, wolves, meters, useRemedy, attackBear, damagePlayer, saveCheckpoint, loadSave, applySave,
   spawnAnimal, spawnDog, spawnWolves,
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
@@ -10851,10 +10926,12 @@ Object.assign(window.__lp, {
   homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
   rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
   tree: { zoom: treeZoom, reset: treeReset, view: () => treeView },
-  weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
+  weapons: { list: WEAPONS, loadout: Loadout, mode: () => WeaponState.mode, toggle: toggleWeapon, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
   bridges, floodWashout, releaseStranded,
+  lightning: { spawn: spawnLightningStrike, resolve: resolveLightningStrike, strikes: () => Weather.strikes },
+  burnHomestead,
   recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
@@ -10904,7 +10981,7 @@ Object.defineProperties(window.__lp, {
  // ---------- input ----------
 const keys = {};
 addEventListener('keydown', (e) => {
-  if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     moveTargetN = null; // manual steering cancels click-to-move
@@ -10918,6 +10995,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyB') { bountyOpen ? closeBounty() : openBounty(); return; }
   if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) return;
   if (e.code === 'Digit1' && !playerDead) { equipWeapon(Loadout.melee); return; }
+  if (e.code === 'Tab' && !playerDead) { toggleWeapon(); return; }
   if (e.code === 'Digit2' && !playerDead) {
     if (Loadout.ranged) equipWeapon(Loadout.ranged);
     else toast('🎒 No ranged weapon equipped — open Loadout (L).');

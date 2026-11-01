@@ -13,9 +13,9 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Weather director with 2–4 day forecast, almanac, mercy cooldown and difficulty scaling (`progtest`, `journeytest`)
 - [x] **Seeded daily-run forecast** (`progtest`: same seed/day reproduces; browser `weapontest`)
 - [x] In-world telegraph: cloud bank, fleeing birds, tracks, sheltering herd, NPC rumor (`progtest`, `weapontest`, screenshot)
-- [x] Blizzard, thunderstorm, tornado, flood, drought, eruption, wildfire (spreading), hail (`progtest` start/end for all eight)
+- [x] Blizzard, thunderstorm, tornado, flood, drought, eruption, wildfire (spreading, now damages buildings unless firebreak), hail (`progtest` start/end for all eight; wildfire building damage + firebreak test)
 - [x] Flood washes out bridges and strands animals; waters recede (`progtest`, `weapontest`)
-- [x] Live VFX for snow/rain/ash/hail, lightning, floodwater, wildfire cells, lava flow and tornado (`weapontest` screenshots)
+- [x] Live VFX for snow/rain/ash/hail, lightning, floodwater, wildfire cells, lava flow and tornado, with **telegraphed lightning strike rings** (`progtest`, `weapontest` screenshots)
 - [x] Counters: storm shutters, cellar, well, irrigation, steam pump, barn, ash mask, **heat gear**, firebreak, lightning rod, sandbags, hail netting, scarecrow (`progtest` hazard-counter matrix)
 - [x] Pause-on-hazard accessibility option (`progtest`)
 
@@ -37,7 +37,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Workshop clatter audio on research/crafting (`progtest`)
 
 ## Weapons & hunting
-- [x] Melee hatchet → iron axe → war axe → halberd; ranged sling → bow → crossbow → musket → lever rifle → shotgun (`journeytest`)
+- [x] Melee hatchet → iron axe → war axe → halberd; ranged sling → bow → crossbow → musket → lever rifle → shotgun, with **Tab melee/ranged swap** (`journeytest`, `progtest`)
 - [x] Manual aim/fire, magazines, reload, shotgun pellets, tracers (`weapontest`)
 - [x] Weapon condition/wear, jamming at 0%, gunsmith repair, saved condition (`progtest`, `weapontest`)
 - [x] Deer, hare and **boar**; clean-shot bonus, wounded blood-trail tracking, fur → leather crafting (`progtest`, `weapontest`)
@@ -49,7 +49,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 
 ## Saves, UX, accessibility
 - [x] Save v2 with v1 migration; all new systems persisted (`progtest`)
-- [x] Cozy/Standard/Frontier difficulty plus separate **Harsh Weather**, **Thieves & rustlers** and **Permadeath** toggles (`progtest`)
+- [x] Cozy/Standard/Frontier difficulty (**Cozy halves incoming damage**) plus separate **Harsh Weather**, **Thieves & rustlers** and **Permadeath** toggles (`progtest`)
 - [x] Reduced flash/shake, large text, high contrast, colorblind-safe hazard badges (`[STORM]`), pause-on-hazard (`progtest`, `weapontest`)
 - [x] Chapter intro cards, almanac, loadout, bounty and journal overlays (`journeytest`)
 - [x] Single-file build deployed to Firebase with live SHA256 verification
