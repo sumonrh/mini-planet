@@ -4474,7 +4474,15 @@ function killPlayer() {
   const g = document.getElementById('gameover');
   if (g) g.classList.remove('hidden');
   const sub = document.getElementById('gameover-sub');
+  if (settings.permadeath) {
+    if (sub) sub.textContent = 'An iron life ends here. The chronicle remains.';
+    const btn = document.getElementById('btn-permadeath');
+    if (btn) btn.classList.remove('hidden');
+    return;
+  }
   if (sub) sub.textContent = loadSave() ? 'Returning to your last save…' : 'Returning to the farmstead…';
+  const pbtn = document.getElementById('btn-permadeath');
+  if (pbtn) pbtn.classList.add('hidden');
   setTimeout(respawnAtSave, 2600);
 }
 function respawnAtSave() {
@@ -5509,7 +5517,7 @@ function rollForecast() {
   // seeded weather director: reproducible for a given world seed + day
   const since = Life.day - (Weather.lastMajorDay ?? -99);
   const rnd = seededRandom(daySeed(Life.day));
-  const canHit = since >= 2 && rnd() > (settings.difficulty === 'cozy' ? 0.55 : settings.difficulty === 'frontier' ? 0.2 : 0.32);
+  const canHit = since >= 2 && rnd() > ((settings.difficulty === 'cozy' ? 0.55 : settings.difficulty === 'frontier' ? 0.2 : 0.32) + (settings.harshWeather === false ? 0.25 : 0));
   const next = canHit ? pickHazard(rnd) : null;
   Weather.next = next;
   Weather.forecast = [];
@@ -5603,6 +5611,7 @@ function hazardWard(id) {
   if (Home.firebreak && id === 'wildfire') ward += 0.5;
   if (Research.heatGear && (id === 'wildfire' || id === 'eruption')) ward += 0.4;
   ward += Research.stormWard || 0;
+  if (settings.harshWeather === false) ward += 0.2;
   return Math.min(0.85, ward);
 }
 function endHazard(h) {
@@ -7971,6 +7980,7 @@ tickers.push(() => { // forecast packs slink in after dark, never in daylight
 // --- human threats: night robbers, rustlers and tolls ---
 let robberSpawnT = 0;
 function spawnRobber(kind = 'thief') {
+  if (settings.thieves === false) return null;
   if (Threats.robbers.length || playerDead) return null;
   const home = homeSpot(HOME.lat, HOME.lon, 0);
   const up = home.clone().normalize();
@@ -8025,6 +8035,7 @@ function claimWanted(name) {
 }
 let poacherT = 120;
 function spawnPoacher() {
+  if (settings.thieves === false) return null;
   if (Threats.robbers.length || playerDead) return null;
   const la = rand(10, 20), lo = rand(140, 170);
   const n = latLonToVec3(la, lo, 0).normalize();
@@ -9645,8 +9656,11 @@ const SETTINGS_DEFS = [
   { id: 'contrast', name: 'High contrast', desc: 'Stronger panels and outlines', opts: ['normal', 'high'], labels: { normal: 'Normal', high: 'High ◐' } },
   { id: 'hazardPause', name: 'Pause on hazard', desc: 'Freeze the game when a hazard begins', opts: [false, true], labels: { false: 'Off', true: 'On ⏸️' } },
   { id: 'hazardIcons', name: 'Hazard icons', desc: 'Colorblind-safe text badges', opts: ['emoji', 'safe'], labels: { emoji: 'Emoji', safe: 'Safe [STORM]' } },
+  { id: 'harshWeather', name: 'Harsh weather', desc: 'Major hazards and damage', opts: [true, false], labels: { true: 'On ⛈️', false: 'Off 🌤️' } },
+  { id: 'thieves', name: 'Thieves & rustlers', desc: 'Night robber and poacher encounters', opts: [true, false], labels: { true: 'On 🥷', false: 'Off 🕊️' } },
+  { id: 'permadeath', name: 'Permadeath', desc: 'No respawn after death — return to title', opts: [false, true], labels: { false: 'Off', true: 'On 💀' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji' };
+let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -10327,6 +10341,86 @@ tickers.push((t) => {
   renderWeatherChip();
   if (workshopOpen) updateWorkshopProgress();
 });
+let treeView = null;
+let treeSuppressClick = false;
+function treeMetrics() {
+  const rows = Math.max(...TECH_ERAS.map((_, e) => TECH.filter((t) => t.era === e).length));
+  return { W: 560, H: Math.max(190, 34 + rows * 20 + 16) };
+}
+function treeApply() {
+  const host = document.getElementById('workshop-tree');
+  const svg = host && host.querySelector ? host.querySelector('svg') : null;
+  if (!svg) return;
+  const { W, H } = treeMetrics();
+  if (!treeView) treeView = { x: 0, y: 0, w: W, h: H };
+  treeView.w = Math.max(90, Math.min(W * 1.4, treeView.w));
+  treeView.h = treeView.w * (H / W);
+  treeView.x = Math.max(-W * 0.25, Math.min(W * 1.25 - treeView.w, treeView.x));
+  treeView.y = Math.max(-H * 0.25, Math.min(H * 1.25 - treeView.h, treeView.y));
+  svg.setAttribute('viewBox', `${treeView.x.toFixed(1)} ${treeView.y.toFixed(1)} ${treeView.w.toFixed(1)} ${treeView.h.toFixed(1)}`);
+  const label = document.getElementById('tree-zoom-label');
+  if (label) label.textContent = `${Math.round((W / treeView.w) * 100)}%`;
+}
+function treeZoom(factor, fx = 0.5, fy = 0.5) {
+  const { W, H } = treeMetrics();
+  if (!treeView) treeView = { x: 0, y: 0, w: W, h: H };
+  const cx = treeView.x + fx * treeView.w;
+  const cy = treeView.y + fy * treeView.h;
+  const w = Math.max(90, Math.min(W * 1.4, treeView.w * factor));
+  treeView = { x: cx - fx * w, y: cy - fy * w * (H / W), w, h: w * (H / W) };
+  treeApply();
+}
+function treeReset() { treeView = null; treeApply(); }
+function attachTreeInteractions(svg) {
+  if (!svg) return;
+  const pointers = new Map();
+  let pan = null, pinchDist = null;
+  svg.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const r = svg.getBoundingClientRect();
+    const fx = Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 560)));
+    const fy = Math.max(0, Math.min(1, (e.clientY - r.top) / (r.height || 190)));
+    treeZoom(e.deltaY < 0 ? 0.82 : 1.22, fx, fy);
+  }, { passive: false });
+  svg.addEventListener('pointerdown', (e) => {
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try { svg.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (pointers.size === 1) { pan = { x: e.clientX, y: e.clientY, moved: 0 }; svg.classList.add('dragging'); }
+  });
+  svg.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      if (pinchDist) treeZoom(d / pinchDist);
+      pinchDist = d;
+      pan = null;
+      return;
+    }
+    if (!pan || !treeView) return;
+    const r = svg.getBoundingClientRect();
+    const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+    treeView.x -= dx / (r.width || 560) * treeView.w;
+    treeView.y -= dy / (r.height || 190) * treeView.h;
+    pan.x = e.clientX; pan.y = e.clientY;
+    pan.moved += Math.abs(dx) + Math.abs(dy);
+    treeApply();
+  });
+  const end = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDist = null;
+    if (pan && pan.moved > 4) treeSuppressClick = true;
+    pan = null;
+    svg.classList.remove('dragging');
+  };
+  svg.addEventListener('pointerup', end);
+  svg.addEventListener('pointercancel', end);
+  svg.addEventListener('click', (e) => {
+    if (treeSuppressClick) { e.preventDefault(); e.stopPropagation(); treeSuppressClick = false; }
+  }, true);
+}
 function techTreeSVG() {
   const W = 560;
   const rows = Math.max(...TECH_ERAS.map((_, e) => TECH.filter((t) => t.era === e).length));
@@ -10346,9 +10440,12 @@ function techTreeSVG() {
     const p = pos.get(t.id);
     if (!p) continue;
     const done = hasTech(t.id);
-    const av = techAvailable(t).ok;
-    const fill = done ? '#9df0a8' : av ? '#ffd97a' : '#596873';
-    nodes += `<g class="node" data-tech="${t.id}"><circle cx="${p.x}" cy="${p.y}" r="6" fill="${fill}" stroke="#0c1620" stroke-width="1.5"><title>${t.name} — ${t.desc}</title></circle></g>`;
+    const av = techAvailable(t);
+    const fill = done ? '#9df0a8' : av.ok ? '#ffd97a' : '#596873';
+    const reqTxt = t.req.length ? t.req.map((r) => TECH.find((x) => x.id === r)?.name || r).join(', ') : 'none';
+    const costTxt = Object.entries(t.cost).map(([k, n]) => `${n} ${ITEM_ICON[k] || k}`).join(', ') + (t.insight ? `, ${t.insight} insight` : '');
+    const status = done ? 'Researched ✓' : av.ok ? 'Available' : `Locked — ${av.why}`;
+    nodes += `<g class="node" data-tech="${t.id}"><circle cx="${p.x}" cy="${p.y}" r="6" fill="${fill}" stroke="#0c1620" stroke-width="1.5"><title>${t.name} — ${t.desc}\nRequires: ${reqTxt}\nCost: ${costTxt}\nStatus: ${status}</title></circle></g>`;
   }
   const eras = TECH_ERAS.map((n, e) => `<text x="${38 + e * 108}" y="${H - 6}" text-anchor="middle">${n}</text>`).join('');
   return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${edges}${nodes}${eras}</svg>`;
@@ -10392,6 +10489,8 @@ function renderWorkshop() {
   const tree = document.getElementById('workshop-tree');
   if (tree) {
     tree.innerHTML = techTreeSVG();
+    attachTreeInteractions(tree.querySelector ? tree.querySelector('svg') : null);
+    treeApply();
     for (const node of tree.querySelectorAll('.node')) node.onclick = () => startResearch(node.dataset.tech);
   }
   list.innerHTML = '';
@@ -10747,9 +10846,11 @@ Object.assign(window.__lp, {
   npcs: NPCS, openTrade, closeTrade, doTrade,
   slots: { readSlot, slotSummary, openSlots, manualSave, quitToTitle },
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
+  settingsDefs: SETTINGS_DEFS, autoRespawn: () => !settings.permadeath,
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
   homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
   rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
+  tree: { zoom: treeZoom, reset: treeReset, view: () => treeView },
   weapons: { list: WEAPONS, loadout: Loadout, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
   hazard: (id) => startHazard(id), spawnRobber, spawnPoacher, killRobber, openRobber: openRobberDialog,
@@ -11139,6 +11240,14 @@ document.getElementById('btn-bounty').onclick = () => (bountyOpen ? closeBounty(
 document.getElementById('btn-close-bounty').onclick = closeBounty;
 document.getElementById('btn-bounty-leave').onclick = closeBounty;
 document.getElementById('card-begin').onclick = closeChapterCard;
+document.getElementById('btn-permadeath').onclick = () => {
+  document.getElementById('gameover').classList.add('hidden');
+  showTitle();
+};
+for (const [id, fn] of [['tree-zoom-in', () => treeZoom(0.8)], ['tree-zoom-out', () => treeZoom(1.25)], ['tree-reset', () => treeReset()]]) {
+  const el = document.getElementById(id);
+  if (el) el.onclick = fn;
+}
 document.getElementById('btn-close-workshop').onclick = closeWorkshop;
 document.getElementById('btn-workshop-leave').onclick = closeWorkshop;
 document.getElementById('btn-close-almanac').onclick = closeAlmanac;

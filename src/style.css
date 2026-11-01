@@ -641,3 +641,16 @@ body.contrast-high .journal-sub,
 body.contrast-high .almanac-row .what { color: #eef4f7; }
 body.contrast-high #chapter-ribbon,
 body.contrast-high #weather-chip { color: #fff; font-weight: 700; }
+
+/* Zoomable research tree */
+#tree-controls { display: flex; align-items: center; gap: 8px; margin: -2px 0 10px; flex-wrap: wrap; }
+#tree-controls button {
+  background: rgba(255,255,255,0.08); border: 1px solid rgba(255,217,122,0.35);
+  color: #ffe596; border-radius: 8px; padding: 4px 10px; font-family: inherit;
+  font-size: 12px; cursor: pointer;
+}
+#tree-controls button:hover { background: rgba(255,217,122,0.18); }
+#tree-zoom-label { color: #9df0a8; font-size: 11px; font-weight: 700; min-width: 42px; }
+.tree-hint { color: #8ea3ad; font-size: 10px; }
+.tech-tree { cursor: grab; touch-action: none; }
+.tech-tree.dragging { cursor: grabbing; }

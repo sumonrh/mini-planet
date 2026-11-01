@@ -28,7 +28,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Bounty board incl. alive/wanted/boar bounties (`weapontest`: seven rows)
 
 ## Research & tools
-- [x] 41-node tree across Handmade → Copper → Iron → Mechanical → Powder (`journeytest`: 41 nodes)
+- [x] 41-node tree across Handmade → Copper → Iron → Mechanical → Powder (`journeytest`: 41 nodes), with **wheel/pinch zoom, drag-pan, reset and prerequisite/cost tooltips** (`journeytest`)
 - [x] One active + one queued research with progress bar (`journeytest`)
 - [x] Insight from discoveries, wonders, fish, hazards and chapters (`progtest`)
 - [x] Fishing ladder handline → rod → net → trap; farming hoe → plough → seed drill → thresher; building hammer → saw → power tools (`progtest` tiers + dawn production)
@@ -49,7 +49,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 
 ## Saves, UX, accessibility
 - [x] Save v2 with v1 migration; all new systems persisted (`progtest`)
-- [x] Cozy/Standard/Frontier difficulty (`progtest`/settings)
+- [x] Cozy/Standard/Frontier difficulty plus separate **Harsh Weather**, **Thieves & rustlers** and **Permadeath** toggles (`progtest`)
 - [x] Reduced flash/shake, large text, high contrast, colorblind-safe hazard badges (`[STORM]`), pause-on-hazard (`progtest`, `weapontest`)
 - [x] Chapter intro cards, almanac, loadout, bounty and journal overlays (`journeytest`)
 - [x] Single-file build deployed to Firebase with live SHA256 verification
