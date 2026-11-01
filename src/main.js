@@ -714,11 +714,13 @@ function gatherHit(nd) {
   if (nd.depleted && !splitting) return toast('🌱 Regrowing… give it a moment.');
   if (meters.energy < 1) return toast('😮‍💨 Too tired to work — eat (F) or rest.');
   meters.energy = Math.max(0, meters.energy - 0.85);
+  const action = nodeGatherAction(nd);
+  window.__lastGatherKind = action;
   if (nd.shakeRoot) {
     if (!nd.home) nd.home = nd.shakeRoot.position.clone();
     nd.shake = 1; // vibrate
   }
-  if (chopT <= 0) startChop(null, nodeGatherAction(nd)); // swing tool / hands
+  if (chopT <= 0) startChop(null, action); // swing tool / hands
   const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1);  nd.prog += power;
   // juice: hits escalate — bigger shake, higher chime, brighter burst
   const th = splitting ? 2 : nd.need;
@@ -740,9 +742,14 @@ function gatherHit(nd) {
     chime(95); // low thunk under the wood crack
   }
   burst(fxPos, nd.color, Math.round(6 + heat * 10), 1.2 + heat * 1.2);
-  // bark chips fly off the cut line
-  for (let i = 0; i < 2; i++) flyChunk(fxPos.clone().add(V3(rand(-0.2, 0.2), rand(-0.1, 0.2), rand(-0.2, 0.2))), 0x8a6238);
-  flyChunk(player.position.clone().add(V3(0, 1.2, 0)), nd.color === 0xffffff ? 0xcfd8dc : 0x7a5230);
+  // bark chips only when working timber/stone; berries shed fruit, wool sheds fluff
+  if (action === 'chop') {
+    for (let i = 0; i < 2; i++) flyChunk(fxPos.clone().add(V3(rand(-0.2, 0.2), rand(-0.1, 0.2), rand(-0.2, 0.2))), nd.item === 'stone' ? 0x9aa0a6 : 0x8a6238);
+    if (nd.item === 'stone') flyPickup(player.position.clone().add(V3(0, 1.2, 0)), 'stone', 0x9aa0a6);
+    else flyChunk(player.position.clone().add(V3(0, 1.2, 0)), nd.color === 0xffffff ? 0xcfd8dc : 0x7a5230);
+  } else if (action === 'pick') {
+    burst(fxPos, nd.color, 4, 0.9);
+  }
   chime(nd.chime + Math.round(heat * 160));
   if (nd.prog >= th) {
     if (!addItem(nd.item, 1)) { nd.prog = th; return; } // pack full: keep it ready
@@ -759,7 +766,11 @@ function gatherHit(nd) {
     if (splitting) {
       flyChunk(nd.fallRoot.position.clone()); // split piece flies to the pack
       if (--nd.trunkStock <= 0) nd.fallRoot.visible = false; // trunk fully cleared
-    } else if (--nd.stock <= 0) depleteNode(nd);
+    } else {
+      const pickup = nd.item === 'wool' ? 'wool' : nd.item === 'remedy' ? 'remedy' : nd.item === 'stone' ? 'stone' : 'pick';
+      flyPickup(fxPos, pickup, nd.color);
+      if (--nd.stock <= 0) depleteNode(nd);
+    }
   }
   renderStats();
 }
@@ -785,6 +796,21 @@ function flyChunk(from, color = 0x7a5230) {
   scene.add(m);
   chunks.push({ m, life: 0.7 });
 }
+// context-appropriate pickup: berries/crops are round produce, wool is a fluff,
+// herbs are leaves and stone is a chip — never a timber log in the pack.
+function flyPickup(from, kind, color) {
+  window.__lastPickup = kind;
+  let geo, c = color;
+  if (kind === 'wool') { geo = new THREE.IcosahedronGeometry(0.2, 1); c = c || 0xf7f2e7; }
+  else if (kind === 'remedy') { geo = new THREE.ConeGeometry(0.13, 0.3, 5); c = c || 0x50ffaa; }
+  else if (kind === 'stone') { geo = new THREE.DodecahedronGeometry(0.18, 0); c = c || 0x9aa0a6; }
+  else if (kind === 'crop') { geo = new THREE.IcosahedronGeometry(0.2, 0); c = c || 0xe07b2a; }
+  else { geo = new THREE.IcosahedronGeometry(0.16, 0); c = c || 0xe04a5a; }
+  const m = mesh(geo, mat(c), from.x, from.y, from.z, false);
+  m.rotation.set(rand(0, Math.PI), rand(0, Math.PI), rand(0, Math.PI));
+  scene.add(m);
+  chunks.push({ m, life: 0.7 });
+}
 tickers.push((t, dt) => {
   for (let i = chunks.length - 1; i >= 0; i--) {
     const c = chunks[i];
@@ -805,6 +831,8 @@ function addShake(a) { camShake = Math.min(0.45, camShake + a); }
 let gripBlend = 0; // 0 = arms free, 1 = both hands closed on the axe handle
 let wadeBlend = 0; // 0 = dry stride, 1 = high-stepping wade
 let swimBlend = 0, swimPhase = 0; // 0 = dry, 1 = swimming stroke
+let heroBuildHold = false; // show the hammer while hauling/raising it on a build site
+let chopImpactFx = null; // one-shot callback fired on the next swing's contact frame
 let gatherAction = 'chop';
 function nodeGatherAction(nd) {
   if (!nd) return 'chop';
@@ -876,16 +904,35 @@ const SHEAR = {
   headYaw: [[0, 0], [0.3, 0.1], [0.7, -0.05], [1, 0]],
   headPitch: [[0, 0], [0.25, 0.3], [0.6, 0.36], [0.85, 0.12], [1, 0]],
 };
+// hammering: a short wind-up over the shoulder, then a crisp strike down and forward
+const BUILD = {
+  yaw: [[0, 0], [0.24, 0.1], [0.5, -0.1], [0.72, -0.02], [1, 0]],
+  pitch: [[0, 0], [0.24, -0.14], [0.5, 0.24], [0.66, 0.16], [1, 0]],
+  roll: [[0, 0], [0.3, -0.14], [0.6, 0.1], [1, 0]],
+  shR: [[0, 0], [0.24, 1.55], [0.48, 1.35], [0.6, -0.65], [0.72, -0.45], [1, 0]],
+  shL: [[0, 0], [0.3, 0.25], [0.6, 0.12], [1, 0]],
+  elR: [[0, -0.35], [0.22, -1.05], [0.5, -0.45], [0.65, -0.55], [1, -0.35]],
+  elL: [[0, -0.35], [0.3, -0.7], [0.6, -0.55], [1, -0.35]],
+  wrist: [[0, 0], [0.24, 0.8], [0.55, 0.2], [1, 0]],
+  grip: [[0, 0], [0.1, 1], [0.78, 1], [0.9, 0], [1, 0]],
+  lunge: [[0, 0], [0.3, -0.04], [0.6, -0.08], [0.8, -0.04], [1, 0]],
+  crouch: [[0, 0], [0.25, 0.05], [0.55, 0.12], [0.8, 0.06], [1, 0]],
+  headYaw: [[0, 0], [0.3, -0.06], [0.7, 0.03], [1, 0]],
+  headPitch: [[0, 0], [0.24, 0.18], [0.6, 0.12], [1, 0]],
+};
 const _idlePose = {
   active: false, t: 0, yaw: 0, pitch: 0, roll: 0, shR: 0, shL: 0, elR: -0.35, elL: -0.4,
-  wrist: 0, grip: 0, lunge: 0, crouch: 0, headYaw: 0, headPitch: 0, useTool: true,
+  wrist: 0, grip: 0, lunge: 0, crouch: 0, headYaw: 0, headPitch: 0, useTool: true, tool: 'axe',
 };
+function poseSetForAction(action) {
+  return action === 'pick' ? PICK : action === 'shear' ? SHEAR : action === 'build' ? BUILD : CHOP;
+}
 function currentChopPose() {
   if (chopT <= 0) return _idlePose;
   const t = Math.min(1, chopT);
-  const set = gatherAction === 'pick' ? PICK : gatherAction === 'shear' ? SHEAR : CHOP;
+  const set = poseSetForAction(gatherAction);
   return {
-    active: true, t, useTool: set === CHOP,
+    active: true, t, useTool: set === CHOP, tool: set === CHOP ? 'axe' : set === BUILD ? 'hammer' : null,
     yaw: kfAt(set.yaw, t), pitch: kfAt(set.pitch, t), roll: kfAt(set.roll, t),
     shR: kfAt(set.shR, t), shL: kfAt(set.shL, t),
     elR: kfAt(set.elR, t), elL: kfAt(set.elL, t),
@@ -920,6 +967,7 @@ tickers.push((t, dt) => {
     if (chopQueue && !chopQueue.fired && prev < CHOP_IMPACT && chopT >= CHOP_IMPACT) {
       chopQueue.fired = true;
       try { gatherHit(chopQueue.nd); } catch { /* node vanished */ }
+      if (chopImpactFx) { const fx = chopImpactFx; chopImpactFx = null; try { fx(); } catch { /* noop */ } }
     }
     if (chopT >= 1) { chopT = 0; chopQueue = null; }
   }
@@ -3410,6 +3458,21 @@ const player = new THREE.Group();
   };
   player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
 
+  // ---- build hammer: held in the right hand only while raising a structure ----
+  {
+    const wr = player.userData.wristR;
+    const hammer = new THREE.Group();
+    hammer.position.set(0.03, -0.08, 0.06);
+    hammer.rotation.x = 0.22;
+    hammer.add(mesh(new THREE.CylinderGeometry(0.032, 0.04, 0.52, 7), mat(0x7a5230), 0, -0.26, 0, false));
+    hammer.add(mesh(new THREE.CylinderGeometry(0.043, 0.043, 0.13, 7), mat(0x5a3e2b), 0, -0.06, 0, false));
+    hammer.add(mesh(new THREE.BoxGeometry(0.13, 0.15, 0.3), mat(0x9aa0a6, { metalness: 0.55, roughness: 0.38 }), 0, -0.52, 0.02, false));
+    hammer.add(mesh(new THREE.BoxGeometry(0.15, 0.06, 0.12), mat(0x6b6f73, { metalness: 0.4 }), 0, -0.52, -0.13, false));
+    hammer.visible = false;
+    wr.add(hammer);
+    player.userData.hammer = hammer;
+  }
+
   // ---- animation: walk (knees/ankles), idle breathing, scarf lag, chop, slash ----
   const P = player.userData;
   let phase = 0, strideInit = false;
@@ -3512,7 +3575,9 @@ const player = new THREE.Group();
       P.elbowL.rotation.x += ((-0.35 - Math.max(0, stroke) * 0.5) - P.elbowL.rotation.x) * k;
       P.elbowR.rotation.x += ((-0.35 - Math.max(0, -stroke) * 0.5) - P.elbowR.rotation.x) * k;
     }
-    if (P.axe) P.axe.visible = !(pose && pose.useTool === false);
+    const heldTool = pose ? (pose.tool || (pose.useTool === false ? null : 'axe')) : (heroBuildHold ? 'hammer' : 'axe');
+    if (P.axe) P.axe.visible = heldTool === 'axe';
+    if (P.hammer) P.hammer.visible = heldTool === 'hammer';
 
     // scarf: 3-segment spring lag with speed + turn sway
     const gust = Math.min(1, sp / 8);
@@ -3702,6 +3767,7 @@ function bakeHeroLOD(root) {
   const protect = (o) => { if (o) o.traverse((x) => protectedNodes.add(x)); };
   protect(root.userData.head);
   protect(root.userData.axe);
+  protect(root.userData.hammer);
   for (const s of root.userData.scarf || []) protect(s);
   protect(root.userData.gear?.rifleG);
   const candidates = [];
@@ -4327,7 +4393,12 @@ function onUse(it) {
       w.stage = 2;
       cropSpots.forEach((c) => { c.mesh.scale.setScalar(1.15); c.mesh.material = c.mats.pumpkinM; });
       burst(p, 0x4fb8ff, 18, 2); chime(600); toast('💧 Watered! Return to harvest (E).');
-    } else { addItem('food', 2); completeWonder('harvest'); toast('🌾 Bountiful Harvest complete! (+2 food)'); }
+    } else {
+      startChop(null, 'pick');
+      for (let n = 0; n < 2; n++) flyPickup(p.clone().add(V3(rand(-0.4, 0.4), 0.8 + n * 0.2, rand(-0.4, 0.4))), 'crop', 0xe07b2a);
+      if (onPopup) onPopup(p.clone().add(V3(0, 1, 0)), '+2 🍎', '#ffe596');
+      addItem('food', 2); completeWonder('harvest'); toast('🌾 Bountiful Harvest complete! (+2 food)');
+    }
   } else if (it.id === 'flame') {
     const w = byId('flame');
     if (w.done) { burst(p, 0xff9a3d, 10, 2); return toast('The flame dances for you.'); }
@@ -6482,7 +6553,7 @@ function saveLife() {
     legacy: Life.legacy ? { ...Life.legacy, traits: [...(Life.legacy.traits || [])] } : null,
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
-    home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
+    home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
   };
@@ -6523,7 +6594,11 @@ function restoreLife(s) {
     Home.house = s.home.house ?? 0; Home.well = !!s.home.well; Home.barn = s.home.barn ?? 0;
     Home.fences = s.home.fences ?? 0; Home.cabin = !!s.home.cabin; Home.stall = !!s.home.stall;
     Home.lanterns = s.home.lanterns ?? 0; Home.dog = !!s.home.dog; Home.decor = s.home.decor ?? 0;
-    Home.plots = (s.home.plots || []).map((p) => ({ bought: !!p.bought, crop: !!p.crop, growth: p.growth ?? 0, water: !!p.water }));
+    Home.sites = {};
+    for (const [k, v] of Object.entries(s.home.sites || {})) {
+      if (v && Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lon))) Home.sites[k] = { lat: Number(v.lat), lon: Number(v.lon) };
+    }
+    Home.plots = (s.home.plots || []).map((p) => ({ bought: !!p.bought || !!p.crop, crop: !!p.crop, growth: p.growth ?? 0, water: !!p.water }));
     while (Home.plots.length < 6) Home.plots.push({ crop: false, growth: 0, water: false });
     const hb = s.home.build;
     const target = hb && Number.isFinite(hb.target) ? Math.min(4, Math.max(1, Math.floor(hb.target))) : 0;
@@ -6653,8 +6728,69 @@ const Home = {
   refrigeration: false, firebreak: false, dynamo: false,
   telegraph: false, radio: false, greenhouse: false, fishTrap: false,
   lightningRod: false, sandbags: false, hailNetting: false, scarecrow: false,
+  sites: {},
   plots: Array.from({ length: 6 }, () => ({ crop: false, growth: 0, water: false })),
 };
+// Where each structure sits by default. Choosing a site in build mode stores an
+// override in Home.sites, so the whole homestead can be laid out freely.
+const SITE_DEFAULTS = {
+  house: { lat: -2, lon: 56, r: 3.0, label: 'the house' },
+  well: { lat: -1.5, lon: 54, r: 1.2, label: 'the well' },
+  barn: { lat: -5, lon: 55, r: 2.5, label: 'the barn' },
+  cabin: { lat: -0.5, lon: 52.5, r: 1.9, label: 'the cabin' },
+  stall: { lat: -2.5, lon: 59.5, r: 1.7, label: 'the stall' },
+  workshop: { lat: 2.6, lon: 55, r: 2.1, label: 'the workshop' },
+  windmill: { lat: 3.5, lon: 50.5, r: 1.9, label: 'the windmill' },
+  sawmill: { lat: -7.5, lon: 51, r: 2.2, label: 'the sawmill' },
+  mill: { lat: 3.5, lon: 59.5, r: 1.9, label: 'the mill' },
+  pump: { lat: 0.8, lon: 51.5, r: 1.1, label: 'the steam pump' },
+  gunsmith: { lat: -7.5, lon: 58.5, r: 2.0, label: 'the gunsmith' },
+  plot0: { lat: -4.5, lon: 53.5, r: 1.25, label: 'a field plot' },
+  plot1: { lat: -4.5, lon: 54.5, r: 1.25, label: 'a field plot' },
+  plot2: { lat: -4.5, lon: 55.5, r: 1.25, label: 'a field plot' },
+  plot3: { lat: -4.5, lon: 56.5, r: 1.25, label: 'a field plot' },
+  plot4: { lat: -4.5, lon: 57.5, r: 1.25, label: 'a field plot' },
+  plot5: { lat: -4.5, lon: 58.5, r: 1.25, label: 'a field plot' },
+};
+const HOME_FIXED = [
+  { lat: -3, lon: 58, r: 0.8, label: 'the cookpot', fixed: true },
+  { lat: -1, lon: 58.5, r: 0.8, label: 'the homestead board', fixed: true },
+  { lat: 0, lon: 59.5, r: 0.8, label: 'the bounty board', fixed: true },
+  { lat: -4, lon: 57, r: 0.8, label: 'the trough', fixed: true },
+];
+function siteFor(key) {
+  const s = Home.sites && Home.sites[key];
+  const d = SITE_DEFAULTS[key] || SITE_DEFAULTS.house;
+  return s ? { lat: Number(s.lat) || 0, lon: Number(s.lon) || 0 } : { lat: d.lat, lon: d.lon };
+}
+function houseSite() { return siteFor('house'); }
+function houseOffset(dLat, dLon, h = 0) {
+  const s = houseSite();
+  return homeSpot(s.lat + dLat, s.lon + dLon, h);
+}
+function barnSite() { return siteFor('barn'); }
+function siteBuilt(key) {
+  if (key === 'house') return Home.house > 0 || !!Home.build;
+  if (key === 'well') return !!Home.well;
+  if (key === 'barn') return Home.barn > 0;
+  if (key === 'cabin') return !!Home.cabin;
+  if (key === 'stall') return !!Home.stall;
+  if (key === 'workshop') return !!Home.workshop;
+  if (key === 'windmill') return !!Home.windmill;
+  if (key === 'sawmill') return !!Home.sawmill;
+  if (key === 'mill') return !!Home.mill;
+  if (key === 'pump') return !!Home.pump;
+  if (key === 'gunsmith') return !!Home.gunsmith;
+  if (/^plot\d$/.test(key)) return !!Home.plots[Number(key.slice(4))]?.bought;
+  return false;
+}
+function siteKeyFor(def) {
+  if (!def) return null;
+  if (def.houseTier) return 'house';
+  if (def.id === 'barn1' || def.id === 'barn2') return 'barn';
+  if (/^plot\d$/.test(def.id)) return def.id;
+  return ['well', 'cabin', 'stall', 'workshop', 'windmill', 'sawmill', 'mill', 'pump', 'gunsmith'].includes(def.id) ? def.id : null;
+}
 let homeFirePos = null;
 const homeGroup = new THREE.Group();
 scene.add(homeGroup);
@@ -6672,7 +6808,6 @@ function addOccluder(obj) {
   occluders.push(obj);
   try { occluderBoxes.push(new THREE.Box3().setFromObject(obj).expandByScalar(0.7)); } catch { /* boxes not ready yet */ }
 }
-const HOUSE_SPOT = { lat: -2, lon: 56 };
 const HOUSE_BUILD_DUR = 4.5;
 const HOUSE_BUILD_NAMES = { 1: 'Mud Hut', 2: 'Farmhouse', 3: 'Big Farmhouse', 4: 'Manor' };
 let houseBuildParts = null;
@@ -6715,10 +6850,11 @@ function houseStyle(t) {
 function buildHouseMesh() {
   if (Home.build) { buildHouseConstructionMesh(); return; }
   const t = Home.house, broken = Home.dmg.house;
+  const hs = houseSite();
   if (t === 0) {
     const tent = mesh(new THREE.ConeGeometry(1.5, 1.9, 6), mat(0xd9c9a8), 0, 0, 0);
-    placeAt(tent, HOUSE_SPOT.lat, HOUSE_SPOT.lon, 0.9, 0.4);
-    placeAt(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.56, 8), mat(0xe8d9a8), 0, 0, 0, false), HOUSE_SPOT.lat + 1.2, HOUSE_SPOT.lon + 0.5, 0.2, 1);
+    placeAt(tent, hs.lat, hs.lon, 0.9, 0.4);
+    placeAt(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.56, 8), mat(0xe8d9a8), 0, 0, 0, false), hs.lat + 1.2, hs.lon + 0.5, 0.2, 1);
     return;
   }
   const g = new THREE.Group();
@@ -6737,7 +6873,7 @@ function buildHouseMesh() {
   g.add(chim);
   g.userData.chimney = new THREE.Vector3(w / 4, hgt + 2, -d / 4);
   if (broken) { g.rotation.z = 0.12; } // storm-tilted until repaired
-  placeAt(g, HOUSE_SPOT.lat, HOUSE_SPOT.lon, 0, 0.5);
+  placeAt(g, hs.lat, hs.lon, 0, 0.5);
   addOccluder(g);
   Home.chimneyG = g;
 }
@@ -6809,7 +6945,7 @@ function buildHouseConstructionMesh() {
     workers.push({ arm, phase: spec.phase, mesh: v });
   }
 
-  placeAt(g, HOUSE_SPOT.lat, HOUSE_SPOT.lon, 0, 0.5);
+  placeAt(g, houseSite().lat, houseSite().lon, 0, 0.5);
   houseBuildParts = { walls, roof, chimney, windows, scaffold, workers };
   updateHouseConstruction(Math.min(1, b.t / b.dur));
 }
@@ -6832,13 +6968,16 @@ function updateHouseConstruction(p) {
   for (const w of q.workers) w.mesh.visible = p < 0.98;
 }
 
-function startHouseConstruction(target) {
+function startHouseConstruction(target, site, def) {
+  if (site) Home.sites.house = { lat: site.lat, lon: site.lon };
   Home.build = { target, t: 0, dur: HOUSE_BUILD_DUR / buildSpeedMult() };
   closeBuild();
   rebuildHomestead();
-  burst(homeSpot(HOUSE_SPOT.lat, HOUSE_SPOT.lon, 1.0), 0xd8c7a1, 12, 1.6);
+  const hs = houseSite();
+  burst(homeSpot(hs.lat, hs.lon, 1.0), 0xd8c7a1, 12, 1.6);
   chime(380);
   toast(`🔨 ${HOUSE_BUILD_NAMES[target] || 'Home'} under construction — watch it rise!`);
+  beginConstruction(def || { name: HOUSE_BUILD_NAMES[target] || 'Home' }, hs);
   saveCheckpoint();
 }
 
@@ -6849,12 +6988,14 @@ function completeHouseConstruction() {
   Home.house = b.target;
   Home.build = null;
   rebuildHomestead();
-  const c = homeSpot(HOUSE_SPOT.lat, HOUSE_SPOT.lon, 1.4);
+  const hs = houseSite();
+  const c = homeSpot(hs.lat, hs.lon, 1.4);
   burst(c, 0x9df0a8, 22, 2.4);
   burst(c, 0xffd97a, 10, 1.6);
   chime(760);
   toast(`🏠 ${name} complete!`);
   if (onGainXp) onGainXp(30, c);
+  finishBuildTask();
   renderBuild();
   saveCheckpoint();
 }
@@ -6863,6 +7004,7 @@ tickers.push((t, dt) => {
   const b = Home.build;
   if (!b) return;
   b.t = Math.min(b.dur, b.t + dt);
+  if (activeBuild?.house) { activeBuild.t = b.t; activeBuild.dur = b.dur; }
   const p = b.dur > 0 ? b.t / b.dur : 1;
   updateHouseConstruction(p);
   for (const w of houseBuildParts?.workers || []) {
@@ -6872,7 +7014,8 @@ tickers.push((t, dt) => {
   b.dust = (b.dust ?? 0) - dt;
   if (b.dust <= 0) {
     b.dust = 0.55;
-    burst(homeSpot(HOUSE_SPOT.lat, HOUSE_SPOT.lon, 0.6 + p * 1.4), 0xd8c7a1, 3, 1.0);
+    const hs = houseSite();
+    burst(homeSpot(hs.lat, hs.lon, 0.6 + p * 1.4), 0xd8c7a1, 3, 1.0);
   }
   if (b.t >= b.dur) completeHouseConstruction();
 });
@@ -6887,7 +7030,8 @@ function buildBarnMesh() {
   roof.rotation.y = Math.PI / 4; g.add(roof);
   g.add(mesh(new THREE.BoxGeometry(1.2, 1.6, 0.12), mat(0x4a3320), 0, 0.8, 1.32, false));
   if (broken) g.rotation.z = -0.1;
-  placeAt(g, -5, 55, 0, -0.3);
+  const site = siteFor('barn');
+  placeAt(g, site.lat, site.lon, 0, -0.3);
   addOccluder(g);
 }
 function buildFenceMesh() {
@@ -6920,7 +7064,8 @@ function buildMiscMeshes() {
     g.add(mesh(new THREE.CylinderGeometry(0.08, 0.08, 1.8, 5), mat(0x7a5230), 0.6, 1.2, 0));
     g.add(mesh(new THREE.ConeGeometry(1.0, 0.7, 6), mat(0x7a8b6f), 0, 2.3, 0));
     if (Home.dmg.well) g.rotation.z = 0.12;
-    placeAt(g, -1.5, 54, 0, 0);
+    const s = siteFor('well');
+    placeAt(g, s.lat, s.lon, 0, 0);
   }
   if (Home.cabin) {
     const g = new THREE.Group();
@@ -6928,7 +7073,8 @@ function buildMiscMeshes() {
     const roof = mesh(new THREE.ConeGeometry(2.0, 1.0, 4), mat(0x4a5d5a), 0, 2.4, 0);
     roof.rotation.y = Math.PI / 4; g.add(roof);
     if (Home.dmg.cabin) g.rotation.z = -0.1;
-    placeAt(g, -0.5, 52.5, 0, 0.2);
+    const s = siteFor('cabin');
+    placeAt(g, s.lat, s.lon, 0, 0.2);
     addOccluder(g);
   }
   if (Home.stall) {
@@ -6939,7 +7085,8 @@ function buildMiscMeshes() {
       g.add(mesh(new THREE.BoxGeometry(0.55, 0.08, 1.5), mat(k % 2 ? 0xc93a3a : 0xf3e9dc), -0.85 + k * 0.57, 2.25, 0, false));
     g.add(mesh(new THREE.BoxGeometry(1.8, 0.5, 0.9), mat(0x9a6b42), 0, 0.5, 0));
     if (Home.dmg.stall) g.rotation.z = 0.1;
-    placeAt(g, -2.5, 59.5, 0, 1.2);
+    const s = siteFor('stall');
+    placeAt(g, s.lat, s.lon, 0, 1.2);
   }
   for (let i = 0; i < Home.lanterns; i++) {
     const spots = [[-2, 54.5], [-4, 59], [-5.5, 53.5]];
@@ -6970,7 +7117,8 @@ function buildMiscMeshes() {
     g.add(mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), mat(0x7a5230), -0.8, 0.4, 1.3, false));
     g.add(mesh(new THREE.BoxGeometry(0.5, 0.08, 0.08), mat(0x9aa0a6), 0.6, 1.0, 1.3, false)); // tools
     g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.4, 6), mat(0x8d8d94), -0.9, 2.5, -0.6)); // chimney
-    placeAt(g, 2.6, 55, 0, 0.4);
+    const s = siteFor('workshop');
+    placeAt(g, s.lat, s.lon, 0, 0.4);
     addOccluder(g);
   }
   if (Home.windmill) {
@@ -6985,7 +7133,8 @@ function buildMiscMeshes() {
       hub.add(blade);
     }
     g.add(mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.3, 8), mat(0x5a3e2b), 0, 3.6, 1.0, false));
-    placeAt(g, 3.5, 50.5, 0, 0.2);
+    const s = siteFor('windmill');
+    placeAt(g, s.lat, s.lon, 0, 0.2);
     addOccluder(g);
     tickers.push((t) => { if (g.parent) hub.rotation.z = t * 0.8; });
   }
@@ -6997,7 +7146,8 @@ function buildMiscMeshes() {
     for (let i = 0; i < 4; i++) { const log = mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.2, 7), mat(0x8a6238), 0, 0.4, 0); log.rotation.z = Math.PI / 2; log.position.set(-0.6 + i * 0.4, 0.35 + (i % 2) * 0.25, 0); g.add(log); }
     const saw = mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.05, 12), mat(0x9aa0a6, { metalness: 0.5 }), 0.7, 0.9, 0.2, false);
     saw.rotation.x = Math.PI / 2; g.add(saw);
-    placeAt(g, -7.5, 51, 0.1, 0.3);
+    const s = siteFor('sawmill');
+    placeAt(g, s.lat, s.lon, 0.1, 0.3);
     addOccluder(g);
     tickers.push((t) => { if (g.parent) saw.rotation.z = t * 3; });
   }
@@ -7007,7 +7157,8 @@ function buildMiscMeshes() {
     g.add(mesh(new THREE.ConeGeometry(1.3, 0.8, 10), mat(0x4a5d5a), 0, 3.0, 0));
     const wheel = mesh(new THREE.TorusGeometry(0.8, 0.08, 5, 16), mat(0x7a5230), 0, 1.1, 1.2, false);
     g.add(wheel);
-    placeAt(g, 3.5, 59.5, 0, 0.6);
+    const s = siteFor('mill');
+    placeAt(g, s.lat, s.lon, 0, 0.6);
     addOccluder(g);
     tickers.push((t) => { if (g.parent) wheel.rotation.z = t * 1.2; });
   }
@@ -7017,7 +7168,8 @@ function buildMiscMeshes() {
     g.add(mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.2, 6), mat(0x5a3e2b), 0, 1.1, 0));
     g.add(mesh(new THREE.TorusGeometry(0.4, 0.06, 5, 12), mat(0x7a5230), 0, 2.1, 0.2, false));
     g.add(mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.6, 5), mat(0x8d8d94), 0.6, 1.3, 0, false));
-    placeAt(g, 0.8, 51.5, 0, 0.2);
+    const s = siteFor('pump');
+    placeAt(g, s.lat, s.lon, 0, 0.2);
   }
   if (Home.gunsmith) {
     const g = new THREE.Group();
@@ -7025,7 +7177,8 @@ function buildMiscMeshes() {
     g.add(mesh(new THREE.ConeGeometry(1.6, 0.8, 4), mat(0x2a2320), 0, 1.8, 0));
     g.add(mesh(new THREE.CylinderGeometry(0.5, 0.6, 0.5, 8), mat(0x2a2320), 0.9, 0.25, 1.0, false)); // barrel
     g.add(mesh(new THREE.BoxGeometry(0.7, 0.35, 0.5), mat(0x5d5d66), -0.6, 0.5, 1.0)); // anvil
-    placeAt(g, -7.5, 58.5, 0, -0.4);
+    const s = siteFor('gunsmith');
+    placeAt(g, s.lat, s.lon, 0, -0.4);
     addOccluder(g);
   }
   if (Home.telegraph) {
@@ -7129,9 +7282,10 @@ function rebuildHomestead() {
   buildFenceMesh();
   buildMiscMeshes();
   for (let i = 0; i < 6; i++) {
-    if (Home.plots[i].bought) buildPlotMesh(i, -4.5, 53.5 + i);
+    if (Home.plots[i].bought) { const s = siteFor('plot' + i); buildPlotMesh(i, s.lat, s.lon); }
     else plotMesh[i] = null;
   }
+  syncHomeInteractPositions();
   renderStats();
 }
 
@@ -7199,6 +7353,18 @@ function troughLabel() {
   const fed = animals.filter((a) => a.fed).length;
   return `Trough — ${fed}/${animals.length} fed`;
 }
+function syncHomeInteractPositions() {
+  const move = (id, key, h) => {
+    const it = interactables.find((x) => x.id === id);
+    if (!it) return;
+    const s = siteFor(key);
+    it.pos.copy(homeSpot(s.lat, s.lon, h));
+  };
+  move('home-door', 'house', 1.6);
+  move('home-bed', 'house', 1.2);
+  for (const k of ['well', 'barn', 'stall', 'workshop']) move('home-' + k, k, k === 'barn' ? 1.5 : 1);
+  for (let i = 0; i < 6; i++) move('plot' + i, 'plot' + i, 0.9);
+}
 function feedAnimals() {
   if (playerDead) return;
   if (!animals.length) return toast('🥣 Empty trough — buy hens, sheep or cows from Maren.');
@@ -7229,9 +7395,15 @@ function plotCycle(i) {
     p.crop = false; p.growth = 0; p.water = false;
     for (let n = 0; n < yieldN; n++) addItem('food', 1);
     Life.stats.harvests++;
-    burst(plotMesh[i].g.position.clone(), 0x8fd06a, 12, 1.6);
+    startChop(null, 'pick');
+    const plotPos = plotMesh[i] ? plotMesh[i].g.position.clone() : homeSpot(siteFor('plot' + i).lat, siteFor('plot' + i).lon, 1);
+    for (let n = 0; n < yieldN; n++) {
+      flyPickup(plotPos.clone().add(V3(rand(-0.45, 0.45), 0.55 + n * 0.12, rand(-0.45, 0.45))), 'crop', 0xe07b2a);
+    }
+    if (onPopup) onPopup(plotPos.clone().add(V3(0, 0.9, 0)), `+${yieldN} 🍎`, '#ffe596');
+    burst(plotPos, 0x8fd06a, 12, 1.6);
     chime(600); toast(`🌾 Harvest! (+${yieldN}🍎)${farmingTier() >= 2 ? ` · ${['hoe', 'plough', 'seed drill', 'thresher'][farmingTier()]}` : ''}`);
-    if (onGainXp) onGainXp(12, plotMesh[i].g.position.clone());
+    if (onGainXp) onGainXp(12, plotPos);
   } else if (p.crop && !p.water) {
     const noWell = !Home.well || Home.dmg.well;
     if (noWell && meters.energy < 3) return toast('😮‍💨 Too tired to haul water from the pond.');
@@ -7352,11 +7524,12 @@ function buildAfford(b) {
   return { ok: true };
 }
 function doBuild(b) {
-  if (playerDead || !buildOpen) return;
+  if (playerDead || !buildOpen) return false;
   const aff = buildAfford(b);
-  if (!aff.ok) { toast(`🔨 ${aff.why}.`); return; }
-  if (!removeItems(b.cost)) { toast('🔨 Not enough materials.'); return; }
-  if (b.houseTier) { startHouseConstruction(b.houseTier); return; }
+  if (!aff.ok) { toast(`🔨 ${aff.why}.`); return false; }
+  const key = siteKeyFor(b);
+  if (key) { startPlacement(b); return true; }
+  if (!removeItems(b.cost)) { toast('🔨 Not enough materials.'); return false; }
   b.apply();
   rebuildHomestead();
   burst(homeSpot(HOME.lat, HOME.lon, 1.5), 0x9df0a8, 18, 2.4);
@@ -7366,9 +7539,11 @@ function doBuild(b) {
   renderBuild();
   saveCheckpoint();
   renderStats();
+  return true;
 }
 function openBuild() {
-  if (playerDead || buildOpen || npcOpen) return;
+  if (playerDead || buildOpen || npcOpen || placement) return;
+  if (activeBuild || Home.build) { toast('🔨 Finish the current structure first.'); return; }
   buildOpen = true;
   document.getElementById('build-overlay').classList.remove('hidden');
   renderBuild();
@@ -7403,7 +7578,7 @@ function renderBuild() {
     el.className = 'npc-trade';
     el.disabled = !aff.ok;
     el.innerHTML = `<span class="trade-main"><span class="trade-route">${b.name} — ${fmtItems(b.cost)}</span>` +
-      `<span class="trade-blurb"><br>${b.blurb}${aff.ok ? '' : ` — ${aff.why}`}</span></span>`;
+      `<span class="trade-blurb"><br>${b.blurb}${siteKeyFor(b) ? ' · 📍 choose a site' : ''}${aff.ok ? '' : ` — ${aff.why}`}</span></span>`;
     el.onclick = () => doBuild(b);
     box.appendChild(el);
   }
@@ -7429,6 +7604,279 @@ function closeBuild() {
   buildOpen = false;
   document.getElementById('build-overlay').classList.add('hidden');
 }
+
+// --- choose-a-site construction: ghost preview, walk over, hammer it up ---
+let placement = null;
+let activeBuild = null;
+let placementGhost = null;
+let buildSiteSeq = 0;
+function siteRadius(key) { const d = SITE_DEFAULTS[key]; return d ? d.r : 1.4; }
+function buildDims(key) {
+  if (/^plot/.test(key)) return { r: 1.05, h: 0.34, posts: 0.55, roof: false, soil: true };
+  if (key === 'well') return { r: 1.15, h: 1.0, posts: 1.55, roof: true };
+  if (key === 'pump') return { r: 0.95, h: 1.15, posts: 1.6, roof: false };
+  if (key === 'windmill') return { r: 1.5, h: 2.8, posts: 3.4, roof: true };
+  if (key === 'barn') return { r: 2.1, h: 2.2, posts: 2.8, roof: true };
+  if (key === 'house') return { r: 2.1, h: 2.2, posts: 2.8, roof: true };
+  return { r: 1.4, h: 1.65, posts: 2.2, roof: true };
+}
+function normalToLatLon(n) {
+  const lat = Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG;
+  let lon = Math.atan2(n.z, n.x) / DEG;
+  if (lon < 0) lon += 360;
+  return { lat, lon };
+}
+function disposeTree(obj) {
+  obj.traverse((o) => {
+    if (!o.isMesh && !o.isLine) return;
+    o.geometry?.dispose?.();
+    if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose?.());
+    else o.material?.dispose?.();
+  });
+}
+function makePlacementGhost(key) {
+  const dim = buildDims(key);
+  const r = Math.max(0.7, dim.r * 0.92);
+  const h = dim.h;
+  const g = new THREE.Group();
+  const lineM = new THREE.MeshBasicMaterial({ color: 0x9df0a8, transparent: true, opacity: 0.9, depthWrite: false });
+  const fillM = new THREE.MeshBasicMaterial({ color: 0x9df0a8, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide });
+  const boxM = new THREE.MeshBasicMaterial({ color: 0x9df0a8, transparent: true, opacity: 0.1, depthWrite: false });
+  const edgeM = new THREE.LineBasicMaterial({ color: 0x9df0a8, transparent: true, opacity: 0.7 });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(r, 28).rotateX(-Math.PI / 2), fillM);
+  disc.position.y = 0.02; g.add(disc);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.05, 6, 32).rotateX(Math.PI / 2), lineM);
+  ring.position.y = 0.04; g.add(ring);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.45, 6), lineM);
+  post.position.y = 0.73; g.add(post);
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.26, 0.03), lineM);
+  flag.position.set(0.23, 1.35, 0); g.add(flag);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(r * 1.5, h, r * 1.5), boxM);
+  box.position.y = h / 2 + 0.05; g.add(box);
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(box.geometry), edgeM);
+  edges.position.copy(box.position); g.add(edges);
+  g.visible = false;
+  scene.add(g);
+  return { g, lineM, fillM, boxM, edgeM };
+}
+function placementValidAt(n, key) {
+  if (!n) return { ok: false, why: 'Point at the ground' };
+  const ownR = siteRadius(key);
+  if (heightFor(n) < 0.14) return { ok: false, why: 'Choose dry land' };
+  const homeN = latLonToVec3(HOME.lat, HOME.lon, 0).normalize();
+  if (n.distanceTo(homeN) * R > 17) return { ok: false, why: 'Choose a site near the homestead' };
+  const occupied = [];
+  for (const k of Object.keys(SITE_DEFAULTS)) {
+    if (k === key || !siteBuilt(k)) continue;
+    if (/^plot/.test(key) && /^plot/.test(k)) continue; // tilled rows sit shoulder to shoulder
+    const s = siteFor(k);
+    occupied.push({ lat: s.lat, lon: s.lon, r: siteRadius(k), label: SITE_DEFAULTS[k].label });
+  }
+  for (const f of HOME_FIXED) occupied.push({ ...f });
+  for (const o of occupied) {
+    const d = n.distanceTo(latLonToVec3(o.lat, o.lon, 0).normalize()) * R;
+    const gap = o.fixed ? (o.r + ownR) * 0.32 + 0.1 : (o.r + ownR) * 0.45 + 0.2;
+    if (d < gap) return { ok: false, why: `Too close to ${o.label}` };
+  }
+  return { ok: true };
+}
+function renderPlacementHint() {
+  const hint = document.getElementById('place-hint');
+  const title = document.getElementById('place-title');
+  const sub = document.getElementById('place-sub');
+  if (!hint || !title || !sub) return;
+  if (!placement) { hint.classList.add('hidden'); return; }
+  hint.classList.remove('hidden');
+  hint.classList.toggle('invalid', !placement.valid);
+  title.textContent = placement.valid ? `Build ${placement.def.name} here` : (placement.why || `Choose a site for ${placement.def.name}`);
+  sub.textContent = placement.valid ? 'Click the ground to confirm · Esc to cancel' : 'Move to a clear, dry spot near the homestead · Esc to cancel';
+}
+function updatePlacementGhost(x, y) {
+  if (!placement || !placementGhost) return;
+  clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
+  const hit = planetMesh ? clickRay.intersectObject(planetMesh, false)[0] : null;
+  if (!hit) {
+    placementGhost.g.visible = false;
+    placement.valid = false; placement.n = null; placement.why = 'Point at the ground';
+    renderPlacementHint();
+    return;
+  }
+  const n = hit.point.clone().normalize();
+  placementGhost.g.visible = true;
+  orientOnSphere(placementGhost.g, n.clone().multiplyScalar(R + heightFor(n) + 0.06), 0);
+  const v = placementValidAt(n, placement.key);
+  placement.n = n; placement.valid = v.ok; placement.why = v.why || '';
+  const col = v.ok ? 0x9df0a8 : 0xff6b6b;
+  placementGhost.lineM.color.setHex(col);
+  placementGhost.fillM.color.setHex(col);
+  placementGhost.boxM.color.setHex(col);
+  placementGhost.edgeM.color.setHex(col);
+  renderPlacementHint();
+}
+function startPlacement(def) {
+  if (placement) return false;
+  if (activeBuild || Home.build) { toast('🔨 Finish the current structure first.'); return false; }
+  const key = siteKeyFor(def);
+  if (!key) return false;
+  if (placementGhost) { scene.remove(placementGhost.g); disposeTree(placementGhost.g); placementGhost = null; }
+  placement = { def, key, n: null, valid: false, why: '' };
+  placementGhost = makePlacementGhost(key);
+  closeBuild();
+  clearAutoTask();
+  cursorDirty = true;
+  renderPlacementHint();
+  const x = cursorX || innerWidth / 2, y = cursorY || innerHeight / 2;
+  updatePlacementGhost(x, y);
+  chime(540);
+  return true;
+}
+function cancelPlacement(silent) {
+  if (!placement) return;
+  if (placementGhost) { scene.remove(placementGhost.g); disposeTree(placementGhost.g); placementGhost = null; }
+  placement = null;
+  document.getElementById('place-hint')?.classList.add('hidden');
+  cursorDirty = true;
+  cursorIconNow = null;
+  if (!silent) toast('📍 Site cancelled — materials untouched.');
+}
+function placeSiteAt(latDeg, lonDeg) {
+  if (!placement) return false;
+  const n = latLonToVec3(Number(latDeg) || 0, Number(lonDeg) || 0, 0).normalize();
+  const v = placementValidAt(n, placement.key);
+  placement.n = n; placement.valid = v.ok; placement.why = v.why || '';
+  if (!v.ok) { renderPlacementHint(); toast(`📍 ${v.why}.`); return false; }
+  return confirmPlacement();
+}
+function confirmPlacement() {
+  if (!placement) return false;
+  const b = placement.def, key = placement.key;
+  if (!placement.valid || !placement.n) {
+    toast(`📍 ${placement.why || 'Choose a clear, dry spot.'}`);
+    return false;
+  }
+  const aff = buildAfford(b);
+  if (!aff.ok) { toast(`🔨 ${aff.why}.`); cancelPlacement(true); return false; }
+  if (!removeItems(b.cost)) { toast('🔨 Not enough materials.'); cancelPlacement(true); return false; }
+  const site = normalToLatLon(placement.n);
+  Home.sites[key] = { lat: site.lat, lon: site.lon };
+  cancelPlacement(true);
+  syncHomeInteractPositions();
+  if (b.houseTier) {
+    startHouseConstruction(b.houseTier, site, b);
+  } else {
+    b.apply();
+    syncHomeInteractPositions();
+    beginConstruction(b, site);
+    saveCheckpoint();
+  }
+  renderStats();
+  return true;
+}
+function makeBuildScaffold(site, key) {
+  const dim = buildDims(key);
+  const r = Math.max(0.8, dim.r * 0.95);
+  const h = dim.h;
+  const g = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.02, r * 1.08, 0.1, 20), mat(dim.soil ? 0x6b4a2f : 0x8d8f93));
+  base.position.y = 0.05; base.receiveShadow = true; g.add(base);
+  const postM = mat(0x8a6238);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.065, dim.posts, 5), postM);
+    post.position.set(sx * (r * 0.78), dim.posts / 2, sz * (r * 0.78));
+    post.castShadow = true; g.add(post);
+  }
+  const work = new THREE.Group();
+  work.position.y = 0.12; g.add(work);
+  let wall;
+  if (dim.soil) {
+    wall = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.05, r * 1.12, h, 16), mat(0x8a5a33));
+    wall.position.y = h / 2;
+    wall.receiveShadow = true;
+  } else {
+    wall = new THREE.Mesh(new THREE.BoxGeometry(r * 1.35, h, r * 1.35), mat(0xc9b28a));
+    wall.position.y = h / 2; wall.castShadow = true; wall.receiveShadow = true;
+  }
+  work.add(wall);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(r * 1.05, 0.7, 4), mat(0x8a6b3a));
+  roof.position.y = h + 0.34; roof.rotation.y = Math.PI / 4; roof.castShadow = true;
+  work.add(roof);
+  work.scale.y = 0.02;
+  orientOnSphere(g, homeSpot(site.lat, site.lon, 0.02), rand(Math.PI * 2));
+  scene.add(g);
+  return { g, work, roof, r, h, hasRoof: dim.roof };
+}
+function updateBuildScaffold(b) {
+  if (!b || !b.group) return;
+  const p = THREE.MathUtils.clamp(b.t / Math.max(0.2, b.dur), 0, 1);
+  const g = b.group;
+  g.work.visible = p > 0.02;
+  g.work.scale.y = Math.max(0.02, Math.min(1, b.group.hasRoof ? p * 1.12 : 0.25 + p * 0.85));
+  g.roof.visible = b.group.hasRoof && p > 0.72;
+  if (g.roof.visible) g.roof.scale.setScalar(Math.min(1, (p - 0.72) / 0.28 + 0.2));
+}
+function buildImpact(b) {
+  const s = b?.site;
+  if (!s) return;
+  const p = homeSpot(s.lat, s.lon, 0.95);
+  burst(p, 0xd8c7a1, 5, 1.0);
+  chime(140 + Math.round(rand(0, 30)));
+  addShake(0.03);
+}
+function beginConstruction(def, site) {
+  if (activeBuild) return;
+  const key = def.houseTier ? 'house' : siteKeyFor(def);
+  const isHouse = !!def.houseTier;
+  const dur = isHouse ? (Home.build?.dur || HOUSE_BUILD_DUR) : 3.2 / buildSpeedMult();
+  const it = {
+    id: 'buildsite' + (++buildSiteSeq), pos: homeSpot(site.lat, site.lon, 1),
+    kind: '🏗️ BUILD SITE', radius: 4.6, label: () => `Build ${def.name}`,
+    buildSite: true, onUse: () => {},
+  };
+  addInteract(it);
+  const reg = interactables[interactables.length - 1];
+  activeBuild = { def, site, key, house: isHouse, interact: reg, t: isHouse ? (Home.build?.t || 0) : 0, dur, group: null, dust: 0 };
+  reg.buildSite = activeBuild;
+  if (!isHouse) activeBuild.group = makeBuildScaffold(site, key);
+  if (!isHouse) toast(`📍 Site chosen — ${def.name} is going up!`);
+  heroBuildHold = true;
+  setAutoTask(reg);
+  saveCheckpoint();
+}
+function finishBuildTask() {
+  const b = activeBuild;
+  if (!b) { heroBuildHold = false; return; }
+  if (b.group) { scene.remove(b.group.g); disposeTree(b.group.g); }
+  const ix = interactables.indexOf(b.interact);
+  if (ix >= 0) interactables.splice(ix, 1);
+  if (activeTask?.interact === b.interact) clearAutoTask();
+  activeBuild = null;
+  heroBuildHold = false;
+  if (!b.house) {
+    rebuildHomestead();
+    const p = homeSpot(b.site.lat, b.site.lon, 1.2);
+    burst(p, 0x9df0a8, 22, 2.4);
+    burst(p, 0xffd97a, 10, 1.6);
+    chime(760);
+    toast(`🔨 ${b.def.name} complete!`);
+    if (onGainXp) onGainXp(20, p);
+    renderBuild();
+    saveCheckpoint();
+    renderStats();
+  }
+}
+tickers.push((t, dt) => {
+  const b = activeBuild;
+  if (!b || b.house) return;
+  b.t = Math.min(b.dur, b.t + dt);
+  updateBuildScaffold(b);
+  b.dust = (b.dust ?? 0) - dt;
+  if (b.dust <= 0) {
+    b.dust = 0.75;
+    burst(homeSpot(b.site.lat, b.site.lon, 0.7), 0xd8c7a1, 2, 0.7);
+  }
+  if (b.t >= b.dur) finishBuildTask();
+});
+
 // first light: raise the homestead + a stone path from the farm trail
 rebuildHomestead();
 steppingStones([[-1, 52], [-2, 54], [-3, 56]], 0xf0d68a, 0.45);
@@ -7787,7 +8235,8 @@ function spawnAnimal(kind, silent) {
   if (animals.length >= animalCap()) return null;
   const builders = { hen: makeHen, sheep: makeFarmSheep, cow: makeCow };
   const m = builders[kind]();
-  const home = homeSpot(-5 + rand(-1, 1), 55 + rand(-1.5, 1.5), 0);
+  const bs = barnSite();
+  const home = homeSpot(bs.lat + rand(-1, 1), bs.lon + rand(-1.5, 1.5), 0);
   const n = home.clone().normalize();
   const a = { kind, mesh: m, pos: home.clone(), facing: V3(-n.z, 0, n.x).normalize(), fed: false, sick: false, hp: 20, phase: rand(6), wt: 0, tgt: null };
   m.position.copy(home);
@@ -7833,7 +8282,8 @@ function overnightAnimals() {
 }
 tickers.push((t, dt) => {
   if (playerDead) return;
-  const barnC = homeSpot(-5, 55, 0);
+  const bs = barnSite();
+  const barnC = homeSpot(bs.lat, bs.lon, 0);
   for (const a of animals) {
     a.wt -= dt;
     a.sheltering = !!Life.wildlifeShelter;
@@ -7906,7 +8356,8 @@ function makeDog() {
 function spawnDog() {
   if (dogEnt) return;
   const m = makeDog();
-  const home = homeSpot(-5.5, 57.5, 0);
+  const bs = barnSite();
+  const home = homeSpot(bs.lat - 0.5, bs.lon + 2.5, 0);
   const n = home.clone().normalize();
   dogEnt = { mesh: m, pos: home.clone(), facing: V3(-n.z, 0, n.x).normalize(), phase: rand(6), barkCd: 0 };
   m.position.copy(home);
@@ -8910,7 +9361,7 @@ function settleSpouse() {
   if (!Life.spouse) return;
   const n = NPCS.find((x) => x.id === Life.spouse);
   if (!n) return;
-  n.pos = homeSpot(0, 57, 0);
+  n.pos = houseOffset(2, 1, 0);
   n.it = n.it || interactables.find((i) => i.id === 'npc-' + n.id);
 }
 tickers.push(() => { // spouse interact follows them home
@@ -8941,7 +9392,7 @@ function haveChild() {
   Life.chronicle.push(`Day ${Life.day}: ${name} was born! 🍼`);
   spawnKidsMeshes();
   meters.morale = Math.min(100, (meters.morale ?? 80) + 15);
-  burst(homeSpot(HOUSE_SPOT.lat, HOUSE_SPOT.lon, 2), 0xf7a8c4, 24, 2.5);
+  burst(homeSpot(houseSite().lat, houseSite().lon, 2), 0xf7a8c4, 24, 2.5);
   chime(880);
   toast(`🍼 ${name} was born! (+morale, +upkeep)`);
 }
@@ -8951,7 +9402,7 @@ function ageKids() {
     k.age++;
     k.stage = k.age >= 12 ? 3 : (k.age >= 8 ? 2 : (k.age >= 4 ? 1 : 0));
     if (k.stage !== old) {
-      burst(homeSpot(HOUSE_SPOT.lat, HOUSE_SPOT.lon, 2), 0xffd97a, 18, 2);
+      burst(homeSpot(houseSite().lat, houseSite().lon, 2), 0xffd97a, 18, 2);
       chime(700);
       toast(`🎂 ${k.name} is now a ${kidStageName(k.stage)}!` + (k.stage === 3 ? ' They work the farm FREE.' : (k.stage === 2 ? ' They help water crops.' : '')));
       meters.morale = Math.min(100, (meters.morale ?? 80) + 10);
@@ -8979,7 +9430,7 @@ function spawnKidsMeshes() {
   Life.kids.forEach((k, i) => {
     const m = makeVillager({ coat: coats[i % 3], hat: 'cap', hatColor: 0xf3e9dc });
     m.scale.setScalar(0.55 + k.stage * 0.15);
-    const home = homeSpot(0.5 + i * 1.4, 57.8, 0);
+    const home = houseOffset(2.5 + i * 1.4, 1.8, 0);
     m.position.copy(home);
     scene.add(m);
     const n = home.clone().normalize();
@@ -8988,7 +9439,7 @@ function spawnKidsMeshes() {
 }
 tickers.push((t, dt) => {
   if (playerDead) return;
-  const homeC = homeSpot(0, 57.5, 0);
+  const homeC = houseOffset(2, 1.5, 0);
   for (const k of kidMeshes) {
     k.wt -= dt;
     if (k.wt <= 0) { k.wt = rand(2.5, 6); k.tgt = homeC.clone().add(V3(rand(-2, 2), 0, rand(-2, 2))); }
@@ -9026,7 +9477,8 @@ function spawnWorkers() {
   Life.workers.forEach((w, i) => {
     const coats = [0x6b4a2f, 0x4a5d5a];
     const m = makeVillager({ coat: coats[i % 2], hat: 'cap', hatColor: 0x8d8d94 });
-    const home = homeSpot(-0.5 + i * 1.6, 51.5, 0);
+    const cs = siteFor('cabin');
+    const home = homeSpot(cs.lat + i * 1.6, cs.lon - 1, 0);
     m.position.copy(home);
     scene.add(m);
     const n = home.clone().normalize();
@@ -9035,7 +9487,7 @@ function spawnWorkers() {
 }
 tickers.push((t, dt) => { // hands amble between cabin, plots and barn
   if (playerDead) return;
-  const stops = [homeSpot(-0.5, 52.5, 0), homeSpot(-4.5, 56, 0), homeSpot(-5, 55, 0), homeSpot(-1, 58.5, 0)];
+  const stops = [homeSpot(siteFor('cabin').lat, siteFor('cabin').lon, 0), houseOffset(-2.5, 0, 0), homeSpot(barnSite().lat, barnSite().lon, 0), homeSpot(-1, 58.5, 0)];
   for (const k of workerMeshes) {
     k.wt -= dt;
     if (k.wt <= 0) { k.wt = rand(3, 7); k.tgt = stops[(Math.random() * stops.length) | 0].clone(); }
@@ -10225,6 +10677,7 @@ function taskIsCombat(it) {
   return k.includes('BEAR') || k.includes('WOLF') || k.includes('ROBBER') || k.includes('DEER') || k.includes('HARE');
 }
 function taskIsGather(it) { return !!(it && it.node); }
+function taskIsBuild(it) { return !!(it && it.buildSite); }
 function taskIsWonder(it) { return !!(it && it.id && ['flame', 'harvest', 'oasis', 'bell', 'light', 'scan', 'aurora', 'plant'].includes(it.id)); }
 // per-frame auto-action driver (called from updatePlayer when in range)
 function updateAutoTask(dt) {
@@ -10277,6 +10730,14 @@ function updateAutoTask(dt) {
     // one full swung chop per cycle; the hit lands on the contact frame
     activeTask.timer = CHOP_DUR + 0.08;
     if (chopT <= 0) swingChop(it.node);
+  } else if (taskIsBuild(it)) {
+    // hammer the rising frame on the same contact beat as a chop
+    activeTask.timer = CHOP_DUR + 0.08;
+    if (chopT <= 0) {
+      const b = it.buildSite;
+      startChop(null, 'build');
+      chopImpactFx = () => { if (activeBuild === b) buildImpact(b); };
+    }
   } else if (taskIsWonder(it)) {
     activeTask.timer = 1.0;
     (it.onUse || onUse)(it);
@@ -11026,6 +11487,7 @@ function closeRobber() {
 }
 function handleEscape() {
   if (!started) return; // title screen: nothing to do
+  if (placement) { cancelPlacement(); return; }
   if (!document.getElementById('chapter-card').classList.contains('hidden')) { closeChapterCard(); return; }
   if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) {
     closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber(); closeBounty();
@@ -11083,8 +11545,24 @@ Object.assign(window.__lp, {
   wildfireCells: () => (hazardProps && hazardProps.cells) ? hazardProps.cells : [],
   recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables, stealTool,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
-  gather: { start: (kind) => startChop(null, kind), stop: () => { chopT = 0; chopQueue = null; }, kind: () => gatherAction, actionFor: nodeGatherAction, pose: currentChopPose,
-    sample: (kind, t) => { const set = kind === 'pick' ? PICK : kind === 'shear' ? SHEAR : CHOP; return { useTool: set === CHOP, crouch: set.crouch ? kfAt(set.crouch, t) : 0, shR: kfAt(set.shR, t) }; } },
+  gather: { start: (kind) => startChop(null, kind), stop: () => { chopT = 0; chopQueue = null; }, kind: () => gatherAction, actionFor: nodeGatherAction, pose: currentChopPose, hit: (nd) => gatherHit(nd),
+    lastPickup: () => window.__lastPickup, lastKind: () => window.__lastGatherKind,
+    sample: (kind, t) => { const set = poseSetForAction(kind); return { useTool: set === CHOP, tool: set === CHOP ? 'axe' : set === BUILD ? 'hammer' : null, crouch: set.crouch ? kfAt(set.crouch, t) : 0, shR: kfAt(set.shR, t) }; } },
+  crops: { cycle: (i) => plotCycle(i), mesh: (i) => plotMesh[i], harvestYield },
+  build: {
+    defs: BUILD_DEFS, site: (key) => siteFor(key), siteKey: siteKeyFor, siteBuilt,
+    active: () => (activeBuild ? { id: activeBuild.def.id, name: activeBuild.def.name, t: activeBuild.t, dur: activeBuild.dur, house: activeBuild.house, site: { ...activeBuild.site } } : null),
+    distance: () => (activeBuild ? player.position.distanceTo(activeBuild.interact.pos) : null),
+    placement: () => (placement ? { id: placement.def.id, key: placement.key, valid: placement.valid, why: placement.why } : null),
+    placeAt: (lat, lon) => placeSiteAt(lat, lon), cancel: () => cancelPlacement(),
+    start: (id) => {
+      const b = BUILD_DEFS.find((x) => x.id === id);
+      if (!b) return false;
+      if (!buildOpen) openBuild();
+      return doBuild(b);
+    },
+    finish: () => finishBuildTask(),
+  },
   makeVillager,
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
   weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
@@ -11095,7 +11573,7 @@ Object.assign(window.__lp, {
   sfx: { log: sfxLog, weather: weatherSound },
   legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
-  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
+  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), hammerVisible: () => !!(player.userData.hammer && player.userData.hammer.visible), buildHold: () => heroBuildHold, heldTool: () => currentChopPose().tool, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
     gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, heat: !!player.userData.gear?.heatCloak?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
@@ -11163,7 +11641,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyF' && !playerDead) eatFood();
   if (e.code === 'KeyR' && !playerDead) useRemedy();
   if (e.code === 'KeyX' && !playerDead) { startReload(); return; }
-  if (e.code === 'KeyH' && !playerDead && !npcOpen) { buildOpen ? closeBuild() : openBuild(); }
+  if (e.code === 'KeyH' && !playerDead && !npcOpen) { if (placement) cancelPlacement(); else buildOpen ? closeBuild() : openBuild(); }
   if (e.code === 'KeyM') toggleGlobe();
   if (e.code === 'KeyJ') toggleJournal();
 });
@@ -11310,6 +11788,10 @@ function setCursorState(icon, label, color) {
 }
 function refreshContextCursor() {
   if (!cursorShown) return;
+  if (placement) {
+    setCursorState('hammer', placement.valid ? 'Place here' : (placement.why || 'Choose land'), placement.valid ? CURSOR_COLORS.hammer : '#ff8787');
+    return;
+  }
   if (globeMode) {
     clickRay.setFromCamera({ x: (cursorX / innerWidth) * 2 - 1, y: -(cursorY / innerHeight) * 2 + 1 }, camera);
     const hit = planetMesh ? clickRay.intersectObject(planetMesh, false)[0] : null;
@@ -11324,6 +11806,7 @@ function refreshContextCursor() {
 }
 addEventListener('pointermove', (e) => {
   cursorX = e.clientX; cursorY = e.clientY; cursorDirty = true;
+  if (placement) updatePlacementGhost(cursorX, cursorY);
   const overWorld = e.target === canvas || e.target === document.body;
   const enabled = settings.cursor !== false && !isTouchDevice;
   if (overWorld && enabled && started && !paused) {
@@ -11340,6 +11823,8 @@ addEventListener('blur', hideContextCursor);
 
 function clickToMove(x, y) {
   if (!planetMesh || !started || paused) return;
+  // build placement: the next click on the ground chooses the site
+  if (placement) { updatePlacementGhost(x, y); confirmPlacement(); return; }
   clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
   // globe view: click a far shore to fast-travel there (the debug goto, now a feature)
   if (globeMode) {
@@ -11381,6 +11866,7 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('pointerdown', (e) => {
   if (e.button === 2) {
     e.preventDefault();
+    if (placement) { cancelPlacement(); return; }
     try { cursorEl?.classList.add('aiming'); } catch { /* noop */ }
     if (started && !paused && !playerDead) manualFire(e.clientX, e.clientY);
     return;
@@ -11535,6 +12021,7 @@ document.getElementById('btn-close-npc').onclick = () => closeTrade();
 document.getElementById('btn-npc-leave').onclick = () => closeTrade();
 document.getElementById('btn-close-build').onclick = () => closeBuild();
 document.getElementById('btn-build-leave').onclick = () => closeBuild();
+document.getElementById('place-cancel')?.addEventListener('click', () => cancelPlacement());
 document.getElementById('build-overlay').addEventListener('pointerdown', (e) => {
   if (e.target.id === 'build-overlay') closeBuild();
 });
@@ -11761,6 +12248,7 @@ function updatePlayer(dt) {
   hopH += playerVel * dt;
   if (hopH < 0) { hopH = 0; playerVel = 0; }
   // RPG auto-action: walk into range, then work/fight on cooldown
+  heroBuildHold = !!(activeTask && taskIsBuild(activeTask.interact));
   try { updateAutoTask(dt); } catch { /* noop */ }
   try { if (blockLavaMovement()) { clearAutoTask(); } } catch { /* no hazard */ }
   // target ring pulse
@@ -11889,6 +12377,7 @@ function updateCamera(dt, n) {
 }
 
 function updateInteract() {
+  if (placement) { interactBar?.classList.add('hidden'); currentTarget = null; return; }
   let best = null, bestD = 1e9;
   for (const it of interactables) {
     const d = player.position.distanceTo(it.pos);

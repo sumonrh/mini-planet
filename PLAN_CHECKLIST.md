@@ -33,6 +33,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Insight from discoveries, wonders, fish, hazards and chapters (`progtest`)
 - [x] Fishing ladder handline → rod → net → trap; farming hoe → plough → seed drill → thresher; building hammer → saw → power tools (`progtest` tiers + dawn production)
 - [x] Production buildings: workshop, windmill, sawmill, grain mill, steam pump, gunsmith, telegraph, radio, greenhouse (`progtest` built meshes)
+- [x] Build-site placement: choose a structure on the homestead board, click a clear spot, then watch the settler walk over and hammer it up; sites persist, and family, herd, dog and hired hands follow the new house/barn/cabin (`herotrest`, `journeytest`)
 - [x] Visible tool/gear changes: rod, saw, drill, holster, heat cloak (`weapontest`, `herotrest`)
 - [x] Workshop clatter audio on research/crafting (`progtest`)
 
@@ -45,6 +46,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 
 ## Character
 - [x] Settler rig with five gear variants, blinking/expressions and weather/age idles; **jacket and trousers silhouette (no skirt)**; **context-specific gather poses (axe for wood/stone, hand-pick for berries/herbs, crouched shears for wool)**; **wade in shallow water, swim in deep water** (`herotrest`)
+- [x] Context-correct gathering: berries and crops fly as produce (not timber), herbs as leaves, wool as fluff, stone as chips; crops play the hand-pick pose on harvest (`herotrest`)
 - [x] Three measured LOD levels: portrait 85 calls, gameplay **65 (target ≤65)**, far 55 (`weapontest`)
 
 ## Saves, UX, accessibility

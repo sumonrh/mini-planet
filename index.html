@@ -84,6 +84,16 @@
   <div id="toast" class="hidden"></div>
   <div id="popups"></div>
 
+  <!-- Build-site placement hint -->
+  <div id="place-hint" class="hidden" role="status" aria-live="polite">
+    <span class="place-pin">📍</span>
+    <span class="place-copy">
+      <b id="place-title">Choose a site</b>
+      <small id="place-sub">Click the ground to build · Esc to cancel</small>
+    </span>
+    <button id="place-cancel" type="button">Cancel</button>
+  </div>
+
   <!-- Context cursor (custom, hidden on touch / when disabled) -->
   <div id="cursor" aria-hidden="true">
     <div class="cursor-ring"></div>
@@ -155,6 +165,7 @@
       <p>Explore one tiny planet. Seven worlds, seven small moments — <b>7 Small Wonders</b>. <b>Click anything (or press E once)</b> and your hero walks over and does the whole job — chopping, foraging, building, even fighting.</p>
       <ul>
         <li><b>Act:</b> click a tree, rock, bush, beast, person or wonder — or press <kbd>E</kbd> once nearby. The hero auto-works it until done. Manual steering (WASD) cancels non-combat jobs.</li>
+        <li><b>Build a site:</b> open the homestead board (<kbd>H</kbd>), pick a structure, then click a clear, dry spot near the homestead. The settler walks over and hammers it up; <kbd>Esc</kbd> cancels before any materials are spent. Buildings can be re-sited this way, and the family, herd and work hands move with them.</li>
         <li><b>Dash:</b> <kbd>Shift</kbd> rolls through danger (brief invulnerability). Dodging a swipe at the last moment triggers a <b>Clean Dodge</b> + critical hits.</li>
         <li><b>Levels:</b> chopping, fighting, fishing, cooking and wonders earn XP. Level up for perks and better weapons (Rusty Hatchet → Starforged Blade).</li>
         <li><b>Fast travel:</b> press <kbd>M</kbd> for the globe, then click any shore to teleport there.</li>
