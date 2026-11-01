@@ -3807,6 +3807,43 @@ function renderCollection() {
   // Progress lives in the top-center tracker; the journal dialog lists the rest.
   document.getElementById('wonder-count').textContent = `${wonders.filter((w) => w.done).length} / 7`;
 }
+function legacyScoreParts() {
+  const doneWonders = wonders.filter((w) => w.done).length;
+  const hazardKinds = Object.keys(Life.hazardWins || {}).length;
+  const hazardTotal = Object.values(Life.hazardWins || {}).reduce((a, b) => a + b, 0);
+  const techs = (typeof Research !== 'undefined' && Research.unlocked) ? Research.unlocked.length : 0;
+  const chapters = (Life.chapter || 0) + 1;
+  const parts = [
+    ['Generations', (Life.gen || 1) * 100],
+    ['Chapters lived', chapters * 60],
+    ['Wonders', doneWonders * 120],
+    ['Hazard kinds', hazardKinds * 35],
+    ['Hazards weathered', hazardTotal * 10],
+    ['Technologies', techs * 15],
+    ['Life traits', (Life.traits || []).length * 25],
+    ['Family', (Life.spouse ? 20 : 0) + (Life.kids || []).length * 10],
+    ['Gold earned', Math.floor((Life.stats?.goldEarned || 0) / 2)],
+    ['Bounties & rescues', ((Threats?.bounties || 0) + (Threats?.recovered || 0)) * 20],
+    ['Reputation', ((Threats?.honest || 0) + (Threats?.feared || 0) + (Threats?.kind || 0)) * 10],
+  ];
+  return { total: parts.reduce((a, [, v]) => a + v, 0), parts };
+}
+function legacyScore() { return legacyScoreParts().total; }
+function lifeStorySummary() {
+  const eraName = (typeof researchEra === 'function') ? (TECH_ERAS[researchEra()] || 'Handmade') : 'Handmade';
+  const doneWonders = wonders.filter((w) => w.done).length;
+  const hazardKinds = Object.keys(Life.hazardWins || {});
+  const kids = (Life.kids || []).length;
+  const traits = (Life.traits || []).map((id) => TRAITS[id]?.name).filter(Boolean);
+  const chapterName = CHAPTERS[Math.min(Life.chapter || 0, CHAPTERS.length - 1)].name;
+  const spouse = Life.spouse ? `, beside ${Life.spouse}` : '';
+  const kidLine = kids ? ` and ${kids} child${kids === 1 ? '' : 'ren'}` : '';
+  const wonderLine = doneWonders ? `${doneWonders} of the seven wonders` : 'no wonders yet';
+  const hazardLine = hazardKinds.length ? `${hazardKinds.length} kinds of hazard` : 'no great storms';
+  const traitLine = traits.length ? ` Known as ${traits.join(', ')}.` : '';
+  return `Generation ${Life.gen} reached the ${chapterName} chapter at age ${Math.round(Life.age || 20)}${spouse}${kidLine}, ` +
+    `built ${wonderLine}, weathered ${hazardLine}, and carried technology to the ${eraName} era.${traitLine}`;
+}
 function renderJournal() {
   const list = document.getElementById('journal-list');
   if (!list) return;
@@ -3865,6 +3902,7 @@ function renderJournal() {
     addHeading('THREATS');
     addRow(`${Threats.robbersDrivenOff || 0} robbers driven off · ${Threats.bounties || 0} bounties · ${Threats.thefts || 0} thefts`, '⚠️');
     addRow(`Reputation ${Threats.reputation || 0} — ${repTier().label}`, repTier().icon, (Threats.reputation || 0) >= 2);
+    addRow(`Honest ${Threats.honest || 0} · Feared ${Threats.feared || 0} · Kind ${Threats.kind || 0}`, '⚖️');
   } else if (journalTab === 'tech') {
     addHeading(`TECHNOLOGY · ${TECH_ERAS[researchEra()].toUpperCase()}`);
     addRow(`💡 ${Research.insight} insight · ${Research.unlocked.length} technologies`, '🔬');
@@ -3899,6 +3937,34 @@ function renderJournal() {
     const wins = Object.entries(Life.hazardWins || {});
     if (!wins.length) addRow('None yet — read the sky.', '☀️');
     for (const [id, n] of wins) addRow(`${HAZARDS[id]?.name || id} ×${n}`, HAZARDS[id]?.icon || '⚠️', true);
+  } else if (journalTab === 'legacy') {
+    const sc = legacyScoreParts();
+    addHeading(`LEGACY · GENERATION ${Life.gen}`);
+    addRow(`Age ${Math.round(Life.age || 20)} · ${CHAPTERS[Math.min(Life.chapter || 0, CHAPTERS.length - 1)].name}`, '🌅');
+    addRow(`Lifespan so far: ${Math.round(Life.age || 20)} years across ${(Life.day || 1)} days`, '⏳');
+    addRow(`Final score: ${sc.total}`, '🏆', true);
+    addHeading('EPITAPH');
+    addRow(Life.legacy?.epitaph || Life.epitaph || 'Not yet written — your story is still unfolding.', '🪦');
+    addHeading('STORY OF YOUR LIFE');
+    addRow(lifeStorySummary(), '📖');
+    if (Life.legacy) {
+      addHeading(`ANCESTOR · GENERATION ${Life.legacy.gen}`);
+      addRow(Life.legacy.story, '📜');
+      addRow(`Score ${Life.legacy.score} · ${Life.legacy.epitaph}`, '🏅');
+    }
+    addHeading('SCORE BREAKDOWN');
+    for (const [label, value] of sc.parts) addRow(`${label}: ${value}`, '•');
+    addHeading('TRAITS CARRIED');
+    if (!(Life.traits || []).length) addRow('No life traits chosen yet', '✦');
+    for (const id of Life.traits || []) { const t = TRAITS[id]; if (t) addRow(`${t.name} — ${t.desc}`, t.icon); }
+    addHeading('HAZARDS WEATHERED');
+    const legacyWins = Object.entries(Life.hazardWins || {});
+    if (!legacyWins.length) addRow('None yet — the sky has been kind.', '☀️');
+    for (const [id, n] of legacyWins) addRow(`${HAZARDS[id]?.name || id} ×${n}`, HAZARDS[id]?.icon || '⚠️', true);
+    addHeading('WONDERS COMPLETED');
+    const legacyWonders = wonders.filter((w) => w.done);
+    if (!legacyWonders.length) addRow('None yet', '✦');
+    for (const w of legacyWonders) addRow(`${w.name} — ${w.moment}`, w.icon, true);
   }
   const fill = document.getElementById('journal-fill');
   if (fill) {
@@ -4909,7 +4975,7 @@ const Life = {
   chronicle: [],
   fishBook: {},
   recipes: {},
-  chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null, seenCards: [],
+  chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null, seenCards: [], legacy: null,
 };
 
 // ==================== LIFE JOURNEY, RESEARCH, WEATHER, WEAPONS ====================
@@ -5699,7 +5765,12 @@ function repairWeapon(id) {
   saveCheckpoint();
   return true;
 }
-const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0, rustled: null };
+const Threats = { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, robbers: [], wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0, rustled: null, honest: 0, feared: 0, kind: 0 };
+function addRep(dim, n = 1) {
+  if (!['honest', 'feared', 'kind'].includes(dim)) return;
+  Threats[dim] = (Threats[dim] || 0) + n;
+  Threats.reputation = (Threats.reputation || 0) + n;
+}
 function weaponById(id) { return WEAPONS[id] || null; }
 function equippedMelee() { return WEAPONS[Loadout.melee] || WEAPONS.hatchet; }
 function equippedRanged() { return Loadout.ranged ? WEAPONS[Loadout.ranged] : null; }
@@ -5913,6 +5984,7 @@ function saveProgression() {
       bounties: Threats.bounties || 0, reputation: Threats.reputation || 0,
       wolvesCulled: Threats.wolvesCulled || 0, bearsBested: Threats.bearsBested || 0,
       venison: Threats.venison || 0, captured: Threats.captured || 0, recovered: Threats.recovered || 0,
+      honest: Threats.honest || 0, feared: Threats.feared || 0, kind: Threats.kind || 0,
       rustled: Threats.rustled ? { kind: Threats.rustled.kind, day: Threats.rustled.day } : null,
     },
     bountiesClaimed: { ...BountyClaimed },
@@ -5954,7 +6026,7 @@ function restoreProgression(p) {
     UnlockedWeapons.length = 0;
     for (const id of p.unlockedWeapons) if (WEAPONS[id]) UnlockedWeapons.push(id);
   }
-  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0 }, p.threats);
+  if (p.threats) Object.assign(Threats, { robbersDrivenOff: 0, thefts: 0, bounties: 0, reputation: 0, wolvesCulled: 0, bearsBested: 0, venison: 0, captured: 0, recovered: 0, honest: 0, feared: 0, kind: 0 }, p.threats);
   if (p.threats?.rustled) {
     Threats.rustled = { ...p.threats.rustled, pos: latLonToVec3(13, 158, 0).normalize() };
     try { addHerdTrail(); } catch { /* scene not ready */ }
@@ -6098,6 +6170,7 @@ function saveLife() {
     chapter: Life.chapter || 0, age: Life.age || 20,
     story: [...(Life.story || [])], traits: [...(Life.traits || [])], hazardWins: { ...(Life.hazardWins || {}) }, epitaph: Life.epitaph || null, scars: [...(Life.scars || [])],
     seenCards: [...(Life.seenCards || [])], ngPlus: Life.ngPlus || 0,
+    legacy: Life.legacy ? { ...Life.legacy, traits: [...(Life.legacy.traits || [])] } : null,
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
     home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water })) },
@@ -6117,6 +6190,7 @@ function restoreLife(s) {
   Life.scars = [...(s.scars || [])];
   Life.seenCards = [...(s.seenCards || [])];
   Life.ngPlus = s.ngPlus || 0;
+  Life.legacy = s.legacy ? { ...s.legacy, traits: [...(s.legacy.traits || [])] } : null;
   Object.assign(Life.stats, s.stats || {});
   Object.assign(Life.rot, s.rot || {});
   Life.chronicle = [...(s.chronicle || [])];
@@ -6891,6 +6965,7 @@ function overnightTech() {
   if (Home.pump) { Home.dmg.well = false; Life.flood = false; }
   if (Home.gunsmith && !Home.dmg.gunsmith) Ammo.bullets += 1;
   if (hasTech('fish-trap')) inv.fish = (inv.fish || 0) + 1;
+  if ((Threats.kind || 0) >= 5) inv.food = (inv.food || 0) + 1; // neighbours share with the kind
   if (Home.telegraph) grantInsight(1, 'Telegraph dispatch');
   if (Home.radio) meters.morale = Math.min(100, (meters.morale || 70) + 4);
 }
@@ -7871,7 +7946,7 @@ function recoverHerd() {
   spawnAnimal(st.kind, true);
   Threats.rustled = null;
   Threats.recovered = (Threats.recovered || 0) + 1;
-  Threats.reputation = (Threats.reputation || 0) + 1;
+  addRep('honest', 1);
   inv.gold = (inv.gold || 0) + 2;
   grantInsight(3, 'Recovered the herd');
   if (herdTrail) { const ix = interactables.indexOf(herdTrail); if (ix >= 0) interactables.splice(ix, 1); herdTrail = null; }
@@ -7886,7 +7961,8 @@ function captureRobber(r) {
   const reward = { gold: 6, insight: 4 };
   inv.gold = (inv.gold || 0) + reward.gold;
   Threats.captured = (Threats.captured || 0) + 1;
-  Threats.reputation = (Threats.reputation || 0) + 2;
+  addRep('kind', 1);
+  addRep('honest', 1);
   grantInsight(reward.insight, 'Alive bounty');
   removeRobber(r, false);
   toast(`🤝 You bring ${r.name} in alive — +6🪙, +4💡, reputation +2.`);
@@ -7906,7 +7982,7 @@ function removeRobber(r, reward) {
   if (reward) {
     Threats.robbersDrivenOff++;
     Threats.bounties++;
-    Threats.reputation++;
+    addRep('feared', 1);
     inv.gold += 3;
     grantInsight(3, 'Driven off a robber');
     toast(`🏆 ${r.name} driven off! (+3🪙, +3💡)`);
@@ -7993,7 +8069,7 @@ tickers.push((t, dt) => {
   robberSpawnT = 0;
   // a known/trusted neighbour is a less tempting target
   const repShield = Math.min(0.08, (Threats.reputation || 0) * 0.008);
-  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield - (Home.scarecrow ? 0.05 : 0);
+  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield - (Home.scarecrow ? 0.05 : 0) - Math.min(0.06, (Threats.feared || 0) * 0.005);
   if (!Threats.robbers.length && Math.random() < chance) spawnRobber(['thief', 'toll', 'rustler'][(Math.random() * 3) | 0]);
 });
 
@@ -8182,10 +8258,12 @@ function claimBounty(id) {
   if (!b || BountyClaimed[id]) return;
   if ((b.get() || 0) < b.target) { toast('🎯 Not done yet.'); return; }
   BountyClaimed[id] = true;
-  inv.gold = (inv.gold || 0) + b.gold;
+  const bonus = (Threats.honest || 0) >= 5 ? 1 : 0;
+  inv.gold = (inv.gold || 0) + b.gold + bonus;
   Threats.bounties = (Threats.bounties || 0) + 1;
+  addRep('honest', 1);
   grantInsight(b.insight, `Bounty: ${b.name}`);
-  toast(`🎯 Bounty claimed — ${b.name}! (+${b.gold}🪙, +${b.insight}💡)`);
+  toast(`🎯 Bounty claimed — ${b.name}! (+${b.gold + bonus}🪙, +${b.insight}💡)`);
   chime(880);
   saveCheckpoint();
   renderBounty();
@@ -8698,6 +8776,15 @@ function retireToHeir() {
   if (!r.ok || playerDead) return;
   Life.epitaph = `Gen ${Life.gen} · ${CHAPTERS[Math.min(Life.chapter, CHAPTERS.length - 1)].name} · ${wonders.filter((w) => w.done).length} wonders · ${Object.keys(Life.hazardWins || {}).length} hazards weathered.`;
   pushStory(Life.epitaph, '🌅');
+  Life.legacy = {
+    gen: Life.gen,
+    age: Math.round(Life.age || 20),
+    score: legacyScore(),
+    story: lifeStorySummary(),
+    epitaph: Life.epitaph,
+    chapter: CHAPTERS[Math.min(Life.chapter, CHAPTERS.length - 1)].name,
+    traits: [...(Life.traits || [])],
+  };
   Life.gen++;
   Life.ngPlus = (Life.ngPlus || 0) + 1;
   Life.chronicle.push(`Gen ${Life.gen - 1} retired in comfort 🌅 (${Life.stats.goldEarned}🪙 earned, Day ${Life.day})`);
@@ -10366,7 +10453,7 @@ function openRobberDialog(r) {
   if (r.poacher) {
     add('Free the trapped hare', 'Recover the snare and let the hare go (+2🍎, +insight, +reputation).', () => {
       inv.food = (inv.food || 0) + 2;
-      Threats.reputation = (Threats.reputation || 0) + 1;
+      addRep('kind', 1);
       grantInsight(3, 'Freed a trapped hare');
       pushStory('Freed a hare from a poacher’s snare in the woods.', '🐇');
       r.state = 'leave';
@@ -10376,7 +10463,7 @@ function openRobberDialog(r) {
     });
     add('Drive them off', 'Confront the poacher — they will not risk a fight.', () => {
       Threats.robbersDrivenOff = (Threats.robbersDrivenOff || 0) + 1;
-      Threats.reputation = (Threats.reputation || 0) + 1;
+      addRep('feared', 1);
       r.state = 'flee';
       closeRobber();
       saveCheckpoint();
@@ -10396,6 +10483,7 @@ function openRobberDialog(r) {
   }
   add('Pay the toll', 'Lose 3🪙 or 2🍎 and they leave.', () => {
     if (inv.gold >= 3) inv.gold -= 3; else if (inv.food >= 2) inv.food -= 2; else { toast('You have nothing worth taking.'); return; }
+    addRep('honest', 1);
     r.state = 'leave'; closeRobber(); saveCheckpoint(); toast('💰 They take the toll and vanish into the dark.');
   });
   add('Refuse — fight', 'Draw your weapon and drive them off.', () => {
@@ -10405,7 +10493,7 @@ function openRobberDialog(r) {
   add('Intimidate', 'A gun or a high level can end this without blood. (needs a ranged weapon)', () => {
     closeRobber();
     if (!equippedRanged()) { toast('No firearm to back up the threat.'); return; }
-    if (Math.random() < 0.7 + Math.min(0.2, (Threats.reputation || 0) * 0.02)) { r.state = 'flee'; Threats.robbersDrivenOff++; Threats.reputation++; grantInsight(2, 'Intimidated a robber'); toast('😤 They back away and run.'); }
+    if (Math.random() < 0.7 + Math.min(0.2, (Threats.reputation || 0) * 0.02)) { r.state = 'flee'; Threats.robbersDrivenOff++; addRep('feared', 1); grantInsight(2, 'Intimidated a robber'); toast('😤 They back away and run.'); }
     else { toast('They call your bluff!'); if (r.interact) setAutoTask(r.interact); }
     saveCheckpoint();
   });
@@ -10470,6 +10558,8 @@ Object.assign(window.__lp, {
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
   sfx: { log: sfxLog, weather: weatherSound },
+  legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
+  journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
   hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
     gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
