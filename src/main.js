@@ -2285,6 +2285,11 @@ const SKIFF_SPAWN_HEADING = latLonToVec3(-23, SKIFF_SPAWN.lon, 0)
 SKIFF_SPAWN_HEADING.addScaledVector(SKIFF_SPAWN_N, -SKIFF_SPAWN_HEADING.dot(SKIFF_SPAWN_N)).normalize();
 let boatN = SKIFF_SPAWN_N.clone();
 let boatHeading = SKIFF_SPAWN_HEADING.clone();
+let skiffParkN = SKIFF_SPAWN_N.clone();
+let skiffParkHeading = SKIFF_SPAWN_HEADING.clone();
+let craftMode = 'skiff'; // 'skiff' | 'dock'
+let dockCraftG = null, dockCraftKind = null, dockMoorN = null, dockMoorHeading = null;
+let dockInteract = null;
 let inBoat = false;
 const boatGroup = makeSkiff();
 boatGroup.name = 'sea-skiff';
@@ -2346,17 +2351,15 @@ function nearestLand(posN, reach = 6.5) {
 function boatBob(t) {
   return Math.sin(t * 1.3) * 0.045 + Math.sin(t * 0.7 + 1) * 0.02;
 }
-function updateBoatVisual(t) {
-  const bob = boatBob(t);
-  const pos = boatN.clone().multiplyScalar(R + 0.02 + bob);
-  boatGroup.position.copy(pos);
-  faceAlong(boatGroup, pos, boatHeading);
-  boatGroup.rotateZ(Math.sin(t * 1.1) * 0.025);
-  boatGroup.rotateX(Math.sin(t * 0.9 + 1) * 0.012);
-  const u = boatGroup.userData;
-  const fishing = inBoat && fishStage === 1;
+function animateCraftVisual(g, pos, heading, t, fishing) {
+  if (!g) return;
+  g.position.copy(pos);
+  faceAlong(g, pos, heading);
+  g.rotateZ(Math.sin(t * 1.1) * 0.025);
+  g.rotateX(Math.sin(t * 0.9 + 1) * 0.012);
+  const u = g.userData || {};
   if (u.rig) {
-    u.rig.visible = fishing;
+    u.rig.visible = !!fishing;
     if (fishing) {
       const bobber = u.bobberHome.clone();
       bobber.y += Math.sin(t * 5) * 0.04 - 0.02;
@@ -2369,10 +2372,38 @@ function updateBoatVisual(t) {
   }
   if (u.sail) u.sail.scale.x = 1 + Math.sin(t * 2.2) * 0.03;
   if (u.flag) u.flag.rotation.y = Math.sin(t * 3.2) * 0.16;
-  boatInteract.pos.copy(pos);
 }
-function boardBoat() {
-  if (inBoat || playerDead) return;
+function updateBoatVisual(t) {
+  const bob = boatBob(t);
+  const skiffActive = inBoat && craftMode === 'skiff';
+  const skiffNNow = skiffActive ? boatN : skiffParkN;
+  const skiffHNow = skiffActive ? boatHeading : skiffParkHeading;
+  const skiffPos = skiffNNow.clone().multiplyScalar(R + 0.02 + bob);
+  animateCraftVisual(boatGroup, skiffPos, skiffHNow, t, skiffActive && fishStage === 1);
+  if (skiffActive) { skiffParkN.copy(boatN); skiffParkHeading.copy(boatHeading); }
+  boatInteract.pos.copy(boatGroup.position);
+  if (dockCraftG && dockMoorN) {
+    const dockActive = inBoat && craftMode === 'dock';
+    const nNow = dockActive ? boatN : dockMoorN;
+    const hNow = dockActive ? boatHeading : dockMoorHeading;
+    const pos = nNow.clone().multiplyScalar(R + 0.02 + bob);
+    animateCraftVisual(dockCraftG, pos, hNow, t, dockActive && fishStage === 1);
+  }
+}
+function boardBoat(mode = 'skiff') {
+  if (inBoat || playerDead) return false;
+  if (mode === 'dock') {
+    if (!Home.dock || (!Home.raft && !Home.boat) || !dockMoorN || !dockCraftG) {
+      toast('⚓ Build a raft at your dock first (H).');
+      return false;
+    }
+    boatN.copy(dockMoorN);
+    boatHeading.copy(dockMoorHeading);
+  } else {
+    boatN.copy(skiffParkN);
+    boatHeading.copy(skiffParkHeading);
+  }
+  craftMode = mode;
   inBoat = true;
   fishStage = 0;
   player.visible = false;
@@ -2385,36 +2416,50 @@ function boardBoat() {
   playerVel = 0; hopH = 0;
   burst(player.position.clone(), 0x9fdcff, 12, 1.5);
   chime(520);
-  toast('⛵ Aboard the skiff — WASD to sail, Q to trim, E to fish or dock.');
+  toast(mode === 'dock' ? `⛵ Aboard the ${Home.boat ? 'boat' : 'raft'} — WASD to sail, E to fish or dock.` : '⛵ Aboard the skiff — WASD to sail, Q to trim, E to fish or dock.');
+  return true;
 }
 function leaveBoat() {
   if (!inBoat) return;
   const land = nearestLand(boatN);
   if (!land) return toast('🌊 Too deep — sail closer to shore to step off.');
+  const mode = craftMode;
+  const craftPos = mode === 'dock' && dockCraftG ? dockCraftG.position : boatGroup.position;
   inBoat = false;
   fishStage = 0;
   player.visible = true;
   const n = land.clone().normalize();
   playerPos.copy(n).multiplyScalar(R + heightFor(n) + 0.1);
   player.position.copy(playerPos);
-  const dir = land.clone().sub(boatGroup.position);
+  const dir = land.clone().sub(craftPos);
   dir.addScaledVector(n, -dir.dot(n));
   if (dir.lengthSq() > 1e-6) { facing.copy(dir.normalize()); moveDirSmooth.copy(facing); lastBehind.copy(facing); }
   moveTargetN = null;
+  if (mode === 'skiff') {
+    skiffParkN.copy(boatN);
+    skiffParkHeading.copy(boatHeading);
+  } else if (dockMoorN) {
+    boatN.copy(dockMoorN);
+    boatHeading.copy(dockMoorHeading);
+  }
   burst(player.position.clone(), 0x9fdcff, 10, 1.2);
   chime(500);
-  toast('⛵ Tied up. The skiff waits by the shore.');
+  toast(mode === 'dock' ? '⛵ Tied up at the dock. The raft waits for you.' : '⛵ Tied up. The skiff waits by the shore.');
 }
-function boatUse() {
+function boatUse(mode = 'skiff') {
   if (playerDead) return;
-  if (!inBoat) return boardBoat();
+  if (!inBoat) return boardBoat(mode);
   if (fishStage === 1) return fishFrom('sea');
   if (nearestLand(boatN)) return leaveBoat();
   fishFrom('sea');
 }
 function restoreBoatState(b) {
-  boatN.copy(SKIFF_SPAWN_N);
-  boatHeading.copy(SKIFF_SPAWN_HEADING);
+  const wantDock = !!(b && b.craft === 'dock' && Home.dock && (Home.raft || Home.boat) && dockMoorN);
+  craftMode = wantDock ? 'dock' : 'skiff';
+  boatN.copy(wantDock ? dockMoorN : SKIFF_SPAWN_N);
+  boatHeading.copy(wantDock ? dockMoorHeading : SKIFF_SPAWN_HEADING);
+  skiffParkN.copy(SKIFF_SPAWN_N);
+  skiffParkHeading.copy(SKIFF_SPAWN_HEADING);
   if (b && Array.isArray(b.pos)) {
     const n = V3().fromArray(b.pos);
     if (Number.isFinite(n.x) && n.lengthSq() > 0.5) {
@@ -2427,6 +2472,7 @@ function restoreBoatState(b) {
     h.addScaledVector(boatN, -h.dot(boatN));
     if (h.lengthSq() > 1e-6) boatHeading.copy(h.normalize());
   }
+  if (!wantDock) { skiffParkN.copy(boatN); skiffParkHeading.copy(boatHeading); }
   inBoat = !!(b && b.inBoat);
   if (b && b.fishSource) fishSource = b.fishSource;
   player.visible = !inBoat;
@@ -2443,7 +2489,7 @@ const boatInteract = {
     if (fishStage === 1) return 'Reel in the line';
     return nearestLand(boatN) ? 'Step ashore' : 'Cast a line';
   },
-  onUse: boatUse,
+  onUse: () => boatUse('skiff'),
 };
 addInteract(boatInteract);
 
@@ -4060,6 +4106,12 @@ function renderJournal() {
     const wins = Object.entries(Life.hazardWins || {});
     if (!wins.length) addRow('None yet — read the sky.', '☀️');
     for (const [id, n] of wins) addRow(`${HAZARDS[id]?.name || id} ×${n}`, HAZARDS[id]?.icon || '⚠️', true);
+    addHeading('FISHING GROUNDS');
+    for (const z of FISH_ZONES) {
+      const caught = z.species.filter((id) => Life.fishBook?.[id]).length;
+      const names = z.species.map((id) => FISH_TYPES.find((f) => f.id === id)?.name || id).join(' · ');
+      addRow(`${z.name} — ${caught}/${z.species.length} species<br><span style="opacity:.65;font-size:11px">${names}</span>`, '🎣', caught === z.species.length);
+    }
   } else if (journalTab === 'legacy') {
     const sc = legacyScoreParts();
     addHeading(`LEGACY · GENERATION ${Life.gen}`);
@@ -4107,14 +4159,14 @@ function toggleJournal(force) {
 renderCollection();
 
 // ---------- inventory + survival meters (step 1: food/energy/cold + health/remedy) ----------
-const inv = { wood: 0, stone: 0, gold: 0, food: 2, fish: 0, wool: 0, fur: 0, leather: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
+const inv = { wood: 0, stone: 0, gold: 0, food: 2, fish: 0, meat: 0, wool: 0, fur: 0, leather: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
 const meters = { energy: 100, cold: 0, health: 100, hunger: 100, warmth: 100, morale: 80 };
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
 let lastDamageT = -99; // last time the player took a hit (for slow recovery)
 const PACK_BASE = 16;
 let packBonus = 0;
-function packSize() { return inv.wood + inv.stone + inv.gold + inv.food + (inv.fish || 0) + inv.wool + inv.remedy + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0); }
+function packSize() { return inv.wood + inv.stone + inv.gold + inv.food + (inv.fish || 0) + (inv.meat || 0) + inv.wool + inv.remedy + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0); }
 function packCap() { return PACK_BASE + packBonus; } // Big Pack research adds room
 function earnGold(n = 1) {
   if (n <= 0) return;
@@ -4141,6 +4193,7 @@ function eatFood() {
   // trail priority: hearty meals first, then milk, berries, raw eggs last
   const menu = [
     { k: 'meal', hunger: 55, energy: 25 },
+    { k: 'meat', hunger: 38, energy: 16 },
     { k: 'milk', hunger: 18, energy: 8 },
     { k: 'food', hunger: 22, energy: 12 },
     { k: 'fish', hunger: 26, energy: 10 },
@@ -4190,7 +4243,7 @@ function setText(id, v) {
 }
 function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', inv.stone); setText('inv-gold', inv.gold);
   setText('inv-food', inv.food); setText('inv-fish', inv.fish || 0); setText('inv-wool', inv.wool); setText('inv-remedy', inv.remedy);
-  setText('inv-egg', inv.egg || 0); setText('inv-milk', inv.milk || 0); setText('inv-meal', inv.meal || 0);
+  setText('inv-egg', inv.egg || 0); setText('inv-milk', inv.milk || 0); setText('inv-meal', inv.meal || 0); setText('inv-meat', inv.meat || 0);
   setText('pack-count', packSize() + '/' + packCap());
   setText('home-tier', Home.build ? `Building ${HOUSE_BUILD_NAMES[Home.build.target] || 'home'}…` : (Home.house >= 2 ? `Farmhouse T${Home.house - 1}` : (Home.house === 1 ? 'Hut' : 'Tent')));
   setText('clothes-tier', CLOTHES[Life.clothes] || 'Rags');
@@ -4233,9 +4286,12 @@ function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', in
 window.__lp = {
   inv, meters, tools, nodes, player, addItem, eatFood, packSize, packCap,
   boat: {
-    get pos() { return boatGroup.position.toArray(); },
+    get pos() { return (inBoat && craftMode === 'dock' && dockCraftG ? dockCraftG : boatGroup).position.toArray(); },
     get inBoat() { return inBoat; },
-    board: boardBoat, leave: leaveBoat, use: boatUse, mesh: boatGroup,
+    get craft() { return craftMode; },
+    get dock() { return { built: !!Home.dock, raft: !!Home.raft, boat: !!Home.boat, kind: dockCraftKind, moor: dockMoorN ? dockMoorN.toArray() : null }; },
+    board: boardBoat, boardDock: () => boardBoat('dock'), leave: leaveBoat, use: boatUse,
+    get mesh() { return inBoat && craftMode === 'dock' && dockCraftG ? dockCraftG : boatGroup; },
   },
   hasTarget: () => !!moveTargetN || !!activeTask,
   task: () => (activeTask ? { kind: activeTask.interact?.kind, id: activeTask.interact?.id } : null),
@@ -4322,29 +4378,127 @@ const FISH_TYPES = [
   { id: 'deep-king', name: 'Deep King', icon: '👑🐟', w: 5, size: [1.2, 2.0], sea: true },
   { id: 'ice-glimmer', name: 'Ice Glimmer', icon: '✨🐟', w: 14, size: [0.3, 0.7], ice: true },
   { id: 'golden-boot', name: 'Golden Boot', icon: '🥾✨', w: 1, size: [0.8, 0.8] },
+  { id: 'silver-minnow', name: 'Silver Minnow', icon: '🐟', w: 30, size: [0.15, 0.35] },
+  { id: 'dune-perch', name: 'Dune Perch', icon: '🐟', w: 24, size: [0.3, 0.6] },
+  { id: 'copper-mackerel', name: 'Copper Mackerel', icon: '🐟', w: 20, size: [0.5, 1.0] },
+  { id: 'sea-bream', name: 'Sea Bream', icon: '🐟', w: 18, size: [0.4, 0.9] },
+  { id: 'cliff-cod', name: 'Cliff Cod', icon: '🐟', w: 14, size: [0.6, 1.3] },
+  { id: 'river-trout', name: 'River Trout', icon: '🐟', w: 22, size: [0.4, 0.9] },
+  { id: 'green-perch', name: 'Green Perch', icon: '🐟', w: 20, size: [0.3, 0.7] },
+  { id: 'lily-perch', name: 'Lily Perch', icon: '🐟', w: 24, size: [0.2, 0.5] },
+  { id: 'mud-catfish', name: 'Mud Catfish', icon: '🐟', w: 16, size: [0.6, 1.2] },
+  { id: 'marsh-pike', name: 'Marsh Pike', icon: '🐟', w: 16, size: [0.5, 1.1] },
+  { id: 'oasis-koi', name: 'Oasis Koi', icon: '🐠', w: 18, size: [0.4, 0.8] },
+  { id: 'palm-catfish', name: 'Palm Catfish', icon: '🐟', w: 14, size: [0.5, 1.0] },
+  { id: 'golden-koi', name: 'Golden Koi', icon: '✨🐠', w: 6, size: [0.4, 0.9] },
+  { id: 'clown-wrasse', name: 'Clown Wrasse', icon: '🐠', w: 24, size: [0.2, 0.5] },
+  { id: 'parrot-fish', name: 'Parrot Fish', icon: '🐠', w: 16, size: [0.5, 1.0] },
+  { id: 'coral-grouper', name: 'Coral Grouper', icon: '🐟', w: 12, size: [0.8, 1.6] },
+  { id: 'glass-squid', name: 'Glass Squid', icon: '🦑', w: 10, size: [0.4, 0.9] },
+  { id: 'ghost-ray', name: 'Ghost Ray', icon: '🐟', w: 8, size: [1.0, 2.0] },
+  { id: 'abyss-grouper', name: 'Abyss Grouper', icon: '🐟', w: 10, size: [1.0, 2.2] },
+  { id: 'storm-marlin', name: 'Storm Marlin', icon: '🐟', w: 5, size: [1.6, 2.8] },
+  { id: 'frost-char', name: 'Frost Char', icon: '🐟', w: 18, size: [0.4, 0.9] },
+  { id: 'aurora-cod', name: 'Aurora Cod', icon: '🐟', w: 12, size: [0.5, 1.1] },
+  { id: 'obsidian-perch', name: 'Obsidian Perch', icon: '🐟', w: 20, size: [0.3, 0.7] },
+  { id: 'ember-koi', name: 'Ember Koi', icon: '🔥🐟', w: 14, size: [0.4, 0.9] },
+  { id: 'lava-eel', name: 'Lava Eel', icon: '🌋🐟', w: 10, size: [0.7, 1.5] },
 ];
-function pickFish(sea) {
+// Named fishing grounds. Coast/pond zones can be fished from a shore marker;
+// reef and deep-water zones are reached by skiff, raft or boat. Each ground has
+// its own species pool, so the catch changes as the player explores.
+const FISH_ZONES = [
+  { id: 'home-pond', name: 'Lily Pad Pond', water: 'pond', lat: 10, lon: 50, radius: 4, shore: [11.8, 50], color: 0x7ddf6a, species: ['lily-perch', 'silver-minnow', 'mud-catfish'] },
+  { id: 'oasis-pond', name: 'Sunstone Oasis', water: 'pond', lat: 4, lon: 112, radius: 4, shore: [7, 114], color: 0x7ad9ff, species: ['oasis-koi', 'palm-catfish', 'golden-koi'] },
+  { id: 'clover-coast', name: 'Clover Coast', lat: -20, lon: 56, radius: 10, shore: [-17.6, 62], color: 0xffd97a, species: ['sunny-carp', 'silver-minnow', 'dune-perch'] },
+  { id: 'dune-coast', name: 'Dune Tide', lat: -20, lon: 110, radius: 10, shore: [-17.6, 110], color: 0xe8c96a, species: ['dune-perch', 'copper-mackerel', 'sunny-carp'] },
+  { id: 'fern-coast', name: 'Fernwood Shallows', lat: -20, lon: 150, radius: 10, shore: [-17.6, 150], color: 0x6fcf8a, species: ['river-trout', 'green-perch', 'silver-minnow', 'marsh-pike'] },
+  { id: 'reef-island', name: 'Lighthouse Reach', lat: 2, lon: 243, radius: 9, shore: [2, 236], color: 0x9fdcff, species: ['reef-flutter', 'clown-wrasse', 'sea-bream'] },
+  { id: 'reef-garden', name: 'Coral Garden', lat: 14, lon: 205, radius: 11, color: 0xff9a8a, species: ['clown-wrasse', 'parrot-fish', 'reef-flutter', 'coral-grouper'] },
+  { id: 'reef-drop', name: 'Reef Drop-off', lat: -12, lon: 245, radius: 11, color: 0x8ab7ff, species: ['coral-grouper', 'glass-squid', 'ghost-ray'] },
+  { id: 'cove-coast', name: 'Shell Cove', lat: -20, lon: 290, radius: 10, shore: [-17.6, 296], color: 0x7ad9ff, species: ['sea-bream', 'reef-flutter', 'silver-minnow'] },
+  { id: 'ember-coast', name: 'Ember Shore', lat: -20, lon: 330, radius: 10, shore: [-17.6, 330], color: 0xff9a4a, species: ['obsidian-perch', 'ember-koi', 'lava-eel'] },
+  { id: 'deep-west', name: 'Deep Blue · West', lat: -35, lon: 30, radius: 14, color: 0x5a8dff, species: ['abyss-grouper', 'ghost-ray', 'deep-king'] },
+  { id: 'deep-mid', name: 'Deep Blue · Meridian', lat: -40, lon: 150, radius: 14, color: 0x4a7dff, species: ['storm-marlin', 'abyss-grouper', 'lantern-fish', 'golden-boot'] },
+  { id: 'deep-east', name: 'Deep Blue · East', lat: -35, lon: 280, radius: 14, color: 0x6a9dff, species: ['storm-marlin', 'deep-king', 'ghost-ray'] },
+  { id: 'blue-hole', name: 'Blue Hole', lat: 24, lon: 225, radius: 9, color: 0x9fdcff, species: ['glass-squid', 'ghost-ray', 'deep-king'] },
+  { id: 'aurora-ice', name: 'Aurora Ice Hole', water: 'ice', lat: 57, lon: 118, radius: 6, color: 0xd9b8ff, species: ['ice-glimmer', 'frost-char', 'aurora-cod'] },
+];
+const FISH_ZONE_BY_ID = Object.fromEntries(FISH_ZONES.map((z) => [z.id, z]));
+for (const z of FISH_ZONES) z.centerN = latLonToVec3(z.lat, z.lon, 0).normalize();
+function fishZoneAt(n) {
+  return FISH_ZONES.find((z) => n.angleTo(z.centerN) * R <= z.radius) || null;
+}
+function makeFishingMarker(z) {
+  const wet = heightFor(z.centerN) < 0.12;
+  const base = z.centerN.clone().multiplyScalar(R + (wet ? 0.16 : Math.max(0.2, heightFor(z.centerN) + 0.25)));
+  const g = new THREE.Group();
+  const ringM = new THREE.MeshBasicMaterial({ color: z.color, transparent: true, opacity: 0.55, depthWrite: false });
+  const ringR = z.water === 'pond' || z.water === 'ice' ? 1.15 : 2.2;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR, 0.045, 5, 24).rotateX(Math.PI / 2), ringM);
+  ring.position.y = 0.02; g.add(ring);
+  const post = mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.8, 6), mat(0x8a6238), 0, 0.4, 0, false);
+  g.add(post);
+  const floatM = new THREE.MeshStandardMaterial({ color: z.color, emissive: z.color, emissiveIntensity: 0.45, flatShading: true });
+  g.add(mesh(new THREE.SphereGeometry(0.16, 8, 6), floatM, 0, 0.9, 0, false));
+  g.add(mesh(new THREE.ConeGeometry(0.11, 0.26, 5), mat(0xf3e9dc), 0, 1.18, 0, false));
+  orientOnSphere(g, base, rand(Math.PI * 2));
+  scene.add(g);
+  z.marker = g; z.ring = ring; z.markerBase = base.clone();
+}
+function pickFish(zone, sea) {
   const night = isNight();
-  const pool = FISH_TYPES.filter((f) => {
-    if (f.night && !night) return false;
-    if (f.sea && !sea) return false;
-    if (f.ice && sea) return false;
-    return true;
-  });
+  const poolFor = (ids) => ids.map((id) => FISH_TYPES.find((f) => f.id === id)).filter(Boolean).filter((f) => !f.night || night);
+  let pool = zone && zone.species ? poolFor(zone.species) : [];
+  if (!pool.length) {
+    pool = FISH_TYPES.filter((f) => {
+      if (f.night && !night) return false;
+      if (f.sea && !sea) return false;
+      if (f.ice && sea) return false;
+      return true;
+    });
+  }
   const total = pool.reduce((a, b) => a + b.w * (fishingTier() >= 2 && b.w <= 10 ? 1.9 : 1), 0);
   let r = Math.random() * total;
   for (const f of pool) { r -= f.w * (fishingTier() >= 2 && f.w <= 10 ? 1.9 : 1); if (r <= 0) return f; }
   return pool[0];
 }
-function fishFrom(source) {
+for (const z of FISH_ZONES) makeFishingMarker(z);
+for (const z of FISH_ZONES) {
+  if (!z.shore) continue;
+  addInteract({
+    id: 'fishzone-' + z.id, pos: anchor(z.shore[0], z.shore[1], 1.2), radius: 4.5,
+    kind: '🎣 FISHING GROUND',
+    label: () => (fishStage === 1 ? `Reel in — ${z.name}` : `Fish ${z.name}`),
+    onUse: () => fishFrom('sea', z.id),
+  });
+}
+tickers.push((t) => {
+  for (const z of FISH_ZONES) {
+    if (!z.marker) continue;
+    const d = player.position.distanceTo(z.marker.position);
+    z.marker.visible = d < 58;
+    if (!z.marker.visible) continue;
+    const bob = Math.sin(t * 1.7 + z.lat) * 0.035;
+    z.marker.position.copy(z.markerBase).addScaledVector(z.centerN, bob);
+    if (z.ring) {
+      const s = 1 + Math.sin(t * 1.3 + z.lon) * 0.07;
+      z.ring.scale.set(s, 1, s);
+    }
+  }
+});
+function fishFrom(source, zoneId) {
   if (playerDead) return;
+  const zone = zoneId ? FISH_ZONE_BY_ID[zoneId] : (source === 'ice' ? FISH_ZONE_BY_ID['aurora-ice'] : (source === 'sea' ? fishZoneAt(boatN) : null));
   if (fishStage === 0) {
     fishSource = source;
     fishStage = 1;
     chime(440);
     const first = (Life.stats.fishCaught || 0) < 2;
     const tier = fishingTier();
-    toast(source === 'sea' ? '🎣 Line cast into the blue — wait, then press E.' : '🎣 Line cast… wait… then press E again!');
+    toast(zone
+      ? `🎣 Line cast — ${zone.name} (${zone.water === 'pond' ? 'freshwater' : zone.water === 'ice' ? 'ice hole' : 'saltwater'}). Wait, then press E.`
+      : (source === 'sea' ? '🎣 Line cast into the blue — wait, then press E.' : '🎣 Line cast… wait… then press E again!'));
     setTimeout(() => {
       if (fishStage === 1 && fishSource === source) {
         burst(player.position.clone(), 0x7ad9ff, 14, 2);
@@ -4355,7 +4509,7 @@ function fishFrom(source) {
   } else {
     const sea = fishSource === 'sea';
     fishStage = 0;
-    const spec = pickFish(sea);
+    const spec = pickFish(zone, sea);
     const sz = (spec.size[0] + Math.random() * (spec.size[1] - spec.size[0])).toFixed(1);
     const tier = fishingTier();
     const count = 1 + (tier >= 2 && Math.random() < 0.5 ? 1 : 0) + (tier >= 3 && Math.random() < 0.35 ? 1 : 0);
@@ -4370,7 +4524,7 @@ function fishFrom(source) {
     burst(player.position.clone(), 0x7ad9ff, 30, 3);
     chime(660); setTimeout(() => chime(880), 120);
     const many = got > 1 ? ` ×${got}` : '';
-    toast(`🐟 ${spec.name} ${sz}kg${many}! (+${got} ${sea ? 'fish' : 'food'}${isRecord ? ' — NEW RECORD!' : ''})${tier ? ` · ${['handline', 'rod', 'net', 'trap'][tier]}` : ''}`);
+    toast(`🐟 ${spec.name} ${sz}kg${many}! (+${got} ${sea ? 'fish' : 'food'}${isRecord ? ' — NEW RECORD!' : ''})${zone ? ` — ${zone.name}` : ''}${tier ? ` · ${['handline', 'rod', 'net', 'trap'][tier]}` : ''}`);
     if (sea) { if (onGainXp) onGainXp(isRecord ? 25 : 14, player.position.clone()); grantInsight(1, 'Caught a fish'); }
     else if (onGainXp) onGainXp(isRecord ? 22 : 12, player.position.clone());
   }
@@ -4561,10 +4715,11 @@ function killBear(b) {
   if (b.cub) { toast('The cub yelps and plays dead… it will scamper off soon.'); if (onGainXp) onGainXp(10, b.mesh.position.clone()); }
   else {
     Threats.bearsBested = (Threats.bearsBested || 0) + 1;
-    toast('🐻‍❄️ You bested the polar bear! Rest — health recovers slowly. (+2 food)');
+    toast('🐻‍❄️ You bested the polar bear! Rest — health recovers slowly. (+2 food, +4 meat)');
     addItem('food', 2);
+    addItem('meat', 4);
     if (onGainXp) onGainXp(45, b.mesh.position.clone());
-    spawnPopup(b.mesh.position.clone(), '❄️ Frost Pelt +2🍎', '#9fdcff');
+    spawnPopup(b.mesh.position.clone(), '❄️ Frost Pelt +2🍎 +4🍖', '#9fdcff');
   }
   saveCheckpoint(); // a victory is worth remembering quietly
 }
@@ -4791,7 +4946,7 @@ tickers.push((t, dt) => updateBears(t, dt));
 
 // ---------- villagers: one friendly face per zone, each happy to trade ----------
 // Gold has no wild source — villagers are how it enters the traveler's pack.
-const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fish: '🐟', wool: '🐑', fur: '🟫', leather: '🟤', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
+const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fish: '🐟', meat: '🍖', wool: '🐑', fur: '🟫', leather: '🟤', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
 const fmtItems = (obj) => Object.entries(obj).map(([k, n]) => `${n} ${ITEM_ICON[k] || k}`).join(' + ') || '—';
 function makeVillager({ coat = 0xe8a33d, hat = 'straw', hatColor = 0xe8d27a, skin = 0xf2c49b } = {}) {
   const g = new THREE.Group();
@@ -5166,7 +5321,7 @@ const Life = {
   kids: [], workers: [], forecast: null, festival: false,
   nights: 0, lastGift: {}, kidSeq: 0,
   stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false, fishCaught: 0, woodChopped: 0 },
-  rot: { food: 0, fish: 0, egg: 0, milk: 0, meal: 0 },
+  rot: { food: 0, fish: 0, meat: 0, egg: 0, milk: 0, meal: 0 },
   chronicle: [],
   fishBook: {},
   recipes: {},
@@ -5359,6 +5514,7 @@ const TECH = [
   { id: 'firecraft', era: 0, name: 'Firecraft', insight: 1, cost: { wood: 3 }, req: [], desc: 'Better fires: warmth drains slower.' },
   { id: 'foraging', era: 0, name: 'Foraging', insight: 1, cost: { food: 1 }, req: [], desc: 'Berry bushes and herbs yield +1.' },
   { id: 'copper-tools', era: 1, name: 'Copper Tools', insight: 2, cost: { wood: 4, stone: 2 }, req: ['hand-tools'], desc: 'Copper axe/pick: +30% work speed.' },
+  { id: 'bowyer', era: 1, name: 'Bowyer', insight: 2, cost: { wood: 4, stone: 1 }, req: ['hand-tools'], desc: 'Unlock the short bow and a bundle of hunting arrows.' },
   { id: 'workshop', era: 1, name: 'Workshop', insight: 2, cost: { wood: 8, stone: 4 }, req: ['hand-tools'], desc: 'Build the workshop: research and craft.' },
   { id: 'irrigation', era: 1, name: 'Irrigation', insight: 2, cost: { wood: 4, stone: 3 }, req: ['workshop'], desc: 'Plots auto-water; drought hurts less.' },
   { id: 'cart', era: 1, name: 'Hand Cart', insight: 1, cost: { wood: 4 }, req: ['hand-tools'], desc: '+8 pack capacity.' },
@@ -5376,13 +5532,14 @@ const TECH = [
   { id: 'windmill', era: 2, name: 'Windmill', insight: 4, cost: { wood: 8, stone: 4, gold: 2 }, req: ['workshop'], desc: 'Research 20% faster; a landmark for the homestead.' },
   { id: 'forge', era: 2, name: 'Forge', insight: 4, cost: { stone: 8, gold: 4 }, req: ['iron-tools'], desc: 'Unlock iron weapons and metal repairs.' },
   { id: 'sawmill', era: 3, name: 'Sawmill', insight: 5, cost: { wood: 10, stone: 6 }, req: ['windmill'], desc: 'Passive +2 wood each dawn.' },
+  { id: 'boatbuilding', era: 3, name: 'Boatbuilding', insight: 5, cost: { wood: 6, wool: 2, gold: 3 }, req: ['sawmill'], desc: 'Unlock the boat upgrade at your dock.' },
   { id: 'grain-mill', era: 3, name: 'Grain Mill', insight: 5, cost: { wood: 8, stone: 8 }, req: ['windmill', 'plough'], desc: 'Passive +2 food each dawn.' },
   { id: 'steam-pump', era: 3, name: 'Steam Pump', insight: 5, cost: { stone: 10, gold: 4 }, req: ['irrigation'], desc: 'Floods drain fast; wells never choke.' },
   { id: 'mechanical-tools', era: 3, name: 'Mechanical Tools', insight: 6, cost: { wood: 8, stone: 8, gold: 4 }, req: ['iron-tools'], desc: 'Mechanical axe/pick: +100% work speed.' },
   { id: 'dynamo', era: 3, name: 'Dynamo', insight: 6, cost: { stone: 8, gold: 6 }, req: ['windmill'], desc: 'Workshop runs day and night: research 30% faster.' },
   { id: 'gunsmith', era: 4, name: 'Gunsmith', insight: 7, cost: { wood: 8, stone: 6, gold: 8 }, req: ['forge'], desc: 'Build a gunsmith and unlock the musket.' },
   { id: 'weather-station', era: 4, name: 'Weather Station', insight: 6, cost: { wood: 6, stone: 6, gold: 4 }, req: ['workshop'], desc: 'Three-day forecasts and earlier warnings.' },
-  { id: 'rifled-barrel', era: 4, name: 'Rifled Barrel', insight: 8, cost: { stone: 10, gold: 10 }, req: ['gunsmith'], desc: 'Unlock the lever rifle.' },
+  { id: 'rifled-barrel', era: 4, name: 'Hunting Rifle', insight: 8, cost: { stone: 10, gold: 10 }, req: ['gunsmith'], desc: 'Unlock the lever-action hunting rifle.' },
   { id: 'shotgun', era: 4, name: 'Shotgun', insight: 8, cost: { stone: 8, gold: 10 }, req: ['gunsmith'], desc: 'Unlock the double-barrel shotgun.' },
   { id: 'refrigeration', era: 4, name: 'Refrigeration', insight: 7, cost: { stone: 8, gold: 8 }, req: ['dynamo'], desc: 'Food spoils at half speed.' },
   { id: 'explosives', era: 4, name: 'Explosives', insight: 7, cost: { stone: 10, gold: 6 }, req: ['forge'], desc: 'Mining yields +1 stone per hit.' },
@@ -5455,7 +5612,8 @@ function applyTech(id) {
   if (!t) return;
   switch (id) {
     case 'hand-tools': tools.axe = Math.max(tools.axe, 1.1); tools.pick = Math.max(tools.pick, 1.1); break;
-    case 'copper-tools': tools.axe = Math.max(tools.axe, 1.3); tools.pick = Math.max(tools.pick, 1.3); unlockWeapon('iron-axe'); unlockWeapon('bow'); break;
+    case 'bowyer': unlockWeapon('bow'); Ammo.arrows = Math.max(Ammo.arrows || 0, 8); break;
+    case 'copper-tools': tools.axe = Math.max(tools.axe, 1.3); tools.pick = Math.max(tools.pick, 1.3); unlockWeapon('iron-axe'); break;
     case 'iron-tools': tools.axe = Math.max(tools.axe, 1.6); tools.pick = Math.max(tools.pick, 1.6); unlockWeapon('war-axe'); unlockWeapon('crossbow'); break;
     case 'mechanical-tools': tools.axe = Math.max(tools.axe, 2.0); tools.pick = Math.max(tools.pick, 2.0); break;
     case 'workshop': break; // unlocks the Workshop building on the homestead board
@@ -6281,6 +6439,8 @@ function fireAt(target) {
       if (target.hp <= 0) killRobber(target);
     } else if (target.kindTag === 'prey') {
       if (target.hp <= 0) killPrey(target);
+    } else if (target.kindTag === 'ambient') {
+      if (target.hp <= 0) killAmbient(target);
     } else if (target.adult !== undefined) {
       if (target.hp <= 0) killBear(target);
       else if (target.cub) target.fleeTarget = target.pos.clone().add(V3(rand(-2, 2), 0, rand(-2, 2)));
@@ -6297,7 +6457,7 @@ function manualFire(x, y) {
   if (!w) { toast(Loadout.ranged ? '🔄 Melee active — press Tab to draw the gun.' : '🎒 No ranged weapon equipped — open Loadout (L).'); return false; }
   const it = pickInteractableAt(x, y);
     if (it && taskIsCombat(it)) {
-    const target = it.bear || it.wolf || it.robber || it.prey;
+    const target = it.bear || it.wolf || it.robber || it.prey || it.ambient;
     if (target) { fireAt(target); return true; }
   }
   // manual shot at the ground under the cursor
@@ -6523,7 +6683,7 @@ function dawnRoutine(rested) {
   renderStats();
   // day-end card: closure for yesterday + a hook for tomorrow
   const gains = [];
-  for (const k of ['food', 'fish', 'egg', 'milk', 'meal', 'wool', 'gold']) {
+  for (const k of ['food', 'fish', 'meat', 'egg', 'milk', 'meal', 'wool', 'gold']) {
     const d = (inv[k] || 0) - (before[k] || 0);
     if (d > 0) gains.push(`+${d}${ITEM_ICON[k] || k}`);
   }
@@ -6553,7 +6713,7 @@ function saveLife() {
     legacy: Life.legacy ? { ...Life.legacy, traits: [...(Life.legacy.traits || [])] } : null,
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
-    home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
+    home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, dock: !!Home.dock, raft: !!Home.raft, boat: !!Home.boat, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
   };
@@ -6594,6 +6754,7 @@ function restoreLife(s) {
     Home.house = s.home.house ?? 0; Home.well = !!s.home.well; Home.barn = s.home.barn ?? 0;
     Home.fences = s.home.fences ?? 0; Home.cabin = !!s.home.cabin; Home.stall = !!s.home.stall;
     Home.lanterns = s.home.lanterns ?? 0; Home.dog = !!s.home.dog; Home.decor = s.home.decor ?? 0;
+    Home.dock = !!s.home.dock; Home.raft = !!s.home.raft; Home.boat = !!s.home.boat;
     Home.sites = {};
     for (const [k, v] of Object.entries(s.home.sites || {})) {
       if (v && Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lon))) Home.sites[k] = { lat: Number(v.lat), lon: Number(v.lon) };
@@ -6684,11 +6845,11 @@ function overnightNeeds(rested) {
 }
 function cookMeal() {
   if (playerDead) return;
-  const have = (inv.food || 0) + (inv.fish || 0) + (inv.egg || 0) + (inv.milk || 0);
-  if (have < 2) return toast('🍲 Need 2 produce (🍎/🐟/🥚/🥛) to cook a meal.');
+  const have = (inv.food || 0) + (inv.fish || 0) + (inv.meat || 0) + (inv.egg || 0) + (inv.milk || 0);
+  if (have < 2) return toast('🍲 Need 2 produce (🍎/🐟/🍖/🥚/🥛) to cook a meal.');
   const used = [];
   let need = 2;
-  for (const k of ['fish', 'food', 'egg', 'milk']) { while (need > 0 && inv[k] > 0) { inv[k]--; used.push(k); need--; } }
+  for (const k of ['meat', 'fish', 'food', 'egg', 'milk']) { while (need > 0 && inv[k] > 0) { inv[k]--; used.push(k); need--; } }
   inv.meal = (inv.meal || 0) + 1; // net −1 pack, always fits
   meters.energy = Math.min(100, meters.energy + 5);
   // recipe discovery: first time you mix a combo, it is remembered
@@ -6728,6 +6889,7 @@ const Home = {
   refrigeration: false, firebreak: false, dynamo: false,
   telegraph: false, radio: false, greenhouse: false, fishTrap: false,
   lightningRod: false, sandbags: false, hailNetting: false, scarecrow: false,
+  dock: false, raft: false, boat: false,
   sites: {},
   plots: Array.from({ length: 6 }, () => ({ crop: false, growth: 0, water: false })),
 };
@@ -6745,6 +6907,7 @@ const SITE_DEFAULTS = {
   mill: { lat: 3.5, lon: 59.5, r: 1.9, label: 'the mill' },
   pump: { lat: 0.8, lon: 51.5, r: 1.1, label: 'the steam pump' },
   gunsmith: { lat: -7.5, lon: 58.5, r: 2.0, label: 'the gunsmith' },
+  dock: { lat: -17.6, lon: 56, r: 1.3, label: 'the dock' },
   plot0: { lat: -4.5, lon: 53.5, r: 1.25, label: 'a field plot' },
   plot1: { lat: -4.5, lon: 54.5, r: 1.25, label: 'a field plot' },
   plot2: { lat: -4.5, lon: 55.5, r: 1.25, label: 'a field plot' },
@@ -6781,6 +6944,7 @@ function siteBuilt(key) {
   if (key === 'mill') return !!Home.mill;
   if (key === 'pump') return !!Home.pump;
   if (key === 'gunsmith') return !!Home.gunsmith;
+  if (key === 'dock') return !!Home.dock;
   if (/^plot\d$/.test(key)) return !!Home.plots[Number(key.slice(4))]?.bought;
   return false;
 }
@@ -6788,6 +6952,7 @@ function siteKeyFor(def) {
   if (!def) return null;
   if (def.houseTier) return 'house';
   if (def.id === 'barn1' || def.id === 'barn2') return 'barn';
+  if (def.id === 'dock') return 'dock';
   if (/^plot\d$/.test(def.id)) return def.id;
   return ['well', 'cabin', 'stall', 'workshop', 'windmill', 'sawmill', 'mill', 'pump', 'gunsmith'].includes(def.id) ? def.id : null;
 }
@@ -7270,6 +7435,141 @@ function buildMiscMeshes() {
     placeAt(g, -1, 58.5, 0, -0.6);
   }
 }
+function dockSiteData() {
+  const s = siteFor('dock');
+  const n = latLonToVec3(s.lat, s.lon, 0).normalize();
+  const fwd = shoreWaterDir(n);
+  return { s, n, fwd };
+}
+function buildDockMesh() {
+  if (!Home.dock) return;
+  const d = dockSiteData();
+  if (!d.fwd) return;
+  const up = d.n, fwd = d.fwd;
+  const right = new THREE.Vector3().crossVectors(up, fwd).normalize();
+  const g = new THREE.Group();
+  const wood = mat(0x9a6b42), dark = mat(0x6e4e2c), rope = mat(0xd9c9a8);
+  for (let i = 0; i < 7; i++) g.add(mesh(new THREE.BoxGeometry(1.9, 0.1, 0.72), i % 2 ? wood : dark, 0, 0.32, -0.5 + i * 0.72, false));
+  for (const sx of [-0.82, 0.82]) for (const z of [0, 2.1, 4.2]) {
+    const post = mesh(new THREE.CylinderGeometry(0.07, 0.09, 1.55, 6), dark, sx, -0.35, z, false);
+    g.add(post);
+    g.add(mesh(new THREE.TorusGeometry(0.12, 0.025, 4, 8).rotateX(Math.PI / 2), rope, sx, 0.23, z, false));
+  }
+  g.add(mesh(new THREE.BoxGeometry(1.95, 0.09, 0.12), wood, 0, 0.4, 4.1, false));
+  const lampM = new THREE.MeshStandardMaterial({ color: 0xffe9a3, emissive: 0xffb35a, emissiveIntensity: 1.2, flatShading: true });
+  g.add(mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.75, 5), dark, 0.82, 0.75, 4.35, false));
+  g.add(mesh(new THREE.OctahedronGeometry(0.15, 0), lampM, 0.82, 1.18, 4.35, false));
+  g.add(mesh(new THREE.BoxGeometry(0.7, 0.45, 0.5), wood, -0.55, 0.62, 3.5, false)); // tackle crate
+  g.position.copy(d.n.clone().multiplyScalar(R + heightFor(d.n) + 0.02));
+  g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, fwd));
+  homeGroup.add(g);
+}
+function makeRaft() {
+  const g = new THREE.Group();
+  const wood = mat(0x9a6b42), dark = mat(0x6e4e2c), rope = mat(0xd9c9a8);
+  for (let i = 0; i < 5; i++) {
+    const log = mesh(new THREE.CylinderGeometry(0.15, 0.17, 2.8, 8), i % 2 ? wood : dark, -0.62 + i * 0.31, 0.13, 0, false);
+    log.rotation.x = Math.PI / 2;
+    g.add(log);
+    g.add(mesh(new THREE.TorusGeometry(0.18, 0.022, 4, 8).rotateX(Math.PI / 2), rope, -0.62 + i * 0.31, 0.2, -1.0, false));
+    g.add(mesh(new THREE.TorusGeometry(0.18, 0.022, 4, 8).rotateX(Math.PI / 2), rope, -0.62 + i * 0.31, 0.2, 1.0, false));
+  }
+  for (let i = 0; i < 3; i++) g.add(mesh(new THREE.BoxGeometry(1.75, 0.09, 0.16), wood, 0, 0.28, -0.85 + i * 0.85, false));
+  g.add(mesh(new THREE.CylinderGeometry(0.045, 0.06, 1.5, 6), dark, 0, 0.95, -0.85, false));
+  const flag = mesh(new THREE.BoxGeometry(0.5, 0.24, 0.02), mat(0xe0654a, { side: THREE.DoubleSide }), 0.25, 1.55, -0.85, false);
+  g.add(flag);
+  g.add(mesh(new THREE.BoxGeometry(0.55, 0.42, 0.45), wood, 0.48, 0.5, 0.9, false)); // fish crate
+  const paddle = mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.5, 5), wood, -0.58, 0.35, 0.55, false);
+  paddle.rotation.x = 0.35; g.add(paddle);
+  const rig = new THREE.Group(); rig.visible = false; g.add(rig);
+  const rodBase = V3(0.45, 0.3, 0.75), rodTip = V3(1.15, 1.7, 0.35);
+  const rod = mesh(new THREE.CylinderGeometry(0.022, 0.04, 1.65, 5), wood);
+  rod.position.copy(rodBase).lerp(rodTip, 0.5);
+  rod.quaternion.setFromUnitVectors(UP, rodTip.clone().sub(rodBase).normalize());
+  rig.add(rod);
+  const bobberHome = V3(1.4, 0.1, 2.15);
+  const bobber = new THREE.Group(); bobber.position.copy(bobberHome); rig.add(bobber);
+  bobber.add(mesh(new THREE.SphereGeometry(0.1, 7, 6), mat(0xe04a3a), 0, 0, 0, false));
+  const line = mesh(new THREE.CylinderGeometry(0.008, 0.008, 1, 4), mat(0xffffff, { transparent: true, opacity: 0.8 }), 0, 0, 0, false);
+  rig.add(line);
+  g.userData = { rig, bobber, bobberHome, rodTip, line, flag };
+  return g;
+}
+function ensureDockInteract() {
+  if (!Home.dock) {
+    if (dockInteract) {
+      const ix = interactables.indexOf(dockInteract);
+      if (ix >= 0) interactables.splice(ix, 1);
+      dockInteract = null;
+    }
+    return;
+  }
+  const d = dockSiteData();
+  const pos = homeSpot(d.s.lat, d.s.lon, 1.15);
+  if (!dockInteract) {
+    dockInteract = {
+      id: 'home-dock', pos, radius: 5.5, kind: '⚓ DOCK',
+      label: () => {
+        if (inBoat && craftMode === 'dock') return fishStage === 1 ? 'Reel in the line' : nearestLand(boatN) ? 'Step ashore' : 'Cast a line';
+        if (inBoat) return 'Already aboard the sea skiff';
+        if (!Home.raft && !Home.boat) return 'Build a raft at the board (H)';
+        return `Board the ${Home.boat ? 'boat' : 'raft'}`;
+      },
+      onUse: () => dockUse(),
+    };
+    addInteract(dockInteract);
+    dockInteract = interactables[interactables.length - 1];
+  } else {
+    dockInteract.pos.copy(pos);
+  }
+}
+function dockUse() {
+  if (playerDead) return;
+  if (inBoat) {
+    if (craftMode === 'dock') return boatUse('dock');
+    return toast('⛵ You are already aboard the sea skiff.');
+  }
+  if (!Home.raft && !Home.boat) {
+    toast('⚓ Build a raft first — open the homestead board (H).');
+    openBuild();
+    return;
+  }
+  boardBoat('dock');
+}
+function rebuildDockCraft() {
+  if (dockCraftG) {
+    scene.remove(dockCraftG);
+    disposeTree(dockCraftG);
+    dockCraftG = null;
+  }
+  dockCraftKind = null;
+  dockMoorN = null;
+  dockMoorHeading = null;
+  if (!Home.dock) { ensureDockInteract(); return; }
+  const d = dockSiteData();
+  if (!d.fwd) { ensureDockInteract(); return; }
+  const right = new THREE.Vector3().crossVectors(d.n, d.fwd).normalize();
+  let moorN = null;
+  for (const side of [1, -1]) {
+    for (const dist of [3.9, 5.6, 7.2]) {
+      const candidate = d.n.clone().addScaledVector(d.fwd, dist / R).addScaledVector(right, side * 2.25 / R).normalize();
+      if (heightFor(candidate) < 0.12) { moorN = candidate; break; }
+    }
+    if (moorN) break;
+  }
+  if (!moorN) { ensureDockInteract(); return; }
+  dockMoorN = moorN;
+  dockMoorHeading = d.fwd.clone();
+  if (!Home.raft && !Home.boat) { ensureDockInteract(); return; }
+  dockCraftKind = Home.boat ? 'boat' : 'raft';
+  dockCraftG = Home.boat ? makeSkiff() : makeRaft();
+  dockCraftG.name = 'dock-' + dockCraftKind;
+  if (Home.boat) dockCraftG.scale.setScalar(0.92);
+  dockCraftG.position.copy(moorN.clone().multiplyScalar(R + 0.02));
+  faceAlong(dockCraftG, dockCraftG.position, dockMoorHeading);
+  scene.add(dockCraftG);
+  ensureDockInteract();
+}
 function rebuildHomestead() {
   // drop homestead lights registered by the previous build (meshes are rebuilt below)
   for (let i = nightLights.length - 1; i >= 0; i--) if (nightLights[i].home) nightLights.splice(i, 1);
@@ -7281,10 +7581,12 @@ function rebuildHomestead() {
   buildBarnMesh();
   buildFenceMesh();
   buildMiscMeshes();
+  buildDockMesh();
   for (let i = 0; i < 6; i++) {
     if (Home.plots[i].bought) { const s = siteFor('plot' + i); buildPlotMesh(i, s.lat, s.lon); }
     else plotMesh[i] = null;
   }
+  rebuildDockCraft();
   syncHomeInteractPositions();
   renderStats();
 }
@@ -7476,6 +7778,9 @@ function houseReq(target, missingWhy) {
 }
 const BUILD_DEFS = [
   { id: 'hut', name: 'Mud Hut', cost: { wood: 3 }, blurb: 'First real roof. Better sleep.', houseTier: 1, req: () => houseReq(1, '') },
+  { id: 'dock', name: 'Dock', cost: { wood: 8, stone: 3 }, blurb: 'A shore landing for a raft. Click a shoreline site.', shoreOnly: true, req: () => (!Home.dock ? { ok: true } : { ok: false, why: 'Built ✓' }), apply: () => { Home.dock = true; } },
+  { id: 'raft', name: 'Raft', cost: { wood: 8 }, blurb: 'A simple raft moored at your dock. Fish the coastal grounds.', req: () => (!Home.dock ? { ok: false, why: 'Build a dock first' } : Home.raft || Home.boat ? { ok: false, why: 'Moored ✓' } : { ok: true }), apply: () => { Home.raft = true; } },
+  { id: 'boat', name: 'Boat', cost: { wood: 10, wool: 2, gold: 4 }, blurb: 'Upgrade the raft to a swift boat with a sail.', req: () => (!Home.raft ? { ok: false, why: 'Build a raft first' } : Home.boat ? { ok: false, why: 'Upgraded ✓' } : !hasTech('boatbuilding') ? { ok: false, why: 'Research Boatbuilding first' } : { ok: true }), apply: () => { Home.boat = true; } },
   { id: 'house1', name: 'Farmhouse', cost: { wood: 8, stone: 4 }, blurb: '3 beds, cooking corner. Marriage-ready.', houseTier: 2, req: () => houseReq(2, 'Needs hut first') },
   { id: 'house2', name: 'Big Farmhouse + cellar', cost: { wood: 10, stone: 8, gold: 10 }, blurb: '4 beds. Cellar keeps food, shelters tornadoes.', houseTier: 3, req: () => houseReq(3, 'Needs farmhouse first') },
   { id: 'house3', name: 'Manor', cost: { wood: 12, stone: 10, gold: 25 }, blurb: '6 beds. The talk of the planet.', houseTier: 4, req: () => houseReq(4, 'Needs big farmhouse first') },
@@ -7532,10 +7837,13 @@ function doBuild(b) {
   if (!removeItems(b.cost)) { toast('🔨 Not enough materials.'); return false; }
   b.apply();
   rebuildHomestead();
-  burst(homeSpot(HOME.lat, HOME.lon, 1.5), 0x9df0a8, 18, 2.4);
+  const atDock = b.id === 'raft' || b.id === 'boat';
+  const sp = atDock ? siteFor('dock') : { lat: HOME.lat, lon: HOME.lon };
+  const p = homeSpot(sp.lat, sp.lon, 1.5);
+  burst(p, 0x9df0a8, 18, 2.4);
   chime(700);
-  toast(`🔨 ${b.name} done!`);
-  if (onGainXp) onGainXp(20, homeSpot(HOME.lat, HOME.lon, 1.5));
+  toast(b.id === 'raft' ? '🛶 Raft moored at the dock!' : b.id === 'boat' ? '⛵ The raft is now a proper boat!' : `🔨 ${b.name} done!`);
+  if (onGainXp) onGainXp(20, p);
   renderBuild();
   saveCheckpoint();
   renderStats();
@@ -7613,6 +7921,7 @@ let buildSiteSeq = 0;
 function siteRadius(key) { const d = SITE_DEFAULTS[key]; return d ? d.r : 1.4; }
 function buildDims(key) {
   if (/^plot/.test(key)) return { r: 1.05, h: 0.34, posts: 0.55, roof: false, soil: true };
+  if (key === 'dock') return { r: 1.15, h: 0.45, posts: 1.0, roof: false };
   if (key === 'well') return { r: 1.15, h: 1.0, posts: 1.55, roof: true };
   if (key === 'pump') return { r: 0.95, h: 1.15, posts: 1.6, roof: false };
   if (key === 'windmill') return { r: 1.5, h: 2.8, posts: 3.4, roof: true };
@@ -7625,6 +7934,28 @@ function normalToLatLon(n) {
   let lon = Math.atan2(n.z, n.x) / DEG;
   if (lon < 0) lon += 360;
   return { lat, lon };
+}
+// Pick the tangent direction from a shore point that leads into open water.
+function shoreWaterDir(n) {
+  const up = n.clone().normalize();
+  const east = new THREE.Vector3().crossVectors(up, UP);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(up, east).normalize();
+  let best = null, bestScore = -1, bestWater = 0;
+  for (let i = 0; i < 16; i++) {
+    const a = (i / 16) * Math.PI * 2;
+    const dir = east.clone().multiplyScalar(Math.cos(a)).addScaledVector(north, Math.sin(a));
+    let score = 0, water = 0;
+    for (const dist of [1.5, 3, 4.5, 6]) {
+      const p = up.clone().addScaledVector(dir, dist / R).normalize();
+      const h = heightFor(p);
+      if (h < 0.12) { score += 1 + (0.12 - h); water++; }
+      else score -= 0.4;
+    }
+    if (score > bestScore) { bestScore = score; best = dir; bestWater = water; }
+  }
+  return bestWater >= 2 && best ? best.normalize() : null;
 }
 function disposeTree(obj) {
   obj.traverse((o) => {
@@ -7659,12 +7990,19 @@ function makePlacementGhost(key) {
   scene.add(g);
   return { g, lineM, fillM, boxM, edgeM };
 }
-function placementValidAt(n, key) {
+function placementValidAt(n, key, def) {
   if (!n) return { ok: false, why: 'Point at the ground' };
   const ownR = siteRadius(key);
   if (heightFor(n) < 0.14) return { ok: false, why: 'Choose dry land' };
-  const homeN = latLonToVec3(HOME.lat, HOME.lon, 0).normalize();
-  if (n.distanceTo(homeN) * R > 17) return { ok: false, why: 'Choose a site near the homestead' };
+  if (def?.shoreOnly) {
+    const waterDir = shoreWaterDir(n);
+    if (!waterDir) return { ok: false, why: 'Place the dock at the shoreline' };
+    const wet = [2, 3.5, 5].filter((d) => heightFor(n.clone().addScaledVector(waterDir, d / R).normalize()) < 0.12).length;
+    if (wet < 2) return { ok: false, why: 'Place the dock at the shoreline' };
+  } else {
+    const homeN = latLonToVec3(HOME.lat, HOME.lon, 0).normalize();
+    if (n.distanceTo(homeN) * R > 17) return { ok: false, why: 'Choose a site near the homestead' };
+  }
   const occupied = [];
   for (const k of Object.keys(SITE_DEFAULTS)) {
     if (k === key || !siteBuilt(k)) continue;
@@ -7689,7 +8027,9 @@ function renderPlacementHint() {
   hint.classList.remove('hidden');
   hint.classList.toggle('invalid', !placement.valid);
   title.textContent = placement.valid ? `Build ${placement.def.name} here` : (placement.why || `Choose a site for ${placement.def.name}`);
-  sub.textContent = placement.valid ? 'Click the ground to confirm · Esc to cancel' : 'Move to a clear, dry spot near the homestead · Esc to cancel';
+  sub.textContent = placement.valid
+    ? (placement.def.shoreOnly ? 'Click the waterline to moor the dock · Esc to cancel' : 'Click the ground to confirm · Esc to cancel')
+    : (placement.def.shoreOnly ? 'Click where land meets water · Esc to cancel' : 'Move to a clear, dry spot near the homestead · Esc to cancel');
 }
 function updatePlacementGhost(x, y) {
   if (!placement || !placementGhost) return;
@@ -7704,7 +8044,7 @@ function updatePlacementGhost(x, y) {
   const n = hit.point.clone().normalize();
   placementGhost.g.visible = true;
   orientOnSphere(placementGhost.g, n.clone().multiplyScalar(R + heightFor(n) + 0.06), 0);
-  const v = placementValidAt(n, placement.key);
+  const v = placementValidAt(n, placement.key, placement.def);
   placement.n = n; placement.valid = v.ok; placement.why = v.why || '';
   const col = v.ok ? 0x9df0a8 : 0xff6b6b;
   placementGhost.lineM.color.setHex(col);
@@ -7742,7 +8082,7 @@ function cancelPlacement(silent) {
 function placeSiteAt(latDeg, lonDeg) {
   if (!placement) return false;
   const n = latLonToVec3(Number(latDeg) || 0, Number(lonDeg) || 0, 0).normalize();
-  const v = placementValidAt(n, placement.key);
+  const v = placementValidAt(n, placement.key, placement.def);
   placement.n = n; placement.valid = v.ok; placement.why = v.why || '';
   if (!v.ok) { renderPlacementHint(); toast(`📍 ${v.why}.`); return false; }
   return confirmPlacement();
@@ -8500,13 +8840,14 @@ function killWolf(w) {
   burst(w.mesh.position.clone(), 0xffffff, 20, 2.5);
   Threats.wolvesCulled = (Threats.wolvesCulled || 0) + 1;
   addItem('food', 2);
+  addItem('meat', 2);
   meters.morale = Math.min(100, (meters.morale ?? 80) + 5);
   Life.grief = Math.max(0, (Life.grief || 0) - 0.3);
   chime(240);
-  toast('🐺 Wolf driven off! (+2🍎 meat)');
+  toast('🐺 Wolf driven off! (+2🍎, +2🍖)');
   if (activeTask?.interact?.wolf === w) clearAutoTask();
   if (onGainXp) onGainXp(30, w.mesh.position.clone());
-  spawnPopup(w.mesh.position.clone(), '🐺 Fang +2🍎', '#ffd97a');
+  spawnPopup(w.mesh.position.clone(), '🐺 +2🍎 +2🍖', '#ffd97a');
   saveCheckpoint();
   renderStats();
 }
@@ -8537,7 +8878,8 @@ function addDeadLivestock(a) {
       scene.remove(g);
       const jx = interactables.indexOf(it); if (jx >= 0) interactables.splice(jx, 1);
       inv.food = (inv.food || 0) + 1;
-      toast(`🐑 You salvage a little meat and hide (+1🍎).`);
+      inv.meat = (inv.meat || 0) + 2;
+      toast(`🍖 You salvage meat and hide (+1🍎, +2🍖).`);
       renderStats();
     },
   };
@@ -8918,9 +9260,9 @@ tickers.push((t, dt) => {
 // --- huntable wildlife: deer and hare that flee, can be hunted for meat ---
 const Prey = [];
 const PREY_INFO = {
-  deer: { name: 'Deer', icon: '🦌', hp: 45, food: 3, pelt: 1, fur: 0, scale: 1.0 },
-  hare: { name: 'Hare', icon: '🐇', hp: 16, food: 1, pelt: 0, fur: 0, scale: 1.0 },
-  boar: { name: 'Boar', icon: '🐗', hp: 75, food: 4, pelt: 1, fur: 2, scale: 1.0 },
+  deer: { name: 'Deer', icon: '🦌', hp: 45, food: 3, meat: 3, pelt: 1, fur: 0, scale: 1.0 },
+  hare: { name: 'Hare', icon: '🐇', hp: 16, food: 1, meat: 1, pelt: 0, fur: 0, scale: 1.0 },
+  boar: { name: 'Boar', icon: '🐗', hp: 75, food: 4, meat: 5, pelt: 1, fur: 2, scale: 1.0 },
 };
 function spawnPrey(kind, lat, lon) {
   const info = PREY_INFO[kind];
@@ -8991,16 +9333,18 @@ function killPrey(p) {
   const wounded = !!p.wounded;
   const meat = Math.max(1, info.food - (wounded ? 1 : 0));
   inv.food = (inv.food || 0) + meat;
+  const meatN = Math.max(1, (info.meat || 2) - (wounded ? 1 : 0));
+  inv.meat = (inv.meat || 0) + meatN;
   if (info.pelt) inv.wool = (inv.wool || 0) + info.pelt;
   if (info.fur) inv.fur = (inv.fur || 0) + info.fur;
   const clean = (p.shotHits || 0) > 0 && p.shotHits <= 2 && !wounded;
-  if (clean) { inv.food++; grantInsight(1, 'Clean shot'); }
+  if (clean) { inv.food++; inv.meat++; grantInsight(1, 'Clean shot'); }
   Threats.venison = (Threats.venison || 0) + (p.kind === 'deer' ? 2 : 1);
   if (p.kind === 'boar') Threats.boars = (Threats.boars || 0) + 1;
   Life.stats.hunted = (Life.stats.hunted || 0) + 1;
   burst(p.mesh.position.clone(), 0xe8c96a, 18, 2.2);
   chime(620);
-  toast(`${info.icon} ${p.name} hunted! (+${meat}🍎${info.pelt ? `, +${info.pelt}🐑 pelt` : ''}${info.fur ? `, +${info.fur} fur` : ''})${clean ? ' — clean shot! +1🍎' : wounded ? ' — trailed and finished' : ''}`);
+  toast(`${info.icon} ${p.name} hunted! (+${meat}🍎, +${meatN}🍖${info.pelt ? `, +${info.pelt}🐑 pelt` : ''}${info.fur ? `, +${info.fur} fur` : ''})${clean ? ' — clean shot! +1🍎 +1🍖' : wounded ? ' — trailed and finished' : ''}`);
   if (clean) pushStory(`A clean shot brought down a ${p.name}.`, '🎯');
   grantInsight(2, `Hunted a ${p.name}`);
   saveCheckpoint();
@@ -9163,7 +9507,74 @@ function renderBounty() {
 }
 
 const ambientWanderers = [];
-function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase = rand(Math.PI * 2)) {
+let ambientHuntSeq = 0;
+function attachAmbientHunt(entry) {
+  if (!entry || !entry.hunt) return;
+  const it = {
+    id: 'ambienthunt' + (++ambientHuntSeq), pos: entry.mesh.position.clone(),
+    radius: 4.2, kind: '🐾 WILDLIFE', ambient: entry,
+    label: () => `${entry.hunt.icon || '🐾'} Hunt ${entry.hunt.name}`,
+    onUse: () => huntAmbient(entry),
+  };
+  addInteract(it);
+  entry.interact = interactables[interactables.length - 1];
+}
+function huntAmbient(entry) {
+  if (!entry || entry.dead || playerDead) return;
+  if (player.position.distanceTo(entry.mesh.position) > 4.6) return toast('⚠️ Too far — step closer.');
+  if (playerAttackCd > 0) return;
+  playerAttackCd = Math.max(0.35, window.__rpgSwing || 0.55);
+  startAttack();
+  setTimeout(() => {
+    if (!entry || entry.dead || playerDead) return;
+    if (player.position.distanceTo(entry.mesh.position) > 5.4) return;
+    let dmg = Math.round(18 * meleeMult());
+    if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; }
+    entry.hp -= dmg;
+    entry.hitFlash = 1;
+    wearWeapon(Loadout.melee, 0.3);
+    spawnPopup(entry.mesh.position.clone(), `-${dmg}`, '#ffd97a');
+    chime(300);
+    if (entry.hp <= 0) killAmbient(entry);
+    else {
+      entry.fleeT = 6;
+      toast(`🩸 The ${entry.hunt.name} bolts — follow and finish the hunt.`);
+    }
+    renderStats();
+  }, 180);
+}
+function killAmbient(entry) {
+  if (!entry || entry.dead) return;
+  const h = entry.hunt || {};
+  entry.dead = true;
+  scene.remove(entry.mesh);
+  if (entry.interact) {
+    const ix = interactables.indexOf(entry.interact);
+    if (ix >= 0) interactables.splice(ix, 1);
+    if (activeTask?.interact === entry.interact) clearAutoTask();
+    entry.interact = null;
+  }
+  const meatN = Math.max(1, h.meat || 1);
+  inv.meat = (inv.meat || 0) + meatN;
+  if (h.fur) inv.fur = (inv.fur || 0) + h.fur;
+  if (h.pelt) inv.wool = (inv.wool || 0) + h.pelt;
+  burst(entry.mesh.position.clone(), 0xe8c96a, 18, 2.2);
+  chime(620);
+  toast(`🍖 ${h.icon || '🐾'} ${h.name || 'Game'} hunted! (+${meatN}🍖${h.fur ? `, +${h.fur} fur` : ''}${h.pelt ? `, +${h.pelt} wool` : ''})`);
+  if (onGainXp) onGainXp(16, entry.mesh.position.clone());
+  grantInsight(1, `Hunted a ${h.name || 'creature'}`);
+  saveCheckpoint();
+  renderStats();
+  setTimeout(() => {
+    if (!entry.dead) return;
+    entry.dead = false;
+    entry.hp = entry.maxHp || entry.hp;
+    entry.fleeT = 0;
+    scene.add(entry.mesh);
+    attachAmbientHunt(entry);
+  }, 75000);
+}
+function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase = rand(Math.PI * 2), hunt = null) {
   const home = latLonToVec3(lat, lon, 0).normalize();
   const east = V3(-home.z, 0, home.x);
   if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
@@ -9172,48 +9583,59 @@ function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase
   const start = home.clone().multiplyScalar(R + heightFor(home) + 0.06);
   meshObj.position.copy(start);
   scene.add(meshObj);
-  const entry = { mesh: meshObj, home, radius, speed, phase };
+  const entry = { mesh: meshObj, home, radius, speed, phase, dead: false, hp: hunt?.hp || 20, maxHp: hunt?.hp || 20, hunt, kindTag: 'ambient', fleeT: 0 };
   ambientWanderers.push(entry);
+  if (hunt) attachAmbientHunt(entry);
   let prev = start.clone();
   tickers.push((t, dt) => {
+    if (entry.dead) return;
     const a = t * speed + phase;
     const n = home.clone()
       .addScaledVector(east, Math.sin(a) * radius / R)
       .addScaledVector(north, Math.sin(a * 0.73 + 1.3) * radius * 0.55 / R)
       .normalize();
     const p = n.clone().multiplyScalar(R + heightFor(n) + 0.05);
+    if (entry.fleeT > 0) {
+      entry.fleeT -= dt;
+      const away = p.clone().sub(player.position);
+      away.addScaledVector(n, -away.dot(n));
+      if (away.lengthSq() > 1e-6) p.addScaledVector(away.normalize(), dt * 0.8);
+      p.copy(p.clone().normalize().multiplyScalar(R + heightFor(p.clone().normalize()) + 0.05));
+    }
     const step = p.clone().sub(prev);
     if (step.lengthSq() > 1e-5) {
       const dir = step.clone().addScaledVector(n, -step.dot(n));
       if (dir.lengthSq() > 1e-6) faceAlong(meshObj, p, dir.normalize());
     }
     meshObj.position.copy(p);
+    if (entry.interact) entry.interact.pos.copy(p);
     const hop = meshObj.userData.ambientHop || 0;
     if (hop) meshObj.position.addScaledVector(n, Math.abs(Math.sin(t * (meshObj.userData.hopSpeed || 5) + phase)) * hop);
     prev.copy(p);
     animateAnimal(meshObj, t, 0.4, dt);
   });
+  return entry;
 }
-const deerA = makeDeer(); addAmbientWanderer(deerA, 20, 148, 3.2, 0.16);
-const deerB = makeDeer(); addAmbientWanderer(deerB, 23, 164, 2.7, 0.13, 2.1);
-const deerC = makeDeer(); addAmbientWanderer(deerC, 25, 153, 2.4, 0.18, 4.4);
+const deerA = makeDeer(); addAmbientWanderer(deerA, 20, 148, 3.2, 0.16, rand(Math.PI * 2), { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 });
+const deerB = makeDeer(); addAmbientWanderer(deerB, 23, 164, 2.7, 0.13, 2.1, { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 });
+const deerC = makeDeer(); addAmbientWanderer(deerC, 25, 153, 2.4, 0.18, 4.4, { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 });
 for (const [la, lo, ph] of [[4, 32, 0.8], [8, 45, 2.6]]) {
   const hare = makeHare(0xb9885a, ['#8a5a33', '#d9b988', '#f3e9dc']);
   hare.userData.ambientHop = 0.1; hare.userData.hopSpeed = 4.6;
-  addAmbientWanderer(hare, la, lo, 1.7, 0.34, ph);
+  addAmbientWanderer(hare, la, lo, 1.7, 0.34, ph, { name: 'Hare', icon: '🐇', hp: 16, meat: 1 });
 }
 for (const [la, lo, ph] of [[53, 116, 1.2], [56, 142, 3.8], [58, 100, 5.2], [51, 151, 2.4]]) {
   const hare = makeHare(0xe9e4d8, ['#f7f2e6', '#c9c2b4', '#ffffff']);
   hare.userData.ambientHop = 0.13; hare.userData.hopSpeed = 4.2;
-  addAmbientWanderer(hare, la, lo, 1.8, 0.3, ph);
+  addAmbientWanderer(hare, la, lo, 1.8, 0.3, ph, { name: 'Snow Hare', icon: '🐇', hp: 18, meat: 2 });
 }
 for (const [la, lo, ph] of [[7, 116, 0.4], [13, 103, 3.1], [15, 119, 5.5]]) {
   const fennec = makeFennec();
-  addAmbientWanderer(fennec, la, lo, 1.9, 0.3, ph);
+  addAmbientWanderer(fennec, la, lo, 1.9, 0.3, ph, { name: 'Fennec', icon: '🦊', hp: 18, meat: 1, fur: 1 });
 }
 for (const [la, lo, ph] of [[18, 318, 1.1], [16, 340, 3.4], [12, 310, 5.8], [21, 335, 0.2]]) {
   const lizard = makeEmberLizard();
-  addAmbientWanderer(lizard, la, lo, 1.25, 0.5, ph);
+  addAmbientWanderer(lizard, la, lo, 1.25, 0.5, ph, { name: 'Ember Lizard', icon: '🦎', hp: 12, meat: 1 });
 }
 
 // sea turtles surface for air in the warm shallows
@@ -9226,7 +9648,11 @@ function addSeaTurtle(lat, lon, phase = rand(Math.PI * 2)) {
   const north = new THREE.Vector3().crossVectors(center, east).normalize();
   turtle.position.copy(center).multiplyScalar(R + 0.11);
   scene.add(turtle);
+  const entry = { mesh: turtle, kindTag: 'ambient', dead: false, hp: 30, maxHp: 30, hunt: { name: 'Sea Turtle', icon: '🐢', hp: 30, meat: 2 }, fleeT: 0 };
+  ambientWanderers.push(entry);
+  attachAmbientHunt(entry);
   tickers.push((t) => {
+    if (entry.dead) return;
     const a = t * 0.14 + phase;
     const n = center.clone()
       .addScaledVector(east, Math.cos(a) * 3.2 / R)
@@ -9237,6 +9663,7 @@ function addSeaTurtle(lat, lon, phase = rand(Math.PI * 2)) {
       .addScaledVector(north, Math.cos(a) * 2.4);
     if (d.lengthSq() > 1e-6) faceAlong(turtle, p, d.normalize());
     turtle.position.copy(p);
+    if (entry.interact) entry.interact.pos.copy(p);
     const rig = turtle.userData.turtle;
     if (rig) {
       rig.head.rotation.y = Math.sin(t * 0.7 + phase) * 0.24;
@@ -9515,11 +9942,11 @@ function overnightWorkers() {
   }
   spawnWorkers();
 }
-const ROT_DAYS = { food: 4, fish: 2, egg: 3, milk: 2, meal: 8 };
+const ROT_DAYS = { food: 4, fish: 2, meat: 2, egg: 3, milk: 2, meal: 8 };
 function overnightSpoilage() {
   const cellar = Home.house >= 3 && !Home.dmg.house;
   const chill = (cellar ? 0.5 : 1) * (Home.refrigeration ? 0.5 : 1);
-  for (const k of ['food', 'fish', 'egg', 'milk', 'meal']) {
+  for (const k of ['food', 'fish', 'meat', 'egg', 'milk', 'meal']) {
     if ((inv[k] || 0) <= 0) { Life.rot[k] = 0; continue; }
     Life.rot[k] = (Life.rot[k] || 0) + chill;
     if (Life.rot[k] >= ROT_DAYS[k]) { Life.rot[k] = 0; inv[k]--; toast(`🤢 A ${ITEM_ICON[k]} spoiled!${chill < 1 ? '' : ' (cellar slows rot)'}`); }
@@ -10456,7 +10883,7 @@ function snapshot() {
     bears: bears.map((b) => ({ hp: b.hp, dead: b.dead, pos: b.pos.toArray() })),
     fishStage,
     fishSource,
-    boat: { pos: boatN.toArray(), heading: boatHeading.toArray(), inBoat, fishSource },
+    boat: { pos: (inBoat ? boatN : skiffParkN).toArray(), heading: (inBoat ? boatHeading : skiffParkHeading).toArray(), inBoat, fishSource, craft: inBoat ? craftMode : 'skiff' },
     quest: questSnapshot(),
     meta: {
       at: Date.now(), day: Life.day, season: SEASONS[seasonNow()], gen: Life.gen,
@@ -10513,7 +10940,7 @@ function applySave(s, respawn) {
   if (meters.hunger === undefined) meters.hunger = 100;
   if (meters.warmth === undefined) meters.warmth = 100;
   if (meters.morale === undefined) meters.morale = 80;
-  for (const k of ['fish', 'egg', 'milk', 'meal', 'fur', 'leather']) if (inv[k] === undefined) inv[k] = 0;
+  for (const k of ['fish', 'meat', 'egg', 'milk', 'meal', 'fur', 'leather']) if (inv[k] === undefined) inv[k] = 0;
   if (s.life) restoreLife(s.life);
   if (s.tools) Object.assign(tools, s.tools);
   for (const sn of s.npcs || []) {
@@ -10672,7 +11099,7 @@ function clearAutoTask() {
 }
 function taskIsCombat(it) {
   if (!it) return false;
-  if (it.bear || it.wolf || it.robber || it.prey) return true;
+  if (it.bear || it.wolf || it.robber || it.prey || it.ambient) return true;
   const k = (it.kind || '');
   return k.includes('BEAR') || k.includes('WOLF') || k.includes('ROBBER') || k.includes('DEER') || k.includes('HARE');
 }
@@ -10720,12 +11147,13 @@ function updateAutoTask(dt) {
   if (activeTask.timer > 0) return;
   if (taskIsCombat(it)) {
     activeTask.timer = Math.max(0.3, rangedReady ? rw.rate : window.__rpgSwing || 0.55);
-    const target = it.bear || it.wolf || it.robber || it.prey;
+    const target = it.bear || it.wolf || it.robber || it.prey || it.ambient;
     if (rangedReady && d <= rw.range && fireAt(target)) return;
     if (it.bear) attackBear(it.bear);
     else if (it.wolf) attackWolf(it.wolf);
     else if (it.robber) attackRobber(it.robber);
     else if (it.prey) attackPrey(it.prey);
+    else if (it.ambient) huntAmbient(it.ambient);
   } else if (taskIsGather(it)) {
     // one full swung chop per cycle; the hit lands on the contact frame
     activeTask.timer = CHOP_DUR + 0.08;
@@ -11531,9 +11959,10 @@ Object.assign(window.__lp, {
   settings, applySettings, openSettings, openPause, resumeGame, showTitle,
   settingsDefs: SETTINGS_DEFS, autoRespawn: () => !settings.permadeath,
   pacing: { dayLen: DAY_LEN, daysPerSeason: DAYS_PER_SEASON, yearDays: DAYS_PER_SEASON * 4 },
+  terrain: { height: (lat, lon) => heightFor(latLonToVec3(lat, lon, 0).normalize()), biome: (lat, lon) => biomeAt(latLonToVec3(lat, lon, 0).normalize()) },
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
   homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
-  rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult },
+  rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult, apply: applyTech },
   tree: { zoom: treeZoom, reset: treeReset, view: () => treeView },
   weapons: { list: WEAPONS, loadout: Loadout, mode: () => WeaponState.mode, toggle: toggleWeapon, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
@@ -11567,6 +11996,8 @@ Object.assign(window.__lp, {
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
   weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
   prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech, craftLeather, preyInfo: PREY_INFO,
+  ambient: { list: ambientWanderers, hunt: huntAmbient, kill: killAmbient },
+  fishing: { zones: FISH_ZONES, species: FISH_TYPES, zoneAt: (lat, lon) => fishZoneAt(latLonToVec3(lat, lon, 0).normalize()), book: () => Life.fishBook, cast: (id) => fishFrom('sea', id) },
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty, wanted: WANTED, claimWanted },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
@@ -11679,7 +12110,7 @@ const CURSOR_COLORS = {
 function cursorIconFor(it) {
   if (!it) return null;
   if (it.bear) return it.bear.cub ? 'paw' : 'sword';
-  if (it.prey) return 'paw';
+  if (it.prey || it.ambient) return 'paw';
   if (it.wolf || it.robber) return 'sword';
   if (it.npc) return 'talk';
   if (it.node) {
@@ -11704,8 +12135,8 @@ function cursorIconFor(it) {
   if (id === 'home-well') return 'water';
   if (id === 'home-trough' || id === 'home-barn') return 'basket';
   if (id === 'home-board' || id === 'home-door' || id === 'home-stall' || id === 'home-workshop') return 'hammer';
-  if (id === 'skiff') return 'oar';
-  if (id === 'fish') return 'rod';
+  if (id === 'skiff' || id === 'home-dock') return 'oar';
+  if (id === 'fish' || id.startsWith('fishzone-')) return 'rod';
   if (id.startsWith('shell')) return 'shell';
   if (id === 'lagoon') return 'water';
   if (id === 'plant') return 'leaf';
@@ -11717,11 +12148,14 @@ function cursorLabelFor(it) {
   if (it.node) return `${it.node.verb} ${it.node.name}`;
   if (it.bear) return it.bear.cub ? 'Shoo cub' : 'Fight bear';
   if (it.prey) return `Hunt ${it.prey.name}`;
+  if (it.ambient) return `Hunt ${it.ambient.hunt?.name || 'wildlife'}`;
   if (it.wolf) return 'Fight wolf';
   if (it.robber) return 'Confront robber';
   if (it.npc) return `Talk to ${it.npc.name}`;
   if (it.id && it.id.startsWith('plot')) return 'Tend plot';
   if (it.id && it.id.startsWith('animal')) return 'Visit livestock';
+  if (it.id && it.id.startsWith('fishzone-')) return 'Fish here';
+  if (it.id === 'home-dock') return 'Dock';
   const names = {
     flame: 'Tend flame', harvest: 'Tend harvest', oasis: 'Wake oasis', bell: 'Ring bell',
     light: 'Light beacon', scan: 'Scan volcano', aurora: 'Wake aurora', plant: 'Nurture sprout',
@@ -12080,7 +12514,8 @@ function updateBoatControl(dt) {
   ix += jx; iz += -jy;
   if (jx || jy) moveTargetN = null;
   const trimmed = keys.KeyQ && meters.energy > 0;
-  let speed = 5.4 * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1);
+  const craftSpeed = craftMode === 'dock' ? (Home.boat ? 7.4 : 3.6) : 5.4;
+  let speed = craftSpeed * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1);
   if (meters.energy <= 0) speed *= 0.55;
   let moved = false;
   if (ix || iz) {
