@@ -44,7 +44,7 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Gunshot and weather audio (`progtest` sfx log)
 
 ## Character
-- [x] Settler rig with five gear variants, blinking/expressions, weather and age idles, coat-tail motion (`herotrest`)
+- [x] Settler rig with five gear variants, blinking/expressions and weather/age idles; **jacket and trousers silhouette (no skirt)** (`herotrest`)
 - [x] Three measured LOD levels: portrait 85 calls, gameplay **65 (target ≤65)**, far 55 (`weapontest`)
 
 ## Saves, UX, accessibility

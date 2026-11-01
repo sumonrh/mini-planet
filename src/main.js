@@ -3083,17 +3083,17 @@ const player = new THREE.Group();
     player.userData[s < 0 ? 'ankleL' : 'ankleR'] = ankle;
   }
   // pelvis wrap (stays with the hips; torso pivots above it)
-  player.add(mesh(new THREE.CylinderGeometry(0.33, 0.35, 0.24, 10), pants, 0, 1.02, 0));
-  player.add(mesh(new THREE.CylinderGeometry(0.40, 0.44, 0.14, 10), coatDark, 0, 1.14, 0));
+  player.add(mesh(new THREE.CylinderGeometry(0.33, 0.35, 0.20, 10), pants, 0, 1.02, 0));
+  // jacket ends at the belt; trousers stay visible below it
+  player.add(mesh(new THREE.CylinderGeometry(0.355, 0.355, 0.06, 12), leather, 0, 1.13, 0));
 
   // ---- torso: pivots at the waist so the upper body can coil and lean ----
   const torso = new THREE.Group();
   torso.position.y = 1.02;
   player.add(torso);
   player.userData.torso = torso;
-  // tapered tunic: broad chest, pinched waist, flared skirt
-  torso.add(mesh(new THREE.CylinderGeometry(0.30, 0.355, 0.52, 12), coat, 0, 0.42, 0));
-  torso.add(mesh(new THREE.CylinderGeometry(0.355, 0.40, 0.16, 12), coat, 0, 0.15, 0)); // skirt
+  // tapered jacket: broad chest, pinched waist, straight hem over the trousers
+  torso.add(mesh(new THREE.CylinderGeometry(0.30, 0.325, 0.52, 12), coat, 0, 0.42, 0));
   torso.add(mesh(new THREE.CylinderGeometry(0.365, 0.365, 0.10, 12), leather, 0, 0.22, 0)); // belt
   torso.add(mesh(new THREE.BoxGeometry(0.14, 0.10, 0.05), gold, 0, 0.22, 0.35)); // buckle
   torso.add(mesh(new THREE.BoxGeometry(0.14, 0.15, 0.10), leatherL, 0.24, 0.15, 0.25)); // pouch
@@ -3297,18 +3297,6 @@ const player = new THREE.Group();
     greyHair.add(tuff);
   }
   head.add(greyHair);
-  const longCoat = mesh(new THREE.CylinderGeometry(0.42, 0.52, 0.45, 12), mat(0x6e6a52), 0, 0.02, 0, false);
-  longCoat.userData.noMerge = true; // toggled by chapter
-  torsoG.add(longCoat);
-  const coatTails = new THREE.Group();
-  coatTails.position.set(0, 0.05, -0.30);
-  const coatFlaps = [];
-  const pivot = new THREE.Group();
-  const flap = mesh(new THREE.BoxGeometry(0.5, 0.52, 0.045), mat(0x625f4a), 0, -0.26, 0, false);
-  pivot.add(flap);
-  coatTails.add(pivot);
-  coatFlaps.push(pivot);
-  torsoG.add(coatTails);
   // ---- five gear variants: bindle, apron, wedding band + lantern, bandolier, staff ----
   const bindle = new THREE.Group();
   bindle.position.set(0.1, 0.55, -0.42);
@@ -3371,9 +3359,10 @@ const player = new THREE.Group();
   const cloakM = mat(0x8a4a2a, { emissive: 0x3a1200, emissiveIntensity: 0.2 });
   heatCloak.add(mesh(new THREE.CylinderGeometry(0.46, 0.56, 0.62, 12, 1, true), cloakM, 0, 0, 0, false));
   heatCloak.add(mesh(new THREE.TorusGeometry(0.42, 0.05, 5, 12).rotateX(Math.PI / 2), mat(0xc9a227, { metalness: 0.5 }), 0, 0.3, 0, false)); // brass collar
+  heatCloak.visible = false; // only shown when heat-gear is researched
   torsoG.add(heatCloak);
   player.userData.gear = {
-    hatG, satchel, goggles, rifleG, beard, greyHair, longCoat, coatTails, coatFlaps,
+    hatG, satchel, goggles, rifleG, beard, greyHair,
     bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, heatCloak,
     lodDetails: [bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, goggles, beard, greyHair],
   };
@@ -3494,13 +3483,6 @@ const player = new THREE.Group();
       face.mouth.scale.x += (mx - face.mouth.scale.x) * 0.2;
       face.mouth.scale.y += (my - face.mouth.scale.y) * 0.2;
     }
-    // coat tails: secondary spring motion when walking and in wind
-    const g2 = P.gear;
-    if (g2 && g2.coatFlaps && g2.coatTails && g2.coatTails.visible) {
-      const flapA = Math.min(0.6, sp / 14) + hunch * 0.7;
-      g2.coatFlaps[0].rotation.x = 0.08 + flapA + Math.sin(idleT * 2.3) * 0.06;
-      g2.coatFlaps[0].rotation.z = Math.sin(idleT * 1.2) * 0.05;
-    }
 
     if (wading && moving && t - (P._splashT || 0) > 0.35) {
       P._splashT = t;
@@ -3517,8 +3499,7 @@ function applyHeroChapter(ch) {
   g.hatG.visible = !cap;
   for (const p of player.userData.capParts || []) p.visible = cap;
   g.satchel.visible = ch >= 2;
-  g.longCoat.visible = ch >= 4;
-  if (g.coatTails) g.coatTails.visible = ch >= 4;
+  // no skirt/coat-tails: the settler keeps a jacket and trousers in every chapter
   // five complete gear variants, swappable layers on the same rig
   const allowed = {
     bindle: ch === 0, apron: ch === 1, band: ch >= 2, lantern: ch >= 2,
