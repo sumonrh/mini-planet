@@ -12,5 +12,8 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 
+# Blender backups
+*.blend1
+
 # firebase CLI cache
 .firebase/
