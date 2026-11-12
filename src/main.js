@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import novaGlbUrl from './assets/nova.glb?url';
 
 /* ============================================================
    LITTLE PLANET — A Pocket Adventure (prototype)
@@ -3707,6 +3709,13 @@ const player = new THREE.Group();
   let phase = 0, strideInit = false;
   const last = new THREE.Vector3();
   let idleT = 0;
+  // Phase 0: the Blender-authored GLB replaces the procedural visuals when it
+  // loads; the hand-built rig stays as the offline/fallback path.
+  P.heroGlb = {
+    loaded: false, failed: false, error: null, source: 'procedural',
+    root: null, mixer: null, actions: {}, clips: [], bones: {},
+    state: '', meshCount: 0, procedural: [], axeParent: '', lanternParent: '',
+  };
   tickers.push((t, dt) => {
     if (!strideInit) {
       if (player.position.lengthSq() < 1) return;
@@ -3862,6 +3871,9 @@ const player = new THREE.Group();
       const fp = player.position.clone(); fp.y += 0.2;
       burst(fp, 0x9fdcff, 5, 1.2);
     }
+
+    // Phase 0: drive the Blender rig from the same movement/tool state.
+    if (P.heroGlb.loaded) updateHeroGlbAnimation(dt, moving, runF);
   });
 }
 function applyHeroChapter(ch) {
@@ -4033,6 +4045,133 @@ function bakeHeroLOD(root) {
 }
 bakeHeroLOD(player);
 applyHeroChapter(0);
+
+// ---------- Phase 0: Blender-authored Nova GLB with procedural fallback ----------
+// The GLB carries Idle/Walk/Run/Chop clips and a 19-bone deform rig. The
+// hand-built hero stays fully intact underneath; it is only hidden after the
+// GLB verifies and loads, so offline/file failures keep the old game playable.
+const HERO_GLB_CLIPS = ['Idle', 'Walk', 'Run', 'Chop'];
+function setHeroGlbState(name, fade = 0.2) {
+  const g = player.userData.heroGlb;
+  if (!g || !g.loaded || !g.actions[name] || g.state === name) return;
+  const prev = g.actions[g.state];
+  const next = g.actions[name];
+  next.reset();
+  next.enabled = true;
+  next.paused = false;
+  next.setLoop(THREE.LoopRepeat, Infinity);
+  next.clampWhenFinished = false;
+  next.setEffectiveTimeScale(1);
+  next.setEffectiveWeight(1);
+  next.play();
+  if (prev && prev !== next) prev.crossFadeTo(next, fade, false);
+  g.state = name;
+}
+function updateHeroGlbAnimation(dt, moving, runF) {
+  const g = player.userData.heroGlb;
+  if (!g || !g.loaded || !g.mixer) return;
+  const chopping = chopT > 0;
+  const attacking = attackT > 0;
+  const building = heroBuildHold && !chopping && !attacking;
+  let want = 'Idle';
+  if (chopping || attacking || building) want = 'Chop';
+  else if (moving) want = runF > 0.42 ? 'Run' : 'Walk';
+  setHeroGlbState(want, want === 'Chop' ? 0.08 : 0.18);
+  const act = g.actions[g.state];
+  if (g.state === 'Chop' && act) {
+    const dur = Math.max(0.001, act.getClip().duration);
+    if (chopping) {
+      // Drive the authored swing from chopT so the wood hit lands exactly on
+      // CHOP_IMPACT instead of drifting with the mixer clock.
+      act.paused = true;
+      act.time = Math.min(0.999, chopT) * dur;
+    } else if (attacking) {
+      act.paused = true;
+      act.time = Math.min(0.999, attackT) * dur;
+    } else {
+      act.paused = false;
+      act.setEffectiveTimeScale(1.1);
+    }
+  } else if (act && g.state === 'Walk') {
+    act.setEffectiveTimeScale(1.1);
+  } else if (act && g.state === 'Run') {
+    act.setEffectiveTimeScale(1);
+  }
+  g.mixer.update(dt);
+}
+{
+  const g = player.userData.heroGlb;
+  g.procedural = player.children.slice();
+  new GLTFLoader().load(novaGlbUrl, (gltf) => {
+    let root = null;
+    try {
+      root = gltf.scene;
+      root.name = 'NovaGlb';
+      root.scale.setScalar(1.08); // Blender rig is 1.89u; procedural Nova is ~2.04u
+      player.add(root);
+      g.root = root;
+
+      const bones = {};
+      let meshCount = 0;
+      root.traverse((o) => {
+        if (o.isBone) bones[o.name] = o;
+        if (o.isMesh) {
+          meshCount++;
+          o.castShadow = true;
+          o.receiveShadow = true;
+          o.frustumCulled = false; // skinned bounds are bind-pose only
+        }
+      });
+      g.bones = bones;
+      g.meshCount = meshCount;
+
+      // Reuse the hand-built axe, hammer and star lantern; attach them at their
+      // current world pose so the GLB hand bones drive them from here on.
+      player.updateMatrixWorld(true);
+      const attach = (obj, bone) => {
+        if (!obj || !bone) return false;
+        bone.attach(obj);
+        return true;
+      };
+      attach(player.userData.axe, bones.handR);
+      attach(player.userData.hammer, bones.handR);
+      attach(player.userData.starLantern, bones.handL);
+      attach(player.userData.scarfLight, bones.chest);
+      g.axeParent = player.userData.axe?.parent?.name || '';
+      g.lanternParent = player.userData.starLantern?.parent?.name || '';
+
+      g.mixer = new THREE.AnimationMixer(root);
+      g.clips = gltf.animations.map((clip) => clip.name);
+      for (const clip of gltf.animations) {
+        const action = g.mixer.clipAction(clip);
+        action.enabled = true;
+        action.setEffectiveWeight(0);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        g.actions[clip.name] = action;
+      }
+      for (const name of HERO_GLB_CLIPS) g.actions[name]?.play();
+
+      g.loaded = true;
+      g.source = 'blender-glb';
+      setHeroGlbState('Idle', 0);
+      g.mixer.update(0);
+      for (const child of g.procedural) child.visible = false;
+      player.userData.meshCount = meshCount;
+      console.info(`[nova] Blender GLB active: ${meshCount} meshes, clips ${g.clips.join(', ')}`);
+    } catch (err) {
+      g.loaded = false;
+      g.failed = true;
+      g.error = String(err?.message || err);
+      if (root) player.remove(root);
+      for (const child of g.procedural) child.visible = true;
+      console.warn('[nova] GLB integration failed; procedural fallback stays active.', err);
+    }
+  }, undefined, (err) => {
+    g.failed = true;
+    g.error = String(err?.message || err || 'load error');
+    console.warn('[nova] GLB load failed; procedural fallback stays active.', err);
+  });
+}
 let playerPos = latLonToVec3(2, 50, 0); // open path south of the farmstead, clear of buildings
 let faceTarget = [12, 40]; // where the camera looks on load
 // Deep links for testing/sharing worlds: #fernwood #clover #oasis #cove #reef #ember #north
@@ -12275,6 +12414,18 @@ Object.assign(window.__lp, {
     sparkles: () => sparkles,
     sparkleVisible: () => sparkles.filter((s) => s.g.visible).length,
     starMats: () => player.userData.starMats,
+    glbLoaded: () => !!player.userData.heroGlb?.loaded,
+    glbFailed: () => !!player.userData.heroGlb?.failed,
+    glbError: () => player.userData.heroGlb?.error || '',
+    glbSource: () => player.userData.heroGlb?.source || 'procedural',
+    glbClips: () => player.userData.heroGlb?.clips || [],
+    glbState: () => player.userData.heroGlb?.state || '',
+    glbBones: () => Object.keys(player.userData.heroGlb?.bones || {}),
+    glbMeshes: () => player.userData.heroGlb?.meshCount || 0,
+    glbAxeParent: () => player.userData.heroGlb?.axeParent || '',
+    glbLanternParent: () => player.userData.heroGlb?.lanternParent || '',
+    glbActionTime: (name) => player.userData.heroGlb?.actions?.[name]?.time || 0,
+    proceduralVisible: () => !!player.userData.heroGlb?.procedural?.[0]?.visible,
   },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
