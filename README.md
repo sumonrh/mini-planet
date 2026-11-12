@@ -22,8 +22,9 @@ Firebase serves `dist/` (`firebase.json`), which is the single self-contained `i
 
 ## Controls
 
-- `W A S D` walk · `Q` run · `Space` hop · `E` interact · `M` globe view
+- `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view
 - Drag mouse to orbit the camera slightly.
+- **Nova:** the Starlight Explorer wears a starry coat, glowing scarf and star clip. After dark the star lantern wakes, lights nearby dark wonders, and reveals hidden starlight sparkles; it stows automatically when a tool or action is used.
 - **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.
 - **Trail beacon:** the current objective shows a gold light in the world + distance (`➤ 12m`). Walk toward it — `✨ You are here` means press `E`.
 - **Homestead:** press `H` — Mud Hut now costs 3 wood, Big Pack (+8 slots) is buildable, cooking the same mix twice discovers recipes.

@@ -50,8 +50,9 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 ## Character
 - [x] Settler rig with five gear variants, blinking/expressions and weather/age idles; **jacket and trousers silhouette (no skirt)**; **context-specific gather poses (axe for wood/stone, hand-pick for berries/herbs, crouched shears for wool)**; **wade in shallow water, swim in deep water** (`herotrest`)
 - [x] Human walk/run readability: outward shoulders, full opposition arm swing, elbow bend, wrist follow and visible skin hands; **Shift runs, Q dashes** (`armtest`)
+- [x] **Nova the Starlight Explorer**: starry navy coat/trousers, glowing scarf, star hair clip, skin hands and a left-hand star lantern. Lantern is night-only, stows during tool/action poses, casts warm light, and reveals/collects hidden starlight sparkles near dark wonders (`novabrowsertest`)
 - [x] Context-correct gathering: berries and crops fly as produce (not timber), herbs as leaves, wool as fluff, stone as chips; crops play the hand-pick pose on harvest (`herotrest`)
-- [x] Three measured LOD levels: portrait 85 calls, gameplay **65 (target ≤65)**, far 55 (`weapontest`)
+- [x] Three measured LOD levels: portrait 69 calls, gameplay **57 (target ≤65)**, far 55 (`novabrowsertest`)
 
 ## Saves, UX, accessibility
 - [x] Save v2 with v1 migration; all new systems persisted (`progtest`)

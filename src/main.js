@@ -72,6 +72,61 @@ function mesh(geo, material, x = 0, y = 0, z = 0, shadow = true) {
   if (shadow) { m.castShadow = true; m.receiveShadow = true; }
   return m;
 }
+// Five-point star used by Nova's hair clip, lantern and night sparkles.
+function starShapeGeometry(outer = 0.1, inner = 0.045, depth = 0.02) {
+  const shape = new THREE.Shape();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const r = i % 2 ? inner : outer;
+    const x = Math.cos(a) * r, y = Math.sin(a) * r;
+    if (i === 0) shape.moveTo(x, y); else shape.lineTo(x, y);
+  }
+  shape.closePath();
+  return new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false });
+}
+// Black texture with tiny gold-white stars; used as an emissive map so the
+// outfit gets the starry fabric pattern without extra draw calls.
+function makeStarMaskTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#000';
+  c.fillRect(0, 0, 64, 64);
+  c.fillStyle = '#fff';
+  for (let i = 0; i < 16; i++) {
+    const x = (i * 23 + (i % 3) * 11) % 64, y = (i * 13 + (i % 5) * 9) % 64;
+    const r = 1.7 + (i % 3) * 0.7;
+    c.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5;
+      const rr = k % 2 ? r * 0.42 : r;
+      const px = x + Math.cos(a) * rr, py = y + Math.sin(a) * rr;
+      if (k === 0) c.moveTo(px, py); else c.lineTo(px, py);
+    }
+    c.closePath();
+    c.fill();
+  }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(2, 2);
+  return tex;
+}
+function makeGlowTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 64;
+  const c = cv.getContext('2d');
+  const g = c.createRadialGradient(32, 32, 2, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,245,190,1)');
+  g.addColorStop(0.25, 'rgba(255,210,100,0.85)');
+  g.addColorStop(0.6, 'rgba(255,180,50,0.25)');
+  g.addColorStop(1, 'rgba(255,160,30,0)');
+  c.fillStyle = g;
+  c.fillRect(0, 0, 64, 64);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 const DEG = Math.PI / 180;
 function latLonToVec3(latDeg, lonDeg, h = 0) {
   const lat = latDeg * DEG, lon = lonDeg * DEG;
@@ -3187,19 +3242,29 @@ scatterInstanced(new THREE.OctahedronGeometry(0.5, 0),
 const player = new THREE.Group();
 {
   const skin = mat(0xf0c39a), skinDark = mat(0xdfae86);
-  const coat = mat(0xd9a13c), coatDark = mat(0xb9812a), coatLight = mat(0xe7b653);
+  const coat = mat(0x2a4675), coatDark = mat(0x1a2c4e), coatLight = mat(0x3a5d92);
   const fur = mat(0xeadfc8, { roughness: 1 });
-  const pants = mat(0x5a4632), leather = mat(0x4a3320), leatherL = mat(0x7a5230);
-  const scarfM = mat(0xc0392b), scarfDark = mat(0x9c2f24);
-  const packM = mat(0x2e8b8b), packDark = mat(0x1f6b6b), bedM = mat(0xe8d9a8);
+  const pants = mat(0x20314f), leather = mat(0x142033), leatherL = mat(0x31456a);
+  const scarfM = mat(0xffd76a, { emissive: 0xff9f2e, emissiveIntensity: 1.15, roughness: 0.45 });
+  const scarfDark = mat(0xe8a93a, { emissive: 0x9a5a00, emissiveIntensity: 0.9, roughness: 0.5 });
+  const packM = mat(0x223a60), packDark = mat(0x13223b), bedM = mat(0xe8d9a8);
   const gold = mat(0xe8c33d, { metalness: 0.45, roughness: 0.35 });
   const steel = mat(0xb9c2c9, { metalness: 0.55, roughness: 0.3 });
   const steelDark = mat(0x7d848c, { metalness: 0.5, roughness: 0.42 });
   const handleM = mat(0x7a5230), wrapM = mat(0x3a2a20);
-  const hairM = mat(0x4a3020);
-  const eyeW = mat(0xfdfbf5), irisM = mat(0x2f6b8a), pupilM = mat(0x1b2a33);
+  const hairM = mat(0x1a2438), hairShine = mat(0x33476d);
+  const eyeW = mat(0xfdfbf5), irisM = mat(0x4fa8ff, { emissive: 0x0b4b8a, emissiveIntensity: 0.35 }), pupilM = mat(0x101c2e);
   const mouthM = mat(0x8a4a42), blushM = mat(0xef9a8a);
-  const capM = mat(0xc0392b), capDark = mat(0x8f2a20);
+  const capM = mat(0x1b2b4a), capDark = mat(0x101a30);
+  const starGold = new THREE.MeshStandardMaterial({ color: 0xffe9a3, emissive: 0xffb03a, emissiveIntensity: 1.8, metalness: 0.5, roughness: 0.28, flatShading: true });
+  const starGlass = new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xffc75a, emissiveIntensity: 0.8, transparent: true, opacity: 0.18, roughness: 0.2, flatShading: true, depthWrite: false });
+  // Starry fabric: an emissive mask adds the constellation print with no extra geometry.
+  const starMask = makeStarMaskTexture();
+  for (const m of [coat, coatDark, coatLight, pants, packM]) {
+    m.emissive = new THREE.Color(0xffc75a);
+    m.emissiveMap = starMask;
+    m.emissiveIntensity = m === packM ? 0.8 : 0.9;
+  }
 
   // ---- legs: tapered thigh, knee joint, shin, ankle, layered boot ----
   for (const s of [-1, 1]) {
@@ -3221,6 +3286,10 @@ const player = new THREE.Group();
     ankle.add(mesh(new THREE.BoxGeometry(0.22, 0.05, 0.36), leatherL, 0, -0.125, 0.06)); // sole
     ankle.add(mesh(new THREE.BoxGeometry(0.21, 0.04, 0.10), wrapM, 0, -0.14, -0.07)); // heel
     ankle.add(mesh(new THREE.BoxGeometry(0.05, 0.02, 0.05), gold, s * 0.07, -0.02, 0.11, false)); // eyelet
+    const bootStar = new THREE.Mesh(starShapeGeometry(0.038, 0.016, 0.008), gold);
+    bootStar.position.set(s * 0.115, -0.015, 0.09);
+    bootStar.rotation.set(0, s * Math.PI / 2, 0);
+    ankle.add(bootStar);
     player.add(hip);
     player.userData[s < 0 ? 'legL' : 'legR'] = hip;
     player.userData[s < 0 ? 'kneeL' : 'kneeR'] = knee;
@@ -3252,6 +3321,13 @@ const player = new THREE.Group();
   torso.add(mesh(new THREE.BoxGeometry(0.05, 0.28, 0.02), coatDark, 0.02, 0.42, 0.312, false)); // centre seam
   for (let i = 0; i < 2; i++)
     torso.add(mesh(new THREE.SphereGeometry(0.024, 6, 5), gold, 0.02, 0.34 + i * 0.12, 0.325, false));
+  // Larger constellation badges so Nova reads as the Starlight Explorer at gameplay distance.
+  for (const [sx, sy, ss, sz] of [[-0.19, 0.52, 0.062, 0.24], [0.21, 0.40, 0.05, -0.28], [-0.18, 0.31, 0.042, 0.35]]) {
+    const badge = new THREE.Mesh(starShapeGeometry(ss, ss * 0.42, 0.01), gold);
+    badge.position.set(sx, sy, 0.322);
+    badge.rotation.z = sz;
+    torso.add(badge);
+  }
   torso.add(mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.10, 12), coatDark, 0, 0.685, 0)); // collar
   const chest = new THREE.Group();
   torso.add(chest);
@@ -3265,6 +3341,10 @@ const player = new THREE.Group();
     arm.userData.baseZ = s * 0.12;
     arm.add(mesh(new THREE.SphereGeometry(0.135, 10, 8), coat, 0, 0, 0, false)); // shoulder
     arm.add(mesh(new THREE.CylinderGeometry(0.095, 0.085, 0.32, 9), coat, 0, -0.16, 0));
+    const sleeveStar = new THREE.Mesh(starShapeGeometry(0.045, 0.019, 0.008), gold);
+    sleeveStar.position.set(0, -0.15, 0.092);
+    sleeveStar.rotation.z = s * 0.2;
+    arm.add(sleeveStar);
     const elbow = new THREE.Group();
     elbow.position.y = -0.32;
     arm.add(elbow);
@@ -3315,9 +3395,11 @@ const player = new THREE.Group();
   collarS.rotation.x = Math.PI / 2;
   scarfRoot.add(collarS);
   scarfRoot.add(mesh(new THREE.SphereGeometry(0.075, 7, 6), scarfDark, 0.10, -0.02, 0.19, false)); // knot
-  const frontTail = mesh(new THREE.BoxGeometry(0.09, 0.24, 0.03), scarfM, 0.11, -0.14, 0.255, false);
-  frontTail.rotation.z = 0.12;
+  const frontTail = mesh(new THREE.BoxGeometry(0.14, 0.40, 0.035), scarfM, 0.13, -0.22, 0.305, false);
+  frontTail.rotation.z = 0.18;
   scarfRoot.add(frontTail);
+  for (let i = -1; i <= 1; i++)
+    scarfRoot.add(mesh(new THREE.BoxGeometry(0.03, 0.08, 0.03), scarfDark, 0.13 + i * 0.045, -0.44, 0.305, false));
   const sc1 = new THREE.Group(); sc1.position.set(0.09, -0.02, -0.15); sc1.rotation.x = 0.25; scarfRoot.add(sc1);
   sc1.add(mesh(new THREE.BoxGeometry(0.16, 0.30, 0.05), scarfM, 0, -0.15, 0, false));
   const sc2 = new THREE.Group(); sc2.position.set(0, -0.30, 0.015); sc2.rotation.x = 0.12; sc1.add(sc2);
@@ -3345,11 +3427,17 @@ const player = new THREE.Group();
     head.add(mesh(new THREE.SphereGeometry(0.055, 8, 6), skinDark, s * 0.235, 0.16, 0, false)); // ears
     const eyeG = new THREE.Group();
     eyeG.position.set(s * 0.095, 0.19, 0.222);
-    const eye = mesh(new THREE.SphereGeometry(0.045, 8, 6), pupilM, 0, 0, 0, false);
-    eye.scale.set(1, 1.15, 0.55);
-    eyeG.add(eye);
+    const iris = mesh(new THREE.SphereGeometry(0.045, 8, 6), irisM, 0, 0, 0, false);
+    iris.scale.set(1, 1.15, 0.5);
+    eyeG.add(iris);
+    const pupil = mesh(new THREE.SphereGeometry(0.027, 7, 6), pupilM, 0, 0, 0.026, false);
+    pupil.scale.set(1, 1.18, 0.45);
+    eyeG.add(pupil);
+    const glint = mesh(new THREE.SphereGeometry(0.012, 6, 5), eyeW, -0.014, 0.018, 0.048, false);
+    eyeG.add(glint);
     head.add(eyeG);
     face.eyes.push(eyeG);
+    face.glints.push(glint);
     const brow = mesh(new THREE.BoxGeometry(0.085, 0.022, 0.02), hairM, s * 0.095, 0.262, 0.225, false);
     brow.rotation.z = s * -0.14;
     brow.userData.baseZ = brow.rotation.z;
@@ -3357,6 +3445,8 @@ const player = new THREE.Group();
     head.add(brow);
     face.brows.push(brow);
     head.add(mesh(new THREE.SphereGeometry(0.036, 6, 5), blushM, s * 0.155, 0.055, 0.195, false));
+    for (let i = 0; i < 3; i++)
+      head.add(mesh(new THREE.SphereGeometry(0.008, 5, 4), skinDark, s * (0.115 + i * 0.022), 0.095 - i * 0.012, 0.228, false)); // freckles
   }
   head.add(mesh(new THREE.SphereGeometry(0.045, 8, 6), skinDark, 0, 0.135, 0.245, false)); // nose
   const mouthG = new THREE.Group();
@@ -3372,6 +3462,40 @@ const player = new THREE.Group();
     tuff.rotation.x = 2.6;
     head.add(tuff);
   }
+  // Nova's tousled night-blue hair and star clip
+  const hairCap = mesh(new THREE.SphereGeometry(0.258, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.42), hairM, 0, 0.23, 0, false);
+  hairCap.scale.set(1.04, 0.94, 1.04);
+  head.add(hairCap);
+  for (const [hx, hy, hz, hrx, hrz] of [
+    [-0.19, 0.30, 0.08, 0.35, -0.55], [0.19, 0.31, 0.05, 0.2, 0.5],
+    [-0.12, 0.34, -0.08, -0.4, -0.25], [0.10, 0.35, -0.10, -0.5, 0.2],
+    [-0.22, 0.23, -0.02, 0.1, -0.9], [0.22, 0.24, 0.02, 0.1, 0.9],
+  ]) {
+    const tuff = mesh(new THREE.ConeGeometry(0.055, 0.16, 5), hairM, 0, 0, 0, false);
+    // (position set below so the tuple stays readable)
+    tuff.position.set(hx, hy, hz);
+    tuff.rotation.set(hrx, 0, hrz);
+    head.add(tuff);
+  }
+  for (const [hx, hz, hrz] of [[-0.07, 0.16, 0.18], [0.07, 0.18, -0.18]]) {
+    const shine = mesh(new THREE.ConeGeometry(0.038, 0.14, 5), hairShine, hx, 0.35, hz, false);
+    shine.rotation.set(2.4, 0, hrz);
+    head.add(shine);
+  }
+  for (const [hx, hy, hz, hrx, hrz] of [
+    [-0.16, 0.38, 0.02, 0.5, -0.55], [0.15, 0.39, -0.01, 0.4, 0.55],
+    [0.00, 0.42, 0.03, 0.2, 0.05], [-0.07, 0.37, -0.13, -0.35, -0.2],
+  ]) {
+    const spike = mesh(new THREE.ConeGeometry(0.055, 0.18, 5), hairM, 0, 0, 0, false);
+    spike.position.set(hx, hy, hz);
+    spike.rotation.set(hrx, 0, hrz);
+    head.add(spike);
+  }
+  const starClip = new THREE.Mesh(starShapeGeometry(0.085, 0.036, 0.02), starGold);
+  starClip.position.set(0.175, 0.305, 0.235);
+  starClip.rotation.set(-0.08, -0.25, -0.16);
+  head.add(starClip);
+  player.userData.starClip = starClip;
   // stitched cap + brim + feather
   const cap = mesh(new THREE.SphereGeometry(0.25, 12, 8, 0, Math.PI * 2, 0, Math.PI * 0.52), capM, 0, 0.26, 0, false);
   head.add(cap);
@@ -3383,7 +3507,10 @@ const player = new THREE.Group();
   feather.rotation.z = -0.5;
   head.add(feather);
   player.userData.capParts = [cap, brim, feather];
-  for (const p of player.userData.capParts) p.userData.noMerge = true;
+  for (const p of player.userData.capParts) {
+    p.userData.noMerge = true;
+    head.remove(p); // Nova wears hair, not the old expedition cap
+  }
 
   // ---- backpack: frame, pockets, bedroll, canteen ----
   const pack = new THREE.Group();
@@ -3399,6 +3526,21 @@ const player = new THREE.Group();
   const canteen = mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.16, 8), steelDark, 0.30, -0.20, 0.05, false);
   canteen.rotation.z = 0.2;
   pack.add(canteen);
+  // Nova's hood and backpack straps
+  const hood = mesh(new THREE.SphereGeometry(0.33, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), coat, 0, 0.54, -0.30, false);
+  hood.scale.set(1.02, 0.28, 0.62);
+  torso.add(hood);
+  for (const s of [-1, 1]) {
+    const strap = mesh(new THREE.BoxGeometry(0.075, 0.48, 0.035), leather, s * 0.20, 0.38, 0.275, false);
+    strap.rotation.z = s * 0.06;
+    torso.add(strap);
+  }
+  for (const s of [-1, 1]) {
+    const badge = new THREE.Mesh(starShapeGeometry(0.055, 0.023, 0.012), starGold);
+    badge.position.set(s * 0.18, 0.13, -0.145);
+    badge.rotation.set(0, Math.PI, s * 0.12);
+    pack.add(badge);
+  }
 
   scene.add(player);
 
@@ -3411,6 +3553,7 @@ const player = new THREE.Group();
   hatG.add(mesh(new THREE.CylinderGeometry(0.20, 0.23, 0.16, 12), mat(0x9a7a42), 0, 0.09, 0, false));
   hatG.add(mesh(new THREE.TorusGeometry(0.205, 0.022, 5, 12).rotateX(Math.PI / 2), mat(0x5a3e2b), 0, 0.03, 0, false));
   head.add(hatG);
+  head.remove(hatG); // Nova keeps the tousled hair silhouette; the old hat stays as legacy gear
   const satchel = new THREE.Group();
   satchel.position.set(0.34, 0.14, 0.12);
   satchel.add(mesh(new THREE.BoxGeometry(0.24, 0.26, 0.12), mat(0x6b4a2f), 0, -0.08, 0));
@@ -3443,11 +3586,13 @@ const player = new THREE.Group();
   head.add(greyHair);
   // ---- five gear variants: bindle, apron, wedding band + lantern, bandolier, staff ----
   const bindle = new THREE.Group();
-  bindle.position.set(0.1, 0.55, -0.42);
+  bindle.position.set(0.30, 0.58, -0.44);
   bindle.rotation.z = -0.35;
-  bindle.add(mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.1, 5), mat(0x7a5230), 0, 0, 0, false));
-  bindle.add(mesh(new THREE.SphereGeometry(0.18, 7, 6), mat(0xc9a45c), 0.05, -0.42, 0));
-  bindle.add(mesh(new THREE.TorusGeometry(0.06, 0.014, 4, 8), mat(0x5a3e2b), 0.05, -0.24, 0, false));
+  bindle.rotation.x = 0.15;
+  bindle.scale.setScalar(0.58);
+  bindle.add(mesh(new THREE.CylinderGeometry(0.022, 0.022, 1.1, 5), mat(0x263653), 0, 0, 0, false));
+  bindle.add(mesh(new THREE.SphereGeometry(0.18, 7, 6), mat(0xe8c33d, { emissive: 0x8a5a00, emissiveIntensity: 0.35 }), 0.05, -0.42, 0));
+  bindle.add(mesh(new THREE.TorusGeometry(0.06, 0.014, 4, 8), mat(0x101a30), 0.05, -0.24, 0, false));
   torsoG.add(bindle);
   const apron = new THREE.Group();
   apron.position.set(0, 0.12, 0.3);
@@ -3510,7 +3655,37 @@ const player = new THREE.Group();
     bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, heatCloak,
     lodDetails: [bindle, apron, band, lantern, bandolier, staff, rod, sawTool, drillTool, holster, goggles, beard, greyHair],
   };
-  player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL };
+  player.userData.heroMats = { coat, coatDark, coatLight, capM, capDark, scarfM, fur, leather, leatherL, starGold, starGlass, pants, packM, hairM };
+  player.userData.starMats = { starGold, starGlass };
+
+  // ---- Nova's star lantern: held in the free left hand, lit only after dark ----
+  {
+    const wr = player.userData.wristL;
+    const lantern = new THREE.Group();
+    lantern.position.set(0.02, -0.10, 0.10);
+    lantern.add(mesh(new THREE.TorusGeometry(0.075, 0.014, 5, 10), gold, 0, 0.04, 0, false)); // handle
+    lantern.add(mesh(new THREE.ConeGeometry(0.135, 0.08, 6), gold, 0, -0.06, 0, false)); // roof
+    lantern.add(mesh(new THREE.CylinderGeometry(0.085, 0.09, 0.03, 6), gold, 0, -0.105, 0, false));
+    for (const sx of [-1, 1]) for (const sz of [-1, 1])
+      lantern.add(mesh(new THREE.BoxGeometry(0.014, 0.28, 0.014), gold, sx * 0.075, -0.255, sz * 0.075, false));
+    lantern.add(mesh(new THREE.CylinderGeometry(0.12, 0.135, 0.04, 6), gold, 0, -0.405, 0, false)); // base
+    const star = new THREE.Mesh(starShapeGeometry(0.085, 0.036, 0.02), starGold);
+    star.position.set(0, -0.255, 0.005);
+    lantern.add(star);
+    lantern.add(mesh(new THREE.BoxGeometry(0.135, 0.24, 0.135), starGlass, 0, -0.255, 0, false)); // glass
+    const light = new THREE.PointLight(0xffcf6a, 0, 8.5, 2);
+    light.position.set(0, -0.24, 0.02);
+    lantern.add(light);
+    lantern.visible = false;
+    wr.add(lantern);
+    player.userData.starLantern = lantern;
+    player.userData.lanternLight = light;
+    player.userData.lanternStar = star;
+    const scarfLight = new THREE.PointLight(0xffb35a, 0, 3.2);
+    scarfLight.position.set(0, 0.62, 0.14);
+    player.userData.torso.add(scarfLight);
+    player.userData.scarfLight = scarfLight;
+  }
 
   // ---- build hammer: held in the right hand only while raising a structure ----
   {
@@ -3562,6 +3737,20 @@ const player = new THREE.Group();
     const kPose = pose ? 1 : k;
     const hopF = THREE.MathUtils.clamp(hopH * 2.4, 0, 1);
     const dashF = dashT > 0 ? 1 : 0;
+    // Nova's lantern: night only, stowed whenever a tool/action pose is active.
+    const lanternLit = isNight() && !cp.active && !ap && !heroBuildHold && !swimmingNow && !inBoat && !playerDead && fishStage === 0;
+    if (P.starLantern) {
+      P.starLantern.visible = lanternLit;
+      P.starLantern.rotation.z = Math.sin(phase * 0.55) * 0.12;
+      if (P.lanternLight) P.lanternLight.intensity = lanternLit ? 7.2 + Math.sin(t * 7.3) * 0.7 : 0;
+      if (P.scarfLight) P.scarfLight.intensity = lanternLit ? 1.35 : 0;
+      if (P.lanternStar) P.lanternStar.rotation.z = t * 0.9;
+    }
+    P.lanternOn = lanternLit;
+    if (lanternLit && !P._lanternSeen) {
+      P._lanternSeen = true;
+      toast('✨ Nova’s star lantern wakes — hidden sparkles glow nearby.');
+    }
 
     // legs stride (forward = negative rotation.x) with knee lift + ankle roll
     const swingL = s * amp, swingR = -s * amp;
@@ -3679,11 +3868,11 @@ function applyHeroChapter(ch) {
   const g = player.userData.gear;
   if (!g) return;
   ch = Math.max(0, Math.min(4, ch | 0));
-  const cap = ch < 1;
-  g.hatG.visible = !cap;
-  for (const p of player.userData.capParts || []) p.visible = cap;
+  // Nova keeps the same tousled hair, star clip and hood in every chapter;
+  // the expedition hat/cap layers are retired so the silhouette stays Nova.
+  g.hatG.visible = false;
+  for (const p of player.userData.capParts || []) p.visible = false;
   g.satchel.visible = ch >= 2;
-  // no skirt/coat-tails: the settler keeps a jacket and trousers in every chapter
   // five complete gear variants, swappable layers on the same rig
   const allowed = {
     bindle: ch === 0, apron: ch === 1, band: ch >= 2, lantern: ch >= 2,
@@ -3694,9 +3883,11 @@ function applyHeroChapter(ch) {
   }
   const m = player.userData.heroMats;
   if (m) {
-    m.coat.color.setHex([0xd9a13c, 0xc9a45c, 0xb08a45, 0x8a7a4a, 0x6e6a52][ch]);
-    m.coatDark.color.setHex([0xb9812a, 0xa07a3a, 0x8a6a38, 0x6e633a, 0x57533f][ch]);
-    m.capM.color.setHex(ch >= 4 ? 0x5a5a66 : 0xc0392b);
+    m.coat.color.setHex([0x2a4675, 0x2d4b7e, 0x315286, 0x36598f, 0x3b6098][ch]);
+    m.coatDark.color.setHex([0x1a2c4e, 0x1d3156, 0x20365d, 0x233b64, 0x26406b][ch]);
+    m.coatLight.color.setHex([0x3a5d92, 0x3e639a, 0x426aa2, 0x4670aa, 0x4a76b2][ch]);
+    m.capM.color.setHex(0x1b2b4a);
+    m.capDark.color.setHex(0x101a30);
   }
   refreshHeroLod();
 }
@@ -3823,6 +4014,8 @@ function bakeHeroLOD(root) {
   protect(root.userData.head);
   protect(root.userData.axe);
   protect(root.userData.hammer);
+  protect(root.userData.starLantern);
+  protect(root.userData.starClip);
   for (const s of root.userData.scarf || []) protect(s);
   protect(root.userData.gear?.rifleG);
   const candidates = [];
@@ -3977,6 +4170,63 @@ const wonders = [
   { id: 'scan', icon: '🌋', name: 'Scan the Volcano', world: 5, done: false, stage: 0 },
   { id: 'aurora', icon: '🌌', name: 'Wake the Aurora', world: 6, done: false },
 ];
+// Nova's lantern reveals hidden starlight sparkles near the dark wonders.
+// They only exist at night while the lantern is actually in hand.
+const SPARKLE_SPOTS = [
+  [12, 158.8], [10.6, 157.2], [8, 52.8], [6.6, 53.8], [4, 110.7], [2.7, 109],
+  [14, 279.7], [12.4, 280.2], [2, 230.8], [0.8, 229.5], [8, 328.8], [6.5, 329.5],
+  [60, 140.8], [58.7, 139.2], [28, 166.8],
+];
+const sparkles = [];
+{
+  const starM = new THREE.MeshStandardMaterial({
+    color: 0xffe9a3, emissive: 0xffb03a, emissiveIntensity: 2.4,
+    metalness: 0.35, roughness: 0.22, side: THREE.DoubleSide, transparent: true, opacity: 0.95,
+  });
+  const glowM = new THREE.SpriteMaterial({
+    map: makeGlowTexture(), color: 0xffe0a0, transparent: true, opacity: 0.5,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  for (const [la, lo] of SPARKLE_SPOTS) {
+    const n = latLonToVec3(la, lo, 0).normalize();
+    const base = n.clone().multiplyScalar(R + heightFor(n) + 1.15);
+    const g = new THREE.Group();
+    g.position.copy(base);
+    const star = new THREE.Mesh(starShapeGeometry(0.13, 0.055, 0.02), starM);
+    g.add(star);
+    const glow = new THREE.Sprite(glowM);
+    glow.scale.setScalar(0.9);
+    g.add(glow);
+    g.visible = false;
+    scene.add(g);
+    sparkles.push({ g, n, base, lat: la, lon: lo, star, glow, phase: rand(Math.PI * 2), collected: false, day: 0 });
+  }
+}
+tickers.push((t) => {
+  const lit = !!player.userData.lanternOn;
+  for (const s of sparkles) {
+    if (s.collected && s.day !== Life.day) s.collected = false;
+    const d = player.position.distanceTo(s.base);
+    const show = lit && !s.collected && d < 13;
+    s.g.visible = show;
+    if (!show) continue;
+    s.g.position.copy(s.base).addScaledVector(s.n, Math.sin(t * 2 + s.phase) * 0.08);
+    s.g.rotation.y = t * 1.4 + s.phase;
+    s.star.rotation.z = t * 0.6;
+    s.g.scale.setScalar(0.82 + Math.sin(t * 3.2 + s.phase) * 0.16);
+    s.glow.scale.setScalar(0.75 + Math.sin(t * 2.6 + s.phase) * 0.18);
+    if (d < 1.9) {
+      s.collected = true;
+      s.day = Life.day;
+      s.g.visible = false;
+      grantInsight(1);
+      burst(s.base, 0xffe9a3, 20, 2.2);
+      chime(1040);
+      toast('✨ A hidden starlight sparkle! (+1 insight)');
+      if (onPopup) onPopup(s.base, '✨ Starlight', '#ffe9a3');
+    }
+  }
+});
 let fishStage = 0; // 0 = idle, 1 = line cast / waiting to reel
 let fishSource = 'ice'; // 'ice' at the arctic hole, 'sea' from the skiff
 let scanTimer = null;
@@ -4042,6 +4292,8 @@ function renderJournal() {
     list.appendChild(d);
   };
   if (journalTab === 'story') {
+    addHeading('NOVA · STARLIGHT EXPLORER');
+    addRow('A starry coat, a glowing scarf and a lantern that wakes after dark.', '⭐');
     const ch = chapterNow();
     addHeading(`CHAPTER ${Life.chapter + 1} · ${ch.name.toUpperCase()} · AGE ${Math.round(Life.age || ch.age)}`);
     addRow(ch.blurb, ch.icon);
@@ -12015,6 +12267,15 @@ Object.assign(window.__lp, {
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
   hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), hammerVisible: () => !!(player.userData.hammer && player.userData.hammer.visible), buildHold: () => heroBuildHold, heldTool: () => currentChopPose().tool, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
     gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, heat: !!player.userData.gear?.heatCloak?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
+  nova: {
+    lantern: () => !!(player.userData.starLantern && player.userData.starLantern.visible),
+    lanternOn: () => !!player.userData.lanternOn,
+    light: () => player.userData.lanternLight?.intensity || 0,
+    clip: () => player.userData.starClip,
+    sparkles: () => sparkles,
+    sparkleVisible: () => sparkles.filter((s) => s.g.visible).length,
+    starMats: () => player.userData.starMats,
+  },
   openWorkshop, closeWorkshop, openAlmanac, closeAlmanac, openLoadout, closeLoadout,
   photo: (o) => { photoMode = o || null; if (o) camPos.copy(player.position).addScaledVector(facing, o.dist ?? 3.4); },
   pickAt: (x, y) => {
