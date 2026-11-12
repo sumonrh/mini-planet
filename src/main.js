@@ -4137,8 +4137,27 @@ function updateHeroGlbAnimation(dt, moving, runF) {
       attach(player.userData.hammer, bones.handR);
       attach(player.userData.starLantern, bones.handL);
       attach(player.userData.scarfLight, bones.chest);
+      // Keep the game's functional gear visible on the GLB: fishing rod and
+      // rifle on the back, heat cloak/satchel/tool-tier props on the hips.
+      const gear = player.userData.gear || {};
+      attach(gear.rod, bones.chest);
+      attach(gear.rifleG, bones.chest);
+      attach(gear.heatCloak, bones.hips);
+      attach(gear.satchel, bones.hips);
+      attach(gear.sawTool, bones.hips);
+      attach(gear.drillTool, bones.hips);
+      attach(gear.holster, bones.hips);
       g.axeParent = player.userData.axe?.parent?.name || '';
       g.lanternParent = player.userData.starLantern?.parent?.name || '';
+      g.gearParents = {
+        rod: gear.rod?.parent?.name || '',
+        rifle: gear.rifleG?.parent?.name || '',
+        heatCloak: gear.heatCloak?.parent?.name || '',
+        satchel: gear.satchel?.parent?.name || '',
+        saw: gear.sawTool?.parent?.name || '',
+        drill: gear.drillTool?.parent?.name || '',
+        holster: gear.holster?.parent?.name || '',
+      };
 
       g.mixer = new THREE.AnimationMixer(root);
       g.clips = gltf.animations.map((clip) => clip.name);
@@ -12424,6 +12443,7 @@ Object.assign(window.__lp, {
     glbMeshes: () => player.userData.heroGlb?.meshCount || 0,
     glbAxeParent: () => player.userData.heroGlb?.axeParent || '',
     glbLanternParent: () => player.userData.heroGlb?.lanternParent || '',
+    glbGearParents: () => player.userData.heroGlb?.gearParents || {},
     glbActionTime: (name) => player.userData.heroGlb?.actions?.[name]?.time || 0,
     proceduralVisible: () => !!player.userData.heroGlb?.procedural?.[0]?.visible,
   },
