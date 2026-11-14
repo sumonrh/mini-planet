@@ -407,15 +407,19 @@ body.custom-cursor #scene { cursor: none; }
 /* Title screen */
 #title-overlay {
   position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(ellipse at 50% 65%, rgba(5,12,18,0.15) 0%, rgba(5,12,18,0.72) 100%);
+  background: radial-gradient(ellipse at 50% 62%, rgba(5,12,18,0.02) 0%, rgba(5,12,18,0.58) 100%);
 }
 .title-inner { text-align: center; color: #eef4f6; max-width: min(440px, calc(100vw - 40px)); }
 .title-eyebrow { font-size: 11px; letter-spacing: 0.42em; opacity: 0.75; }
 .title-logo {
   font-family: 'Cormorant Garamond', serif; font-size: 76px; font-weight: 600; line-height: 1;
-  margin: 8px 0 4px; text-shadow: 0 4px 30px rgba(0,0,0,0.6);
+  margin: 8px 0 4px;
+  background: linear-gradient(180deg, #fffdf5 28%, #f4dfae 78%, #e8c98c 100%);
+  -webkit-background-clip: text; background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 4px 18px rgba(0,0,0,0.6));
 }
-.title-sub { font-size: 13px; opacity: 0.8; margin-bottom: 22px; }
+.title-sub { font-size: 13px; opacity: 0.92; margin-bottom: 22px; text-shadow: 0 1px 3px rgba(0,0,0,0.7), 0 4px 18px rgba(0,0,0,0.55); }
 #title-buttons { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .menu-btn {
   width: 250px; padding: 12px 20px; font-size: 15px; font-weight: 600; font-family: inherit;
@@ -676,3 +680,93 @@ body.contrast-high #weather-chip { color: #fff; font-weight: 700; }
 .tree-hint { color: #8ea3ad; font-size: 10px; }
 .tech-tree { cursor: grab; touch-action: none; }
 .tech-tree.dragging { cursor: grabbing; }
+
+/* ================= Genshin-inspired HUD skin ================= */
+:root {
+  --lp-ink: #0e2530;
+  --lp-teal: rgba(14, 40, 52, 0.74);
+  --lp-teal-deep: rgba(10, 30, 40, 0.88);
+  --lp-gold: #f2d9a4;
+  --lp-gold-soft: rgba(242, 217, 164, 0.42);
+  --lp-cream: #fbf6e9;
+}
+
+.pill-dark {
+  background: linear-gradient(180deg, rgba(22, 56, 68, 0.8), rgba(10, 32, 42, 0.82));
+  border: 1px solid var(--lp-gold-soft);
+  color: var(--lp-cream);
+  box-shadow: 0 8px 26px rgba(5, 18, 26, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+#wonder-tracker:hover { background: linear-gradient(180deg, rgba(32, 74, 88, 0.9), rgba(14, 42, 54, 0.92)); }
+#wonder-count { color: var(--lp-gold); }
+
+#brand {
+  padding: 8px 20px 8px 10px;
+  background: linear-gradient(90deg, rgba(8, 28, 38, 0.58), rgba(8, 28, 38, 0));
+  border-radius: 18px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+#brand svg { filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.45)); }
+#brand svg circle { stroke: var(--lp-gold); }
+.brand-title { color: var(--lp-cream); letter-spacing: 0.3em; }
+.brand-sub { color: var(--lp-gold); opacity: 0.9; }
+
+.round-btn {
+  background: linear-gradient(180deg, rgba(24, 58, 70, 0.78), rgba(10, 32, 42, 0.84));
+  border: 1px solid var(--lp-gold-soft);
+  color: var(--lp-cream);
+  box-shadow: 0 6px 18px rgba(5, 18, 26, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+.round-btn:hover {
+  background: linear-gradient(180deg, rgba(38, 82, 94, 0.92), rgba(16, 44, 56, 0.94));
+  border-color: var(--lp-gold);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(5, 18, 26, 0.36), 0 0 14px rgba(242, 217, 164, 0.18);
+}
+
+#objective-panel {
+  background: linear-gradient(180deg, rgba(18, 48, 60, 0.9), rgba(9, 28, 38, 0.9));
+  border: 1px solid var(--lp-gold-soft);
+  color: var(--lp-cream);
+  box-shadow: 0 16px 44px rgba(4, 14, 20, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+.obj-eyebrow { color: var(--lp-gold); opacity: 0.85; }
+.obj-hint { color: #c6d7dc; }
+.obj-sub { color: #d7e3e6; }
+.obj-check { border-color: var(--lp-gold-soft); }
+.obj-check.done { background: #a7e8b2; border-color: #a7e8b2; }
+
+#biome-label {
+  left: 28px; bottom: 94px;
+  padding: 10px 46px 14px 18px;
+  background: linear-gradient(90deg, rgba(8, 28, 38, 0.62), rgba(8, 28, 38, 0.28) 62%, rgba(8, 28, 38, 0));
+  border-left: 2px solid var(--lp-gold);
+  border-radius: 0 14px 14px 0;
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.5), 0 6px 26px rgba(0, 0, 0, 0.45);
+}
+#biome-code { color: var(--lp-gold); opacity: 0.95; }
+#biome-label h1 { color: #fffdf4; letter-spacing: 0.01em; }
+#biome-desc { color: #eef4f0; opacity: 0.92; }
+
+#interact-bar {
+  background: linear-gradient(180deg, rgba(20, 52, 62, 0.9), rgba(9, 30, 40, 0.92));
+  border: 1px solid var(--lp-gold-soft);
+  box-shadow: 0 12px 44px rgba(0, 0, 0, 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+#interact-key {
+  background: linear-gradient(180deg, rgba(242, 217, 164, 0.22), rgba(242, 217, 164, 0.08));
+  border-color: var(--lp-gold-soft);
+  color: var(--lp-gold);
+}
+#interact-kind { color: var(--lp-gold); opacity: 0.8; }
+
+#stats { border-radius: 18px; }
+#rpg-lvl, #rpg-xp-text { color: var(--lp-gold); }
+#inv-row { color: #f0ead9; }
+#inv-row span { color: var(--lp-cream); }
+.bar { background: rgba(255, 255, 255, 0.12); }
+.meter > span { opacity: 0.9; }
+#health-fill { background: linear-gradient(90deg, #9ce08a, #63c96f) !important; }
+#energy-fill { background: linear-gradient(90deg, #ffe7a1, #f0c563) !important; }
+#hunger-fill { background: linear-gradient(90deg, #ffc98a, #ef9a56) !important; }
