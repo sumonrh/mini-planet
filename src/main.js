@@ -13947,8 +13947,8 @@ function updateCamera(dt, n) {
     else tmpF.copy(lastBehind);
     tmpF.applyAxisAngle(n, orbitYaw);
     axis.crossVectors(tmpF, n).normalize(); // right
-    const height = THREE.MathUtils.clamp(2.6 - orbitPitch * 1.4, 1.4, 4.2);
-    const backDist = 7.0, shoulder = 1.0;
+    const height = THREE.MathUtils.clamp(3.6 - orbitPitch * 1.4, 2.2, 5.2);
+    const backDist = 9.5, shoulder = 1.1;
     tmpM.copy(player.position)
       .addScaledVector(n, height)
       .addScaledVector(tmpF, -backDist)
@@ -13971,10 +13971,10 @@ function updateCamera(dt, n) {
         tmpM.copy(player.position).addScaledVector(tmpR, Math.max(s, 3.0));
       } while (s > 3.0 && pointInOccluder(tmpM));
     }
-    // chest-height look target, slightly ahead and over the shoulder
+    // head-height look target, slightly ahead and over the shoulder
     tmpR.copy(player.position)
-      .addScaledVector(n, 1.6)
-      .addScaledVector(tmpF, 6.0)
+      .addScaledVector(n, 2.0)
+      .addScaledVector(tmpF, 6.5)
       .addScaledVector(axis, shoulder * 0.35);
     axis.copy(camPos);
     camPos.lerp(tmpM, 1 - Math.exp(-11 * dt));
