@@ -45,8 +45,18 @@ const composer = new EffectComposer(renderer);
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(innerWidth, innerHeight);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.34, 0.72, 0.86);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.72, 0.86);
 composer.addPass(bloomPass);
+// Low / Medium / High bloom strengths; current look (0.34) is kept as High.
+const BLOOM_STRENGTH = { low: 0.08, medium: 0.2, high: 0.34, off: 0 };
+function applyBloomStrength() {
+  try {
+    const key = (typeof settings !== 'undefined' && settings.bloom) || 'medium';
+    bloomPass.strength = BLOOM_STRENGTH[key] ?? BLOOM_STRENGTH.medium;
+    bloomPass.enabled = bloomPass.strength > 0;
+  } catch { /* settings not ready yet */ }
+}
+applyBloomStrength();
 composer.addPass(new OutputPass());
 
 addEventListener('resize', () => {
@@ -3508,13 +3518,6 @@ const player = new THREE.Group();
   const capM = mat(0x1b2b4a), capDark = mat(0x101a30);
   const starGold = new THREE.MeshStandardMaterial({ color: 0xffe9a3, emissive: 0xffb03a, emissiveIntensity: 1.8, metalness: 0.5, roughness: 0.28, flatShading: true });
   const starGlass = new THREE.MeshStandardMaterial({ color: 0xfff3c4, emissive: 0xffc75a, emissiveIntensity: 0.8, transparent: true, opacity: 0.18, roughness: 0.2, flatShading: true, depthWrite: false });
-  // Starry fabric: an emissive mask adds the constellation print with no extra geometry.
-  const starMask = makeStarMaskTexture();
-  for (const m of [coat, coatDark, coatLight, pants, packM]) {
-    m.emissive = new THREE.Color(0xffc75a);
-    m.emissiveMap = starMask;
-    m.emissiveIntensity = m === packM ? 0.8 : 0.9;
-  }
 
   // ---- legs: tapered thigh, knee joint, shin, ankle, layered boot ----
   for (const s of [-1, 1]) {
@@ -3536,10 +3539,6 @@ const player = new THREE.Group();
     ankle.add(mesh(new THREE.BoxGeometry(0.22, 0.05, 0.36), leatherL, 0, -0.125, 0.06)); // sole
     ankle.add(mesh(new THREE.BoxGeometry(0.21, 0.04, 0.10), wrapM, 0, -0.14, -0.07)); // heel
     ankle.add(mesh(new THREE.BoxGeometry(0.05, 0.02, 0.05), gold, s * 0.07, -0.02, 0.11, false)); // eyelet
-    const bootStar = new THREE.Mesh(starShapeGeometry(0.038, 0.016, 0.008), gold);
-    bootStar.position.set(s * 0.115, -0.015, 0.09);
-    bootStar.rotation.set(0, s * Math.PI / 2, 0);
-    ankle.add(bootStar);
     player.add(hip);
     player.userData[s < 0 ? 'legL' : 'legR'] = hip;
     player.userData[s < 0 ? 'kneeL' : 'kneeR'] = knee;
@@ -3571,13 +3570,6 @@ const player = new THREE.Group();
   torso.add(mesh(new THREE.BoxGeometry(0.05, 0.28, 0.02), coatDark, 0.02, 0.42, 0.312, false)); // centre seam
   for (let i = 0; i < 2; i++)
     torso.add(mesh(new THREE.SphereGeometry(0.024, 6, 5), gold, 0.02, 0.34 + i * 0.12, 0.325, false));
-  // Larger constellation badges so Nova reads as the Starlight Explorer at gameplay distance.
-  for (const [sx, sy, ss, sz] of [[-0.19, 0.52, 0.062, 0.24], [0.21, 0.40, 0.05, -0.28], [-0.18, 0.31, 0.042, 0.35]]) {
-    const badge = new THREE.Mesh(starShapeGeometry(ss, ss * 0.42, 0.01), gold);
-    badge.position.set(sx, sy, 0.322);
-    badge.rotation.z = sz;
-    torso.add(badge);
-  }
   torso.add(mesh(new THREE.CylinderGeometry(0.26, 0.30, 0.10, 12), coatDark, 0, 0.685, 0)); // collar
   const chest = new THREE.Group();
   torso.add(chest);
@@ -3591,10 +3583,6 @@ const player = new THREE.Group();
     arm.userData.baseZ = s * 0.12;
     arm.add(mesh(new THREE.SphereGeometry(0.135, 10, 8), coat, 0, 0, 0, false)); // shoulder
     arm.add(mesh(new THREE.CylinderGeometry(0.095, 0.085, 0.32, 9), coat, 0, -0.16, 0));
-    const sleeveStar = new THREE.Mesh(starShapeGeometry(0.045, 0.019, 0.008), gold);
-    sleeveStar.position.set(0, -0.15, 0.092);
-    sleeveStar.rotation.z = s * 0.2;
-    arm.add(sleeveStar);
     const elbow = new THREE.Group();
     elbow.position.y = -0.32;
     arm.add(elbow);
@@ -3784,12 +3772,6 @@ const player = new THREE.Group();
     const strap = mesh(new THREE.BoxGeometry(0.075, 0.48, 0.035), leather, s * 0.20, 0.38, 0.275, false);
     strap.rotation.z = s * 0.06;
     torso.add(strap);
-  }
-  for (const s of [-1, 1]) {
-    const badge = new THREE.Mesh(starShapeGeometry(0.055, 0.023, 0.012), starGold);
-    badge.position.set(s * 0.18, 0.13, -0.145);
-    badge.rotation.set(0, Math.PI, s * 0.12);
-    pack.add(badge);
   }
 
   scene.add(player);
@@ -4368,6 +4350,8 @@ function updateHeroGlbAnimation(dt, moving, runF) {
           o.castShadow = true;
           o.receiveShadow = true;
           o.frustumCulled = false; // skinned bounds are bind-pose only
+          // plain outfit: hide any authored star decorations on the body
+          if (/star/i.test(o.name || '')) o.visible = false;
         }
       });
       g.bones = bones;
@@ -11893,6 +11877,7 @@ const SETTINGS_KEY = 'little-planet-settings-v1';
 const SETTINGS_DEFS = [
   { id: 'sound', name: 'Sound', desc: 'Chimes, barks & toasts', opts: [true, false], labels: { true: 'On 🔊', false: 'Off 🔇' } },
   { id: 'quality', name: 'Graphics quality', desc: 'Low helps slow devices', opts: ['high', 'low'], labels: { high: 'High ✨', low: 'Low ⚡' } },
+  { id: 'bloom', name: 'Bloom', desc: 'Glow softness (High is the old look)', opts: ['low', 'medium', 'high'], labels: { low: 'Low', medium: 'Medium', high: 'High' } },
   { id: 'cam', name: 'Camera orbit speed', desc: 'Mouse-drag sensitivity', opts: ['slow', 'normal', 'fast'], labels: { slow: 'Slow', normal: 'Normal', fast: 'Fast' } },
   { id: 'autosave', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
   { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
@@ -11906,7 +11891,7 @@ const SETTINGS_DEFS = [
   { id: 'thieves', name: 'Thieves & rustlers', desc: 'Night robber and poacher encounters', opts: [true, false], labels: { true: 'On 🥷', false: 'Off 🕊️' } },
   { id: 'permadeath', name: 'Permadeath', desc: 'No respawn after death — return to title', opts: [false, true], labels: { false: 'Off', true: 'On 💀' } },
 ];
-let settings = { sound: true, quality: 'high', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
+let settings = { sound: true, quality: 'high', bloom: 'medium', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -11914,6 +11899,7 @@ function applySettings() {
   const sb = document.getElementById('btn-sound');
   if (sb) sb.textContent = muted ? '🔇' : '🔊';
   try { renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(devicePixelRatio, 2)); } catch { /* headless */ }
+  applyBloomStrength();
   try {
     const custom = settings.cursor !== false && !('ontouchstart' in window);
     document.body.classList.toggle('custom-cursor', custom);
@@ -13941,13 +13927,13 @@ function updateCamera(dt, n) {
     return;
   }
   if (thirdPerson) {
-    // Tomb Raider-style chase: a low, close camera behind the shoulder.
+    // Tomb Raider-style chase: a high, pulled-back camera behind the shoulder.
     tmpF.copy(moveDirSmooth).addScaledVector(n, -moveDirSmooth.dot(n));
     if (tmpF.length() > 0.25) { tmpF.normalize(); lastBehind.copy(tmpF); }
     else tmpF.copy(lastBehind);
     tmpF.applyAxisAngle(n, orbitYaw);
     axis.crossVectors(tmpF, n).normalize(); // right
-    const height = THREE.MathUtils.clamp(3.6 - orbitPitch * 1.4, 2.2, 5.2);
+    const height = THREE.MathUtils.clamp(4.2 - orbitPitch * 1.4, 2.8, 6.0);
     const backDist = 9.5, shoulder = 1.1;
     tmpM.copy(player.position)
       .addScaledVector(n, height)
@@ -13973,7 +13959,7 @@ function updateCamera(dt, n) {
     }
     // head-height look target, slightly ahead and over the shoulder
     tmpR.copy(player.position)
-      .addScaledVector(n, 2.0)
+      .addScaledVector(n, 2.2)
       .addScaledVector(tmpF, 6.5)
       .addScaledVector(axis, shoulder * 0.35);
     axis.copy(camPos);
