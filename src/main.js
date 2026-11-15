@@ -358,11 +358,26 @@ function makeBirdMesh(s, bodyCol, wingCol, tones) {
 }
 // Seven worlds: polar Northlight + six tuned equatorial sectors (lon degrees).
 // Sector borders sit in the empty gaps between prop clusters so nothing moves.
+// The southern ocean is broken up by two new continents: Golden Savannah west
+// of the Great River, Mangrove Delta east of it.
+function southLandBiome(lat, lon) {
+  const edge = -23 + 2.2 * Math.sin(lon * 0.21 + 0.4) + 1.4 * Math.sin(lon * 0.63 + 1.7);
+  if (lat > edge) return null;
+  if (lon >= 94 && lon <= 102) return 'river';
+  if (lon > 18 && lon < 94) return 'savannah';
+  if (lon > 102 && lon < 172) return 'mangrove';
+  return null;
+}
 function biomeAt(n) {
   if (n.y > 0.52) return 'arctic';
-  if (n.y < -0.32) return 'lagoon';
   let lon = Math.atan2(n.z, n.x) / DEG;
   if (lon < 0) lon += 360;
+  if (n.y < 0) {
+    const lat = Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG;
+    const south = southLandBiome(lat, lon);
+    if (south) return south;
+  }
+  if (n.y < -0.32) return 'lagoon';
   if (lon < 62) return 'farm';      // Clover Fields
   if (lon < 128) return 'oasis';    // Sunstone Oasis
   if (lon < 178) return 'forest';   // Fernwood
@@ -378,6 +393,9 @@ const BIOME_META = {
   cove: { code: 'BEACH · 04', name: 'Shell Cove', desc: 'Leave only tiny footprints.' },
   volcano: { code: 'VOLCANO · 06', name: 'Ember Heights', desc: 'Even a sleeping mountain has stories to tell.' },
   arctic: { code: 'ARCTIC · 07', name: 'Northlight', desc: 'The quietest places hold the brightest wonders.' },
+  savannah: { code: 'SAVANNAH · 08', name: 'Golden Savannah', desc: 'The grass remembers every hoofbeat.' },
+  river: { code: 'RIVER · 09', name: 'The Great River', desc: 'One slow green road between two worlds.' },
+  mangrove: { code: 'MANGROVE · 10', name: 'Mangrove Delta', desc: 'Roots in the water, secrets in the shade.' },
   lagoon: { code: 'BEACH · 04', name: 'Shell Cove', desc: 'Leave only tiny footprints.' },
 };
 
@@ -486,8 +504,8 @@ tickers.push((t, dt) => {
 // ---------- planet surface (patchwork sphere) ----------
 function heightFor(n) {
   if (n.y > 0.52) return 0.7;
-  if (n.y < -0.32) return -0.9;
   const b = biomeAt(n);
+  if (b === 'lagoon') return -0.9;
   if (b === 'farm') return 0.55;
   if (b === 'oasis') return 0.45;
   if (b === 'forest') return 0.6;
@@ -504,6 +522,20 @@ function heightFor(n) {
   }
   if (b === 'cove') return 0.35;
   if (b === 'volcano') return 0.85;
+  if (b === 'river') return -0.65;
+  if (b === 'savannah') {
+    const lat = Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG;
+    const lon = (Math.atan2(n.z, n.x) / DEG + 360) % 360;
+    const hills = Math.sin(lon * 0.07 + lat * 0.03) * 0.09 + Math.sin(lon * 0.21 - lat * 0.09) * 0.05;
+    return 0.42 + hills;
+  }
+  if (b === 'mangrove') {
+    const lat = Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG;
+    const lon = (Math.atan2(n.z, n.x) / DEG + 360) % 360;
+    const creek = Math.sin(lon * 0.12 + lat * 0.06) * Math.cos(lat * 0.09);
+    if (creek > 0.55) return -0.2; // tidal creeks threading the delta
+    return 0.17 + 0.07 * Math.sin(lon * 0.09 - lat * 0.05);
+  }
   return 0.35;
 }
 function groundColor(n, out) {
@@ -519,8 +551,8 @@ function groundColor(n, out) {
     else if (micro > 0.45) out.setHex(0xffffff);
     return out;
   }
-  if (n.y < -0.32) { out.setHex(0x2286b4); return out; }
   const b = biomeAt(n);
+  if (b === 'lagoon') { out.setHex(0x2286b4); return out; }
   if (b === 'farm') {
     out.setHex(0x7ccb58); // lush clover green
     if (Math.sin(lon * 9 + lat) > 0.35) out.setHex(0x99e370);
@@ -548,6 +580,21 @@ function groundColor(n, out) {
     if (wob > 0.22) out.setHex(0x6c5648);
     if (wob < -0.4) out.setHex(0x453831);
     if (Math.sin(lon * 13 + lat * 1.7) > 0.89 || micro > 0.72) out.setHex(0xe06a36); // cooling lava flecks
+  } else if (b === 'savannah') {
+    out.setHex(0xd9b25a); // sun-bleached grass
+    if (Math.sin(lon * 5 + lat * 0.4) > 0.2) out.setHex(0xe8c96a);
+    if (wob > 0.35) out.setHex(0xc9a24a);
+    if (wob < -0.4) out.setHex(0xb98f45);
+    if (micro > 0.55) out.setHex(0xa87a3f); // dry earth showing through
+  } else if (b === 'mangrove') {
+    out.setHex(0x4f7a52); // brackish green
+    if (wob > 0.2) out.setHex(0x5f8a5a);
+    if (wob < -0.4) out.setHex(0x3a5f45);
+    if (micro > 0.45) out.setHex(0x6f9a62);
+    if (micro < -0.5) out.setHex(0x6b5a3f); // mud banks
+  } else if (b === 'river') {
+    out.setHex(0x2f6b5a); // riverbed
+    return out;
   } else {
     out.setHex(0xf6e3a9); // cove sand
     if (lat > 22) out.setHex(0x93d66e);
@@ -573,8 +620,9 @@ scene.add(planetGroup);
     // per-face jitter: same for each triangle
     const jitter = (i % 3 === 0) ? rand(-0.02, 0.02) : 0;
     groundColor(n, c);
-    // wet coastal sand transition near waterline (outside arctic/volcano)
-    if (n.y < 0.48 && h > 0.02 && h < 0.26 && biomeAt(n) !== 'volcano') {
+    const bi = biomeAt(n);
+    // wet coastal sand transition near waterline (outside arctic/volcano/mangrove)
+    if (n.y < 0.48 && h > 0.02 && h < 0.26 && bi !== 'volcano' && bi !== 'mangrove' && bi !== 'river') {
       c.lerp(shoreSand, THREE.MathUtils.clamp((0.26 - h) * 2.4, 0, 0.55));
     }
     c.offsetHSL(0, 0, jitter);
@@ -993,6 +1041,8 @@ tickers.push((t, dt) => {
 // chopT runs 0..1 over CHOP_DUR; the wood hit lands at CHOP_IMPACT.
 const CHOP_DUR = 0.72, CHOP_IMPACT = 0.5;
 let chopT = 0;
+let lampHeld = false; // Digit3: carry the star lantern during the day too
+let huntVisualT = 0; // brief window when a hunt shows the ranged tool on the hero
 let chopQueue = null; // { nd, fired } — logic fires on the contact frame
 let attackT = 0; // separate diagonal combat slash
 let camShake = 0; // impact kick
@@ -1601,6 +1651,29 @@ function makeEmberTree(h = 3.4) {
   const topCrown = mesh(new THREE.IcosahedronGeometry(0.76, 1), leafGold, 0, h + 0.42, 0, false);
   topCrown.scale.set(1.15, 0.68, 1.15);
   g.add(topCrown);
+  return g;
+}
+function makeMangrove(h = rand(3.2, 4.6)) {
+  const g = new THREE.Group();
+  const bark = furM('mangrove-bark', 0x6b4a33, ['#543a26', '#8a6a4a', '#5f4330'], { n: 100, rMin: 1, rMax: 2.6 });
+  const leaf = furM('mangrove-leaf', 0x2f6b45, ['#245437', '#3f8a55', '#2a6b45'], { n: 120, rMin: 1.2, rMax: 3 });
+  const leafL = mat(0x4f9a62);
+  // arching prop roots spread out from the trunk base
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.3;
+    const root = mesh(new THREE.CylinderGeometry(0.055, 0.09, 1.55, 5), bark,
+      Math.cos(a) * 0.42, 0.48, Math.sin(a) * 0.42);
+    root.rotation.z = -Math.cos(a) * 0.68;
+    root.rotation.x = Math.sin(a) * 0.68;
+    g.add(root);
+  }
+  g.add(mesh(new THREE.CylinderGeometry(0.13, 0.22, h * 0.82, 7), bark, 0, h * 0.41, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(1.05, 1), leaf, 0, h * 0.9, 0));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.78, 1), leaf, 0.6, h * 1.08, 0.22, false));
+  g.add(mesh(new THREE.IcosahedronGeometry(0.72, 1), leaf, -0.55, h * 1.0, -0.35, false));
+  const cap = mesh(new THREE.IcosahedronGeometry(0.58, 1), leafL, 0.08, h * 1.24, -0.08, false);
+  cap.scale.set(1.15, 0.72, 1.15);
+  g.add(cap);
   return g;
 }
 function makeSkiff() {
@@ -3347,11 +3420,11 @@ function repairBridge(i) {
 }
 
 // ---------- ground detail (instanced: grass, flowers, rocks, bushes, ice shards) ----------
-function randomLandSpot(biomes) {
-  for (let k = 0; k < 24; k++) {
-    const la = rand(-18, 55), lo = rand(0, 360);
+function randomLandSpot(biomes, laMin = -18, laMax = 55, minH = 0.2) {
+  for (let k = 0; k < 36; k++) {
+    const la = rand(laMin, laMax), lo = rand(0, 360);
     const nrm = latLonToVec3(la, lo, 0).normalize();
-    if (biomes.includes(biomeAt(nrm)) && heightFor(nrm) > 0.2) return [la, lo, nrm];
+    if (biomes.includes(biomeAt(nrm)) && heightFor(nrm) > minH) return [la, lo, nrm];
   }
   return [10, 40, latLonToVec3(10, 40, 0).normalize()];
 }
@@ -3366,7 +3439,7 @@ function scatterInstanced(geo, material, count, biomes, sMin, sMax, colors, opts
   for (let i = 0; i < count; i++) {
     let la, lo, nrm, tries = 0;
     do {
-      [la, lo, nrm] = randomLandSpot(biomes);
+      [la, lo, nrm] = randomLandSpot(biomes, opts.latRange?.[0], opts.latRange?.[1], opts.minHeight);
       tries++;
     } while (tries < 16 && clear.some(([cla, clo, cr]) => {
       let dLon = Math.abs(lo - clo);
@@ -3401,6 +3474,17 @@ scatterInstanced(new THREE.IcosahedronGeometry(0.7, 1), mat(0xffffff, { roughnes
 scatterInstanced(new THREE.OctahedronGeometry(0.5, 0),
   new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.2, emissive: 0x0b5f8a, emissiveIntensity: 0.45 }),
   46, ['arctic'], 0.6, 1.6, [0x9fe4ff, 0x5ecdf5, 0xd6f2ff], { lift: 0.35 });
+// southern continents: dry savannah grass, acacia scrub and mangrove reeds
+scatterInstanced(new THREE.ConeGeometry(0.1, 0.45, 4), mat(0xffffff, { roughness: 1 }), 900,
+  ['savannah'], 0.5, 1.1, [0xd9b25a, 0xe8c96a, 0xc9a24a, 0xb98f45], { latRange: [-70, -24], lift: 0.28 });
+scatterInstanced(new THREE.IcosahedronGeometry(0.12, 0), mat(0xffffff, { roughness: 0.7 }), 120,
+  ['savannah'], 0.7, 1.3, [0xffd23d, 0xfff0c4, 0xe8a33d], { latRange: [-70, -24], lift: 0.3 });
+scatterInstanced(new THREE.DodecahedronGeometry(0.42, 0), mat(0xffffff, { roughness: 1 }), 34,
+  ['savannah'], 0.5, 1.2, [0x9a8a7a, 0x8a7a6a, 0xb9a28a], { latRange: [-70, -24], shadow: true, lift: 0.1 });
+scatterInstanced(new THREE.ConeGeometry(0.12, 0.85, 4), mat(0xffffff, { roughness: 1 }), 300,
+  ['mangrove'], 0.8, 1.5, [0x3f7a4a, 0x557a4a, 0x6b8a5a], { latRange: [-70, -24], minHeight: 0.1, lift: 0.2 });
+scatterInstanced(new THREE.DodecahedronGeometry(0.38, 0), mat(0xffffff, { roughness: 1 }), 26,
+  ['mangrove'], 0.5, 1.2, [0x6b5a3f, 0x7a6a4f, 0x5a4a35], { latRange: [-70, -24], minHeight: 0.1, shadow: true, lift: 0.08 });
 
 // ---------- player: hand-built traveler with a full joint hierarchy ----------
 // hips/legs → knees → ankles, torso → chest → shoulders → elbows → wrists → axe.
@@ -3910,17 +3994,20 @@ const player = new THREE.Group();
     const kPose = pose ? 1 : k;
     const hopF = THREE.MathUtils.clamp(hopH * 2.4, 0, 1);
     const dashF = dashT > 0 ? 1 : 0;
-    // Nova's lantern: night only, stowed whenever a tool/action pose is active.
-    const lanternLit = isNight() && !cp.active && !ap && !heroBuildHold && !swimmingNow && !inBoat && !playerDead && fishStage === 0;
+    // Nova's lantern: night only, stowed whenever a tool, ranged weapon or action pose is active.
+    huntVisualT = Math.max(0, huntVisualT - dt);
+    const hunting = huntVisualT > 0;
+    const rangedMode = hunting || !!(WeaponState.mode === 'ranged' && Loadout.ranged && WEAPONS[Loadout.ranged]);
+    const lanternLit = (lampHeld || isNight()) && !cp.active && !ap && !heroBuildHold && !rangedMode && !swimmingNow && !inBoat && !playerDead && fishStage === 0;
     if (P.starLantern) {
       P.starLantern.visible = lanternLit;
       P.starLantern.rotation.z = Math.sin(phase * 0.55) * 0.12;
-      if (P.lanternLight) P.lanternLight.intensity = lanternLit ? 7.2 + Math.sin(t * 7.3) * 0.7 : 0;
-      if (P.scarfLight) P.scarfLight.intensity = lanternLit ? 1.35 : 0;
+      if (P.lanternLight) P.lanternLight.intensity = lanternLit ? (isNight() ? 7.2 + Math.sin(t * 7.3) * 0.7 : 2.2) : 0;
+      if (P.scarfLight) P.scarfLight.intensity = lanternLit && isNight() ? 1.35 : 0;
       if (P.lanternStar) P.lanternStar.rotation.z = t * 0.9;
     }
-    P.lanternOn = lanternLit;
-    if (lanternLit && !P._lanternSeen) {
+    P.lanternOn = lanternLit && isNight();
+    if (lanternLit && isNight() && !P._lanternSeen) {
       P._lanternSeen = true;
       toast('✨ Nova’s star lantern wakes — hidden sparkles glow nearby.');
     }
@@ -3992,9 +4079,10 @@ const player = new THREE.Group();
       P.elbowL.rotation.x += ((-0.35 - Math.max(0, stroke) * 0.5) - P.elbowL.rotation.x) * k;
       P.elbowR.rotation.x += ((-0.35 - Math.max(0, -stroke) * 0.5) - P.elbowR.rotation.x) * k;
     }
-    const heldTool = pose ? (pose.tool || (pose.useTool === false ? null : 'axe')) : (heroBuildHold ? 'hammer' : 'axe');
+    const heldTool = heroBuildHold ? 'hammer' : (hunting ? null : (pose ? (pose.tool || (pose.useTool === false ? null : 'axe')) : null));
     if (P.axe) P.axe.visible = heldTool === 'axe';
     if (P.hammer) P.hammer.visible = heldTool === 'hammer';
+    if (P.gear?.rifleG) P.gear.rifleG.visible = rangedMode;
 
     // scarf: 3-segment spring lag with speed + turn sway
     const gust = Math.min(1, sp / 8);
@@ -4106,16 +4194,12 @@ tickers.push((t) => {
   refreshHeroLod();
 });
 function applyHeroRanged(w) {
-  const g = player.userData.gear;
-  if (g) g.rifleG.visible = !!w;
   applyHeroToolGear();
 }
 function applyHeroToolGear() {
   const g = player.userData.gear;
   if (!g) return;
-  const ranged = Loadout.ranged && WEAPONS[Loadout.ranged];
-  if (g.rifleG) g.rifleG.visible = !!ranged;
-  if (g.rod) g.rod.userData.allowed = fishingTier() >= 1 && !ranged;
+  if (g.rod) g.rod.userData.allowed = fishingTier() >= 1;
   if (g.sawTool) g.sawTool.userData.allowed = buildingTier() >= 1;
   if (g.drillTool) g.drillTool.userData.allowed = buildingTier() >= 2;
   if (g.holster) g.holster.userData.allowed = hasTech('holster');
@@ -4300,6 +4384,8 @@ function updateHeroGlbAnimation(dt, moving, runF) {
       attach(player.userData.axe, bones.handR);
       attach(player.userData.hammer, bones.handR);
       attach(player.userData.starLantern, bones.handL);
+      // the hand-built props are a touch large on the GLB's slimmer hands
+      player.userData.starLantern?.scale.setScalar(0.72);
       attach(player.userData.scarfLight, bones.chest);
       // Keep the game's functional gear visible on the GLB: fishing rod and
       // rifle on the back, heat cloak/satchel/tool-tier props on the hips.
@@ -5001,8 +5087,9 @@ const FISH_ZONES = [
   { id: 'reef-drop', name: 'Reef Drop-off', lat: -12, lon: 245, radius: 11, color: 0x8ab7ff, species: ['coral-grouper', 'glass-squid', 'ghost-ray'] },
   { id: 'cove-coast', name: 'Shell Cove', lat: -20, lon: 290, radius: 10, shore: [-17.6, 296], color: 0x7ad9ff, species: ['sea-bream', 'reef-flutter', 'silver-minnow'] },
   { id: 'ember-coast', name: 'Ember Shore', lat: -20, lon: 330, radius: 10, shore: [-17.6, 330], color: 0xff9a4a, species: ['obsidian-perch', 'ember-koi', 'lava-eel'] },
-  { id: 'deep-west', name: 'Deep Blue · West', lat: -35, lon: 30, radius: 14, color: 0x5a8dff, species: ['abyss-grouper', 'ghost-ray', 'deep-king'] },
-  { id: 'deep-mid', name: 'Deep Blue · Meridian', lat: -40, lon: 150, radius: 14, color: 0x4a7dff, species: ['storm-marlin', 'abyss-grouper', 'lantern-fish', 'golden-boot'] },
+  { id: 'great-river', name: 'The Great River', water: 'pond', lat: -40, lon: 98, radius: 9, shore: [-39, 92.6], color: 0x6ac7a8, species: ['river-trout', 'marsh-pike', 'silver-minnow', 'green-perch'] },
+  { id: 'deep-west', name: 'Deep Blue · West', lat: -50, lon: 5, radius: 14, color: 0x5a8dff, species: ['abyss-grouper', 'ghost-ray', 'deep-king'] },
+  { id: 'deep-mid', name: 'Deep Blue · Meridian', lat: -45, lon: 195, radius: 14, color: 0x4a7dff, species: ['storm-marlin', 'abyss-grouper', 'lantern-fish', 'golden-boot'] },
   { id: 'deep-east', name: 'Deep Blue · East', lat: -35, lon: 280, radius: 14, color: 0x6a9dff, species: ['storm-marlin', 'deep-king', 'ghost-ray'] },
   { id: 'blue-hole', name: 'Blue Hole', lat: 24, lon: 225, radius: 9, color: 0x9fdcff, species: ['glass-squid', 'ghost-ray', 'deep-king'] },
   { id: 'aurora-ice', name: 'Aurora Ice Hole', water: 'ice', lat: 57, lon: 118, radius: 6, color: 0xd9b8ff, species: ['ice-glimmer', 'frost-char', 'aurora-cod'] },
@@ -8934,9 +9021,9 @@ function makeCow() {
   };
   return g;
 }
-function makeDeer() {
+function makeDeer(opts = {}) {
   const g = new THREE.Group();
-  const hideM = furM('deer', 0xa86f42, ['#8a5a33', '#d9a66a', '#f3e9dc'], { n: 95, rMin: 1, rMax: 3, aMax: 0.35 });
+  const hideM = furM(opts.key || 'deer', opts.base ?? 0xa86f42, opts.tones || ['#8a5a33', '#d9a66a', '#f3e9dc'], { n: 95, rMin: 1, rMax: 3, aMax: 0.35 });
   const creamM = mat(0xf3e9dc), darkM = mat(0x2a211b), antlerM = mat(0x6e543b);
   const body = new THREE.Group(); body.position.set(0, 1.12, 0); g.add(body);
   const torso = mesh(new THREE.SphereGeometry(0.55, 12, 9), hideM, 0, 0, 0);
@@ -8955,12 +9042,14 @@ function makeDeer() {
     head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), darkM, sx * 0.13, 0.08, 0.22, false));
     const ear = mesh(new THREE.ConeGeometry(0.1, 0.34, 6), hideM, sx * 0.2, 0.2, 0, false);
     ear.rotation.z = sx * 0.7; ear.rotation.x = -0.25; head.add(ear);
-    const ant = new THREE.Group(); ant.position.set(sx * 0.11, 0.2, 0); head.add(ant);
-    ant.add(mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.52, 5), antlerM, 0, 0.24, 0, false));
-    const tine = mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.32, 5), antlerM, sx * 0.1, 0.36, 0, false);
-    tine.rotation.z = -sx * 0.65; ant.add(tine);
-    const tine2 = mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.26, 5), antlerM, -sx * 0.08, 0.12, 0, false);
-    tine2.rotation.z = sx * 0.8; ant.add(tine2);
+    if (opts.antlers !== false) {
+      const ant = new THREE.Group(); ant.position.set(sx * 0.11, 0.2, 0); head.add(ant);
+      ant.add(mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.52, 5), antlerM, 0, 0.24, 0, false));
+      const tine = mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.32, 5), antlerM, sx * 0.1, 0.36, 0, false);
+      tine.rotation.z = -sx * 0.65; ant.add(tine);
+      const tine2 = mesh(new THREE.CylinderGeometry(0.015, 0.022, 0.26, 5), antlerM, -sx * 0.08, 0.12, 0, false);
+      tine2.rotation.z = sx * 0.8; ant.add(tine2);
+    }
   }
   const tail = new THREE.Group(); tail.position.set(0, 0.15, -0.82); body.add(tail);
   tail.add(mesh(new THREE.ConeGeometry(0.1, 0.38, 6), creamM, 0, -0.15, -0.03, false));
@@ -8975,6 +9064,7 @@ function makeDeer() {
     legs, head, tail, body, bodyBob: 0.04, cadence: 5.5, amp: 0.5,
     graze: 0.65, grazeSpeed: 0.3, headDrop: 0.16, tailAmp: 0.3, tailSpeed: 2.2,
   };
+  if (opts.scale) g.scale.setScalar(opts.scale);
   return g;
 }
 function makeBoar() {
@@ -9010,6 +9100,329 @@ function makeBoar() {
     graze: 0.5, grazeSpeed: 0.4, headDrop: 0.12, tailAmp: 0.25, tailSpeed: 2.5,
   };
   return g;
+}
+// ---------- southern megafauna ----------
+function makeLion(scale = 1) {
+  const g = new THREE.Group();
+  const fur = furM('lion', 0xc9974e, ['#b8853a', '#d9b06a', '#a8792f'], { n: 95, rMin: 1, rMax: 2.8 });
+  const maneM = furM('lion-mane', 0x7a4a20, ['#5f3814', '#9a6a30', '#6b421c'], { n: 110, rMin: 1.2, rMax: 3 });
+  const cream = mat(0xf3e2c4), dark = mat(0x241a12);
+  const body = new THREE.Group(); body.position.set(0, 0.78, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.46, 12, 9), fur, 0, 0, 0);
+  torso.scale.set(1, 0.95, 1.5); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.32, 10, 8), fur, 0, 0.06, 0.58, false));
+  const head = new THREE.Group(); head.position.set(0, 0.34, 0.92); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.3, 12, 9), fur, 0, 0, 0));
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const tuft = mesh(new THREE.SphereGeometry(i % 2 ? 0.16 : 0.2, 7, 6), maneM,
+      Math.cos(a) * 0.3, Math.sin(a) * 0.3, -0.06, false);
+    tuft.scale.set(1, 1, 0.72);
+    head.add(tuft);
+  }
+  head.add(mesh(new THREE.SphereGeometry(0.18, 9, 7), cream, 0, -0.08, 0.25, false));
+  head.add(mesh(new THREE.SphereGeometry(0.06, 6, 5), dark, 0, -0.04, 0.41, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.042, 6, 5), dark, sx * 0.12, 0.09, 0.24, false));
+    head.add(mesh(new THREE.SphereGeometry(0.075, 7, 6), fur, sx * 0.24, 0.24, -0.04, false));
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.18, -0.72); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.03, 0.04, 0.55, 6), fur, 0, -0.2, -0.06, false));
+  tail.add(mesh(new THREE.SphereGeometry(0.1, 7, 6), maneM, 0, -0.5, -0.08, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.28, 0.5], [-0.28, 0.5], [0.3, -0.5], [-0.3, -0.5]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.58, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.6, 8), fur, 0, -0.28, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.19, 0.12, 0.22), cream, 0, -0.58, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.04, cadence: 5, amp: 0.45, graze: 0.5, grazeSpeed: 0.35, headDrop: 0.1, tailAmp: 0.4, tailSpeed: 2.2 };
+  return g;
+}
+function makeWildebeest(scale = 1) {
+  const g = new THREE.Group();
+  const fur = furM('wildebeest', 0x5b5148, ['#3f3832', '#7a6b5c', '#8a7a68'], { n: 110, rMin: 1, rMax: 2.8 });
+  const maneM = furM('wildebeest-mane', 0x2f2a25, ['#1f1b18', '#4a423a', '#3a332c'], { n: 90, rMin: 1, rMax: 2.4 });
+  const hornM = mat(0x3a3128), dark = mat(0x1f1a16), cream = mat(0xcfc4ae);
+  const body = new THREE.Group(); body.position.set(0, 0.92, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.48, 11, 9), fur, 0, 0, 0);
+  torso.scale.set(1.02, 0.9, 1.55); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.38, 10, 8), fur, 0, 0.14, 0.55, false));
+  // shaggy mane along the neck
+  for (let i = 0; i < 5; i++) body.add(mesh(new THREE.ConeGeometry(0.08, 0.24, 4), maneM, 0, 0.34 - i * 0.1, 0.15 + i * 0.12, false));
+  const head = new THREE.Group(); head.position.set(0, -0.02, 0.94); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.27, 10, 8), fur, 0, 0, 0.08, false));
+  head.add(mesh(new THREE.CylinderGeometry(0.15, 0.2, 0.34, 7), fur, 0, -0.07, 0.34, false));
+  head.add(mesh(new THREE.BoxGeometry(0.2, 0.09, 0.1), dark, 0, -0.08, 0.5, false));
+  head.add(mesh(new THREE.ConeGeometry(0.1, 0.3, 5), maneM, 0, -0.28, 0.2, false)); // beard
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.04, 6, 5), dark, sx * 0.13, 0.08, 0.25, false));
+    const ear = mesh(new THREE.ConeGeometry(0.09, 0.22, 5), fur, sx * 0.22, 0.2, 0, false);
+    ear.rotation.z = sx * 0.9; head.add(ear);
+    const horn = mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.42, 6), hornM, sx * 0.1, 0.28, 0.02, false);
+    horn.rotation.z = -sx * 0.7; horn.rotation.x = 0.3; head.add(horn);
+    const hook = mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.22, 5), hornM, sx * 0.25, 0.48, 0.02, false);
+    hook.rotation.z = sx * 0.8; head.add(hook);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.24, -0.78); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.65, 6), fur, 0, -0.25, -0.05, false));
+  tail.add(mesh(new THREE.ConeGeometry(0.1, 0.3, 5), maneM, 0, -0.6, -0.06, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.28, 0.52], [-0.28, 0.52], [0.3, -0.52], [-0.3, -0.52]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.68, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.09, 0.065, 0.72, 7), fur, 0, -0.32, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.16, 0.1, 0.2), dark, 0, -0.7, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.035, cadence: 6, amp: 0.5, graze: 0.6, grazeSpeed: 0.4, headDrop: 0.14, tailAmp: 0.35, tailSpeed: 2.6 };
+  return g;
+}
+function makeGiraffe(scale = 1) {
+  const g = new THREE.Group();
+  const fur = furM('giraffe', 0xd9a24a, ['#c98a32', '#efc06a', '#b87a2a'], { n: 90, rMin: 1, rMax: 2.8 });
+  const spotM = mat(0x7a4a1e), cream = mat(0xf3e2c4), dark = mat(0x2a211b), hornM = mat(0x6e543b);
+  const body = new THREE.Group(); body.position.set(0, 1.75, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.52, 12, 9), fur, 0, 0, 0);
+  torso.scale.set(0.95, 0.9, 1.5); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.34, 9, 7), fur, 0, 0.12, 0.58, false));
+  for (let i = 0; i < 7; i++)
+    body.add(mesh(new THREE.SphereGeometry(0.09, 6, 5).scale(1, 0.8, 0.7), spotM, (i % 2 ? 1 : -1) * 0.32, rand(-0.15, 0.3), rand(-0.55, 0.55), false));
+  const neck = new THREE.Group(); neck.position.set(0, 0.12, 0.58); neck.rotation.x = -0.16; body.add(neck);
+  neck.add(mesh(new THREE.CylinderGeometry(0.16, 0.24, 1.55, 7), fur, 0, 0.78, 0));
+  for (let i = 0; i < 5; i++)
+    neck.add(mesh(new THREE.SphereGeometry(0.08, 6, 5), spotM, (i % 2 ? 1 : -1) * 0.15, 0.2 + i * 0.26, 0.08, false));
+  const head = new THREE.Group(); head.position.set(0, 1.6, 0.03); neck.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.22, 10, 8), fur, 0, 0, 0.06));
+  head.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), cream, 0, -0.06, 0.24, false));
+  head.add(mesh(new THREE.SphereGeometry(0.05, 6, 5), dark, 0, -0.05, 0.35, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.04, 6, 5), dark, sx * 0.11, 0.08, 0.2, false));
+    const ear = mesh(new THREE.ConeGeometry(0.07, 0.2, 5), fur, sx * 0.18, 0.16, 0, false);
+    ear.rotation.z = sx * 0.8; head.add(ear);
+    const oss = mesh(new THREE.CylinderGeometry(0.025, 0.035, 0.25, 5), hornM, sx * 0.08, 0.25, 0, false);
+    oss.rotation.z = -sx * 0.2; head.add(oss);
+    head.add(mesh(new THREE.SphereGeometry(0.055, 6, 5), hornM, sx * 0.08, 0.38, 0, false));
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.12, -0.72); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.75, 5), fur, 0, -0.3, -0.04, false));
+  tail.add(mesh(new THREE.ConeGeometry(0.08, 0.24, 5), spotM, 0, -0.68, -0.05, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.23, 0.48], [-0.23, 0.48], [0.24, -0.48], [-0.24, -0.48]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 1.2, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.08, 0.055, 1.15, 6), fur, 0, -0.55, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.14, 0.09, 0.18), dark, 0, -1.13, 0.02, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.035, cadence: 4, amp: 0.4, graze: 0.35, grazeSpeed: 0.2, headDrop: 0.08, tailAmp: 0.3, tailSpeed: 1.8 };
+  return g;
+}
+function makeRhino(scale = 1) {
+  const g = new THREE.Group();
+  const hide = furM('rhino', 0x8a8a82, ['#6f6f68', '#a8a89e', '#7d7d74'], { n: 90, rMin: 1, rMax: 2.6 });
+  const hornM = mat(0xd9cfae), dark = mat(0x2a2622), mud = mat(0x6b5a44);
+  const body = new THREE.Group(); body.position.set(0, 0.95, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.55, 12, 9), hide, 0, 0, 0);
+  torso.scale.set(1.05, 0.95, 1.45); body.add(torso);
+  for (let i = 0; i < 4; i++) body.add(mesh(new THREE.SphereGeometry(0.2, 7, 6), mud, (i % 2 ? 1 : -1) * 0.4, -0.2, -0.4 + i * 0.28, false));
+  const head = new THREE.Group(); head.position.set(0, -0.02, 0.78); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.32, 10, 8), hide, 0, 0, 0.08, false));
+  head.add(mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.35, 7), hide, 0, -0.06, 0.36, false));
+  const horn = mesh(new THREE.ConeGeometry(0.11, 0.5, 6), hornM, 0, 0.02, 0.52, false);
+  horn.rotation.x = Math.PI / 2 - 0.45; head.add(horn);
+  const horn2 = mesh(new THREE.ConeGeometry(0.07, 0.24, 5), hornM, 0, 0.18, 0.42, false);
+  horn2.rotation.x = Math.PI / 2 - 0.7; head.add(horn2);
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.04, 6, 5), dark, sx * 0.14, 0.09, 0.3, false));
+    const ear = mesh(new THREE.ConeGeometry(0.08, 0.2, 5), hide, sx * 0.24, 0.2, 0, false);
+    ear.rotation.z = sx * 0.8; head.add(ear);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.1, -0.72); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.5, 5), hide, 0, -0.2, -0.04, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.3, 0.48], [-0.3, 0.48], [0.31, -0.48], [-0.31, -0.48]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.62, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.55, 8), hide, 0, -0.25, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.22, 0.1, 0.25), dark, 0, -0.55, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.03, cadence: 5, amp: 0.4, graze: 0.45, grazeSpeed: 0.3, headDrop: 0.1, tailAmp: 0.3, tailSpeed: 2 };
+  return g;
+}
+function makeElephant(scale = 1) {
+  const g = new THREE.Group();
+  const hide = furM('elephant', 0x8a8a92, ['#6f6f78', '#a8a8ae', '#7d7d84'], { n: 100, rMin: 1, rMax: 2.8 });
+  const cream = mat(0xefe6d0), dark = mat(0x2a2626), tuskM = mat(0xf3ead8);
+  const body = new THREE.Group(); body.position.set(0, 1.3, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.68, 12, 9), hide, 0, 0, 0);
+  torso.scale.set(1.05, 1, 1.5); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.5, 10, 8), hide, 0, 0.14, 0.62, false));
+  const head = new THREE.Group(); head.position.set(0, 0.16, 0.98); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.4, 12, 9), hide, 0, 0, 0));
+  for (const sx of [-1, 1]) {
+    const ear = mesh(new THREE.SphereGeometry(0.38, 10, 8), hide, sx * 0.38, 0.08, -0.02, false);
+    ear.scale.set(0.25, 1.1, 0.9); head.add(ear);
+    head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), dark, sx * 0.16, 0.12, 0.28, false));
+    const tusk = mesh(new THREE.ConeGeometry(0.05, 0.45, 6), tuskM, sx * 0.14, -0.2, 0.3, false);
+    tusk.rotation.x = 2.0; tusk.rotation.z = sx * 0.2; head.add(tusk);
+  }
+  // trunk: three tapering segments curving down and forward
+  const trunk1 = mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.55, 7), hide, 0, -0.2, 0.35);
+  trunk1.rotation.x = 0.35; head.add(trunk1);
+  const trunk2 = mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.5, 7), hide, 0, -0.48, 0.5);
+  trunk2.rotation.x = 0.6; head.add(trunk2);
+  const trunk3 = mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.4, 6), hide, 0, -0.72, 0.6);
+  trunk3.rotation.x = 0.9; head.add(trunk3);
+  const tail = new THREE.Group(); tail.position.set(0, 0.1, -0.95); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.03, 0.05, 0.55, 5), hide, 0, -0.22, -0.04, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.34, 0.52], [-0.34, 0.52], [0.35, -0.52], [-0.35, -0.52]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.82, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.16, 0.14, 0.78, 8), hide, 0, -0.36, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.26, 0.12, 0.3), cream, 0, -0.76, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.03, cadence: 4, amp: 0.35, graze: 0.45, grazeSpeed: 0.25, headDrop: 0.12, tailAmp: 0.3, tailSpeed: 1.8 };
+  return g;
+}
+function makeTiger(scale = 1) {
+  const g = new THREE.Group();
+  const fur = furM('tiger', 0xd97a2a, ['#b85a1a', '#f0a04a', '#8a3a10'], { n: 100, rMin: 1, rMax: 2.8 });
+  const stripe = mat(0x26170f), cream = mat(0xf3e2c4), dark = mat(0x1f1510);
+  const body = new THREE.Group(); body.position.set(0, 0.82, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.46, 12, 9), fur, 0, 0, 0);
+  torso.scale.set(1, 0.95, 1.55); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.3, 10, 8), fur, 0, 0.05, 0.6, false));
+  for (let i = 0; i < 8; i++) {
+    const s = mesh(new THREE.BoxGeometry(0.05, 0.5 - (i % 3) * 0.06, 0.08), stripe, (i % 2 ? 1 : -1) * 0.42, rand(-0.05, 0.12), -0.55 + i * 0.15, false);
+    s.rotation.z = (i % 2 ? 1 : -1) * 0.25; body.add(s);
+  }
+  const head = new THREE.Group(); head.position.set(0, 0.34, 0.9); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.3, 12, 9), fur, 0, 0, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.18, 9, 7), cream, 0, -0.08, 0.24, false));
+  head.add(mesh(new THREE.SphereGeometry(0.055, 6, 5), dark, 0, -0.04, 0.4, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.042, 6, 5), dark, sx * 0.12, 0.08, 0.22, false));
+    const ear = mesh(new THREE.SphereGeometry(0.1, 7, 6), fur, sx * 0.22, 0.22, -0.02, false);
+    ear.scale.set(0.8, 0.8, 0.3); head.add(ear);
+    head.add(mesh(new THREE.BoxGeometry(0.06, 0.22, 0.03), stripe, sx * 0.18, 0.14, 0.18, false));
+  }
+  head.add(mesh(new THREE.BoxGeometry(0.16, 0.06, 0.03), stripe, 0, 0.18, 0.22, false));
+  const tail = new THREE.Group(); tail.position.set(0, 0.2, -0.75); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.9, 6), fur, 0, -0.3, -0.05, false));
+  for (let i = 0; i < 3; i++) tail.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 6), stripe, 0, -0.15 - i * 0.22, -0.06, false));
+  tail.add(mesh(new THREE.SphereGeometry(0.07, 6, 5), cream, 0, -0.76, -0.06, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.26, 0.5], [-0.26, 0.5], [0.28, -0.5], [-0.28, -0.5]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.62, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.6, 7), fur, 0, -0.3, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.17, 0.1, 0.2), cream, 0, -0.6, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.04, cadence: 5.5, amp: 0.5, graze: 0.35, grazeSpeed: 0.25, headDrop: 0.08, tailAmp: 0.45, tailSpeed: 2.4 };
+  return g;
+}
+function makeMonkey(scale = 1) {
+  const g = new THREE.Group();
+  const fur = furM('monkey', 0x7a5230, ['#5f3d22', '#9a6b45', '#6b4a2f'], { n: 90, rMin: 1, rMax: 2.6 });
+  const face = mat(0xe8c9a0), dark = mat(0x241a12), pink = mat(0xd98a7a);
+  const body = new THREE.Group(); body.position.set(0, 0.72, 0); g.add(body);
+  body.add(mesh(new THREE.SphereGeometry(0.24, 10, 8), fur, 0, 0, 0));
+  body.add(mesh(new THREE.SphereGeometry(0.16, 8, 6), face, 0, 0.02, 0.16, false));
+  const head = new THREE.Group(); head.position.set(0, 0.32, 0.04); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), fur, 0, 0, 0));
+  head.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), face, 0, -0.03, 0.14, false));
+  head.add(mesh(new THREE.SphereGeometry(0.04, 6, 5), dark, 0, -0.02, 0.26, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), dark, sx * 0.08, 0.05, 0.16, false));
+    head.add(mesh(new THREE.SphereGeometry(0.075, 7, 6), fur, sx * 0.18, 0.04, 0, false));
+  }
+  for (const sx of [-1, 1]) {
+    const arm = mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.42, 6), fur, sx * 0.22, 0.02, 0.03, false);
+    arm.rotation.z = sx * 0.35; body.add(arm);
+    body.add(mesh(new THREE.SphereGeometry(0.055, 6, 5), face, sx * 0.28, -0.2, 0.06, false));
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.02, -0.2); body.add(tail);
+  tail.add(mesh(new THREE.CylinderGeometry(0.025, 0.04, 0.65, 6), fur, 0, 0.15, -0.25, false));
+  const curl = mesh(new THREE.TorusGeometry(0.16, 0.025, 5, 10, Math.PI * 1.3), fur, 0, 0.42, -0.45, false);
+  curl.rotation.x = Math.PI / 2; tail.add(curl);
+  const legs = [];
+  for (const sx of [-1, 1]) {
+    const hip = new THREE.Group(); hip.position.set(sx * 0.12, 0.52, 0.02);
+    hip.add(mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.35, 6), fur, 0, -0.17, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.1, 0.06, 0.16), face, 0, -0.36, 0.04, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.03, cadence: 7, amp: 0.4, graze: 0.2, grazeSpeed: 0.8, headDrop: 0.04, tailAmp: 0.5, tailSpeed: 3 };
+  return g;
+}
+function makeCrocodile(scale = 1) {
+  const g = new THREE.Group();
+  const hide = furM('crocodile', 0x3f6b45, ['#2f5437', '#5f8a55', '#477a4a'], { n: 100, rMin: 1, rMax: 2.6 });
+  const belly = mat(0xb9b07a), dark = mat(0x1f2a1f), tooth = mat(0xf3ead8);
+  const body = new THREE.Group(); body.position.set(0, 0.24, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.34, 10, 8), hide, 0, 0, 0);
+  torso.scale.set(1.1, 0.65, 2.2); body.add(torso);
+  body.add(mesh(new THREE.SphereGeometry(0.2, 8, 6), belly, 0, -0.16, 0.1, false));
+  const head = new THREE.Group(); head.position.set(0, 0.02, 0.7); body.add(head);
+  head.add(mesh(new THREE.BoxGeometry(0.3, 0.18, 0.5), hide, 0, 0, 0.15, false));
+  head.add(mesh(new THREE.BoxGeometry(0.24, 0.1, 0.42), belly, 0, -0.1, 0.18, false));
+  for (let i = 0; i < 4; i++) {
+    for (const sx of [-1, 1]) head.add(mesh(new THREE.ConeGeometry(0.025, 0.08, 4), tooth, sx * 0.1, -0.08, 0.02 + i * 0.09, false));
+  }
+  for (const sx of [-1, 1]) head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), dark, sx * 0.1, 0.12, 0.05, false));
+  const tail = new THREE.Group(); tail.position.set(0, 0, -0.6); body.add(tail);
+  tail.add(mesh(new THREE.ConeGeometry(0.22, 1.1, 6), hide, 0, 0, -0.45, false).rotateX(Math.PI / 2));
+  for (let i = 0; i < 6; i++) body.add(mesh(new THREE.ConeGeometry(0.06, 0.18, 4), dark, 0, 0.22, -0.5 + i * 0.2, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.28, 0.35], [-0.28, 0.35], [0.28, -0.35], [-0.28, -0.35]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.14, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.3, 6), hide, 0, -0.12, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.12, 0.06, 0.16), belly, 0, -0.27, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.02, cadence: 5, amp: 0.3, graze: 0.1, grazeSpeed: 0.4, headDrop: 0.02, tailAmp: 0.5, tailSpeed: 2 };
+  return g;
+}
+function makeHippo(scale = 1) {
+  const g = new THREE.Group();
+  const hide = furM('hippo', 0x8a7a86, ['#6f5f6b', '#a89aa4', '#7d6f7a'], { n: 90, rMin: 1, rMax: 2.6 });
+  const pink = mat(0xd9a8a0), dark = mat(0x2a2226), cream = mat(0xefe2c4);
+  const body = new THREE.Group(); body.position.set(0, 0.72, 0); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.62, 12, 9), hide, 0, 0, 0);
+  torso.scale.set(1.05, 0.9, 1.5); body.add(torso);
+  const head = new THREE.Group(); head.position.set(0, 0.18, 0.72); body.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.42, 12, 9), hide, 0, 0, 0));
+  head.add(mesh(new THREE.BoxGeometry(0.55, 0.32, 0.38), hide, 0, -0.12, 0.3, false));
+  head.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), pink, 0, -0.06, 0.5, false));
+  for (const sx of [-1, 1]) {
+    head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), dark, sx * 0.16, 0.12, 0.32, false));
+    const ear = mesh(new THREE.SphereGeometry(0.07, 6, 5), hide, sx * 0.25, 0.3, -0.04, false);
+    ear.scale.set(0.8, 0.8, 0.4); head.add(ear);
+    head.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), pink, sx * 0.1, -0.08, 0.52, false));
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0.1, -0.85); body.add(tail);
+  tail.add(mesh(new THREE.ConeGeometry(0.06, 0.3, 5), hide, 0, -0.1, -0.04, false));
+  const legs = [];
+  for (const [lx, lz] of [[0.3, 0.48], [-0.3, 0.48], [0.32, -0.48], [-0.32, -0.48]]) {
+    const hip = new THREE.Group(); hip.position.set(lx, 0.55, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.13, 0.11, 0.48, 7), hide, 0, -0.22, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.22, 0.09, 0.25), cream, 0, -0.47, 0.03, false));
+    g.add(hip); legs.push(hip);
+  }
+  g.scale.setScalar(scale);
+  g.userData.anim = { legs, head, tail, body, bodyBob: 0.03, cadence: 4.5, amp: 0.35, graze: 0.35, grazeSpeed: 0.3, headDrop: 0.08, tailAmp: 0.3, tailSpeed: 2 };
+  return g;
+}
+function makeImpala(scale = 1) {
+  return makeDeer({ key: 'impala', base: 0xc99a5a, tones: ['#b8854a', '#e8c98a', '#f3e9dc'], antlers: false, scale: 0.72 * scale });
 }
 function makeHare(base = 0xc9a070, tones = ['#b9885a', '#f3e9dc']) {
   const g = new THREE.Group();
@@ -10115,6 +10528,7 @@ function huntAmbient(entry) {
   if (!entry || entry.dead || playerDead) return;
   if (player.position.distanceTo(entry.mesh.position) > 4.6) return toast('⚠️ Too far — step closer.');
   if (playerAttackCd > 0) return;
+  huntVisualT = 1.25;
   playerAttackCd = Math.max(0.35, window.__rpgSwing || 0.55);
   startAttack();
   setTimeout(() => {
@@ -10231,6 +10645,135 @@ for (const [la, lo, ph] of [[18, 318, 1.1], [16, 340, 3.4], [12, 310, 5.8], [21,
   const lizard = makeEmberLizard();
   addAmbientWanderer(lizard, la, lo, 1.25, 0.5, ph, { name: 'Ember Lizard', icon: '🦎', hp: 12, meat: 1 });
 }
+
+// ---------- southern continents: Golden Savannah, Great River, Mangrove Delta ----------
+const southGroup = new THREE.Group(); scene.add(southGroup);
+function findSouthSpot(lonMin, lonMax, latMin, latMax, biome, minH = 0.2) {
+  for (let k = 0; k < 48; k++) {
+    const la = rand(latMin, latMax), lo = rand(lonMin, lonMax);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    if (biomeAt(n) === biome && heightFor(n) > minH) return [la, lo, n];
+  }
+  return null;
+}
+function putSouth(obj, la, lo, h = 0.04, yaw = rand(Math.PI * 2)) {
+  const n = latLonToVec3(la, lo, 0).normalize();
+  orientOnSphere(obj, n.clone().multiplyScalar(R + heightFor(n) + h), yaw);
+  southGroup.add(obj);
+  return obj;
+}
+for (let i = 0; i < 24; i++) {
+  const spot = findSouthSpot(20, 92, -68, -26, 'savannah', 0.22);
+  if (!spot) continue;
+  const tree = putSouth(makeAcacia(rand(2.8, 4.4)), spot[0], spot[1], 0, rand(Math.PI * 2));
+  if (i % 4 === 0) addChoppableTree(tree, spot[0], spot[1], 'Acacia', 0xd9b166);
+}
+for (let i = 0; i < 28; i++) {
+  const spot = findSouthSpot(104, 170, -68, -25, 'mangrove', 0.12);
+  if (!spot) continue;
+  const tree = putSouth(makeMangrove(rand(3.1, 4.6)), spot[0], spot[1], 0, rand(Math.PI * 2));
+  if (i % 5 === 0) addChoppableTree(tree, spot[0], spot[1], 'Mangrove', 0x3f7a4a);
+}
+// reed beds and muddy rocks along the river banks
+for (let i = 0; i < 54; i++) {
+  const side = i % 2 ? [91.5, 94.2] : [101.8, 104.5];
+  const la = rand(-64, -25), lo = rand(side[0], side[1]);
+  const n = latLonToVec3(la, lo, 0).normalize();
+  const h = heightFor(n);
+  if (h < 0.08) continue;
+  const reed = mesh(new THREE.ConeGeometry(rand(0.05, 0.08), rand(0.5, 1.0), 4), mat(i % 3 ? 0x5b8a4a : 0x7a9a52), 0, 0.35, 0, false);
+  putSouth(reed, la, lo, 0, rand(Math.PI * 2));
+}
+for (let i = 0; i < 12; i++) {
+  const la = rand(-64, -25), lo = rand(92, 104);
+  const n = latLonToVec3(la, lo, 0).normalize();
+  if (heightFor(n) < 0.05) continue;
+  const rock = mesh(new THREE.DodecahedronGeometry(rand(0.18, 0.42), 0), mat(0x7a6a52), 0, 0.1, 0, false);
+  putSouth(rock, la, lo, 0.04, rand(Math.PI * 2));
+}
+// The river is a living place: fish, crocodiles and hippos.
+function addRiverWanderer(meshObj, lat, lon, radius = 2.2, speed = 0.14, phase = rand(Math.PI * 2), hunt = null) {
+  const home = latLonToVec3(lat, lon, 0).normalize();
+  const east = V3(-home.z, 0, home.x); if (east.lengthSq() < 1e-6) east.set(1, 0, 0); east.normalize();
+  const north = new THREE.Vector3().crossVectors(home, east).normalize();
+  meshObj.position.copy(home).multiplyScalar(R + 0.14);
+  scene.add(meshObj);
+  const entry = { mesh: meshObj, home, radius, speed, phase, dead: false, hp: hunt?.hp || 20, maxHp: hunt?.hp || 20, hunt, kindTag: 'river', fleeT: 0 };
+  ambientWanderers.push(entry);
+  if (hunt) attachAmbientHunt(entry);
+  let prev = meshObj.position.clone();
+  tickers.push((t, dt) => {
+    if (entry.dead) return;
+    const a = t * speed + phase;
+    const n = home.clone()
+      .addScaledVector(east, Math.sin(a) * radius / R)
+      .addScaledVector(north, Math.sin(a * 0.7 + 1.1) * radius * 0.45 / R)
+      .normalize();
+    const p = n.clone().multiplyScalar(R + 0.14 + Math.sin(t * 1.5 + phase) * 0.02);
+    if (entry.fleeT > 0) {
+      entry.fleeT -= dt;
+      const away = p.clone().sub(player.position);
+      away.addScaledVector(n, -away.dot(n));
+      if (away.lengthSq() > 1e-6) p.addScaledVector(away.normalize(), dt * 0.7);
+      p.copy(p.clone().normalize().multiplyScalar(R + 0.14));
+    }
+    const step = p.clone().sub(prev);
+    if (step.lengthSq() > 1e-5) {
+      const dir = step.clone().addScaledVector(n, -step.dot(n));
+      if (dir.lengthSq() > 1e-6) faceAlong(meshObj, p, dir.normalize());
+    }
+    meshObj.position.copy(p);
+    if (entry.interact) entry.interact.pos.copy(p);
+    prev.copy(p);
+    animateAnimal(meshObj, t, 0.22, dt);
+  });
+  return entry;
+}
+function addRiverFish(lat, lon, color, phase) {
+  const fish = makeFish(color, rand(0.6, 0.9));
+  const home = latLonToVec3(lat, lon, 0).normalize();
+  const east = V3(-home.z, 0, home.x).normalize();
+  const north = new THREE.Vector3().crossVectors(home, east).normalize();
+  scene.add(fish);
+  tickers.push((t) => {
+    const a = t * 0.42 + phase;
+    const n = home.clone()
+      .addScaledVector(east, Math.sin(a) * 2.4 / R)
+      .addScaledVector(north, Math.cos(a * 0.8) * 1.2 / R)
+      .normalize();
+    const p = n.clone().multiplyScalar(R + 0.13 + Math.sin(t * 2 + phase) * 0.025);
+    const dir = east.clone().multiplyScalar(Math.cos(a)).addScaledVector(north, -Math.sin(a * 0.8) * 0.7);
+    if (dir.lengthSq() > 1e-6) faceAlong(fish, p, dir.normalize());
+    fish.position.copy(p);
+  });
+}
+const riverFishCols = [0x7ad9ff, 0x9fe4ff, 0x6ac7a8, 0xffd97a, 0xff9a8a];
+for (let i = 0; i < 9; i++) addRiverFish(rand(-56, -28), rand(96.2, 100.8), riverFishCols[i % riverFishCols.length], rand(Math.PI * 2));
+addRiverWanderer(makeCrocodile(1.0), -32, 97.2, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 85, meat: 3, pelt: 1 });
+addRiverWanderer(makeCrocodile(0.85), -54, 99.5, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 70, meat: 2, pelt: 1 });
+addRiverWanderer(makeHippo(1.0), -42, 98.2, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 150, meat: 6 });
+addRiverWanderer(makeHippo(0.9), -48, 99.6, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 130, meat: 5 });
+// Savannah and mangrove wildlife
+const southHunts = {
+  lion: { name: 'Lion', icon: '🦁', hp: 120, meat: 5, fur: 1 },
+  impala: { name: 'Impala', icon: '🦌', hp: 40, meat: 2, pelt: 1 },
+  wildebeest: { name: 'Wildebeest', icon: '🐃', hp: 75, meat: 4, pelt: 1 },
+  giraffe: { name: 'Giraffe', icon: '🦒', hp: 90, meat: 5 },
+  rhino: { name: 'Rhino', icon: '🦏', hp: 150, meat: 6 },
+  elephant: { name: 'Elephant', icon: '🐘', hp: 180, meat: 7 },
+  tiger: { name: 'Tiger', icon: '🐅', hp: 130, meat: 5, fur: 1 },
+  deer: { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 },
+  monkey: { name: 'Monkey', icon: '🐒', hp: 30, meat: 1 },
+};
+for (const [la, lo, ph] of [[-34, 36, 0.4], [-47, 56, 3.1]]) addAmbientWanderer(makeLion(1.05), la, lo, 3.4, 0.1, ph, southHunts.lion);
+for (const [la, lo, ph] of [[-31, 61, 0.8], [-34, 67, 2.4], [-38, 63, 4.9], [-41, 71, 1.7]]) addAmbientWanderer(makeImpala(1), la, lo, 2.8, 0.22, ph, southHunts.impala);
+for (const [la, lo, ph] of [[-42, 42, 1.2], [-45, 47, 3.6], [-48, 51, 5.2]]) addAmbientWanderer(makeWildebeest(1), la, lo, 3.0, 0.12, ph, southHunts.wildebeest);
+for (const [la, lo, ph] of [[-33, 76, 0.6], [-37, 81, 3.9]]) addAmbientWanderer(makeGiraffe(1), la, lo, 3.2, 0.09, ph, southHunts.giraffe);
+addAmbientWanderer(makeRhino(1.05), -52, 33, 3.0, 0.08, 1.5, southHunts.rhino);
+for (const [la, lo, ph] of [[-56, 60, 2.2], [-51, 72, 5.1]]) addAmbientWanderer(makeElephant(1.05), la, lo, 3.4, 0.07, ph, southHunts.elephant);
+addAmbientWanderer(makeTiger(1.05), -35, 128, 3.0, 0.12, 2.8, southHunts.tiger);
+for (const [la, lo, ph] of [[-38, 141, 0.9], [-43, 151, 3.3], [-46, 136, 5.7]]) addAmbientWanderer(makeDeer(), la, lo, 2.7, 0.14, ph, southHunts.deer);
+for (const [la, lo, ph] of [[-31, 116, 0.2], [-34, 123, 2.8]]) addAmbientWanderer(makeMonkey(1), la, lo, 2.0, 0.28, ph, southHunts.monkey);
 
 // sea turtles surface for air in the warm shallows
 function addSeaTurtle(lat, lon, phase = rand(Math.PI * 2)) {
@@ -10726,7 +11269,7 @@ const qGold = (n) => () => `Earn ${Math.min(n, Life.stats.goldEarned || 0)}/${n}
 const QUESTS = [
   {
     id: 'camp', title: 'Make Camp',
-    hint: 'Clover Fields · your axe is in hand. Chop any tree for 3 wood, then press H.',
+    hint: 'Clover Fields · your axe appears when you chop. Chop any tree for 3 wood, then press H.',
     subs: [
       { id: 'camp-wood', text: 'Gather 3 wood', done: () => inv.wood >= 3 },
       { id: 'camp-hut', text: 'Build a Mud Hut (H)', done: () => Home.house >= 1 },
@@ -12672,7 +13215,7 @@ Object.defineProperties(window.__lp, {
  // ---------- input ----------
 const keys = {};
 addEventListener('keydown', (e) => {
-  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'Digit3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     moveTargetN = null; // manual steering cancels click-to-move
@@ -12690,6 +13233,11 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Digit2' && !playerDead) {
     if (Loadout.ranged) equipWeapon(Loadout.ranged);
     else toast('🎒 No ranged weapon equipped — open Loadout (L).');
+    return;
+  }
+  if (e.code === 'Digit3' && !playerDead) {
+    lampHeld = !lampHeld;
+    toast(lampHeld ? '🏮 Star lantern in hand.' : '🏮 Star lantern stowed.');
     return;
   }
   if (e.code === 'KeyE' && !playerDead && !npcOpen && !buildOpen) {

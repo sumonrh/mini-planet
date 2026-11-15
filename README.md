@@ -2,7 +2,7 @@
 
 Charming low-poly tiny-planet exploration prototype (Three.js + Vite), built from your screenshots.
 
-One traversable sphere, 4 biomes, 7 Small Wonders, contextual `E` interactions, globe view, and a patchwork→restored progression loop.
+One traversable sphere, 10 biomes, 7 Small Wonders, contextual `E` interactions, globe view, and a patchwork→restored progression loop. The southern ocean is now broken up by the Golden Savannah, the Great River and the Mangrove Delta.
 
 ## Play (double-click, no terminal needed)
 
@@ -22,15 +22,15 @@ Firebase serves `dist/` (`firebase.json`), which is the single self-contained `i
 
 ## Controls
 
-- `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view
+- `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view · `3` lamp
 - Drag mouse to orbit the camera slightly.
-- **Nova:** the Starlight Explorer wears a starry coat, glowing scarf and star clip. After dark the star lantern wakes, lights nearby dark wonders, and reveals hidden starlight sparkles; it stows automatically when a tool or action is used. The playable hero is the Blender-authored `src/assets/nova.glb` (19-bone rig, `Idle`/`Walk`/`Run`/`Chop`) loaded with `GLTFLoader` + `AnimationMixer`; the hand-built rig remains the automatic fallback if the GLB cannot load.
+- **Nova:** the Starlight Explorer wears a starry coat, glowing scarf and star clip. He travels empty-handed; the axe appears only while chopping, the hammer while building, and the hunting tool while a ranged weapon is drawn. Press `3` to carry the star lantern in daylight; after dark it wakes, lights nearby dark wonders, and reveals hidden starlight sparkles. The playable hero is the Blender-authored `src/assets/nova.glb` (19-bone rig, `Idle`/`Walk`/`Run`/`Chop`) loaded with `GLTFLoader` + `AnimationMixer`; the hand-built rig remains the automatic fallback if the GLB cannot load.
 - **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.
 - **Trail beacon:** the current objective shows a gold light in the world + distance (`➤ 12m`). Walk toward it — `✨ You are here` means press `E`.
 - **Homestead:** press `H` — Mud Hut now costs 3 wood, Big Pack (+8 slots) is buildable, cooking the same mix twice discovers recipes.
-- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless.
+- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless. The southern continent adds lions, impala, wildebeest, giraffes, rhinos and elephants to the Golden Savannah; tigers, deer and monkeys to the Mangrove Delta; and the Great River is home to fish, crocodiles and hippos.
 
-## The 7 Worlds & Small Wonders
+## The Worlds & Small Wonders
 
 | # | World | Moment | How |
 |---|-------|--------|-----|
