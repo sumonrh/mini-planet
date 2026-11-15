@@ -22,7 +22,7 @@ Firebase serves `dist/` (`firebase.json`), which is the single self-contained `i
 
 ## Controls
 
-- `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view · `3` lamp
+- `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view · `C` camera · `3` lamp
 - Drag mouse to orbit the camera slightly.
 - **Nova:** the Starlight Explorer wears a starry coat, glowing scarf and star clip. He travels empty-handed; the axe appears only while chopping, the hammer while building, and the hunting tool while a ranged weapon is drawn. Press `3` to carry the star lantern in daylight; after dark it wakes, lights nearby dark wonders, and reveals hidden starlight sparkles. The playable hero is the Blender-authored `src/assets/nova.glb` (19-bone rig, `Idle`/`Walk`/`Run`/`Chop`) loaded with `GLTFLoader` + `AnimationMixer`; the hand-built rig remains the automatic fallback if the GLB cannot load.
 - **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.

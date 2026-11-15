@@ -13215,7 +13215,7 @@ Object.defineProperties(window.__lp, {
  // ---------- input ----------
 const keys = {};
 addEventListener('keydown', (e) => {
-  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'Digit1', 'Digit2', 'Digit3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'KeyC', 'Digit1', 'Digit2', 'Digit3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     moveTargetN = null; // manual steering cancels click-to-move
@@ -13228,6 +13228,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyL') { loadoutOpen ? closeLoadout() : openLoadout(); return; }
   if (e.code === 'KeyB') { bountyOpen ? closeBounty() : openBounty(); return; }
   if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) return;
+  if (e.code === 'KeyC' && !playerDead) { toggleThirdPersonView(); return; }
   if (e.code === 'Digit1' && !playerDead) { equipWeapon(Loadout.melee); return; }
   if (e.code === 'Tab' && !playerDead) { toggleWeapon(); return; }
   if (e.code === 'Digit2' && !playerDead) {
@@ -13558,6 +13559,14 @@ if ('ontouchstart' in window) {
   hold('btn-run', () => { if (started && !paused) keys.ShiftLeft = true; }, () => (keys.ShiftLeft = false));
 }
 let globeMode = false;
+let thirdPerson = false; // C: Tomb Raider-style over-the-shoulder chase camera
+function toggleThirdPersonView() {
+  thirdPerson = !thirdPerson;
+  if (thirdPerson && globeMode) globeMode = false;
+  // give the camera a clean starting angle when entering the low chase view
+  if (thirdPerson) orbitPitch = Math.min(0.2, Math.max(-0.2, orbitPitch));
+  toast(thirdPerson ? '🎥 Third-person camera — drag to look around' : '🎥 Tactical camera');
+}
 let photoMode = null; // { dist, height, side, aim } — QA portrait camera
 function toggleGlobe() { globeMode = !globeMode; toast(globeMode ? '🌐 Globe view — the patchwork planet' : '🧭 Back to traveler view'); }
 document.getElementById('btn-globe').onclick = toggleGlobe;
@@ -13929,6 +13938,58 @@ function updateCamera(dt, n) {
     camUp.lerp(UP, 1 - Math.exp(-2 * dt)).normalize();
     camera.up.copy(camUp);
     camera.lookAt(0, 0, 0);
+    return;
+  }
+  if (thirdPerson) {
+    // Tomb Raider-style chase: a low, close camera behind the shoulder.
+    tmpF.copy(moveDirSmooth).addScaledVector(n, -moveDirSmooth.dot(n));
+    if (tmpF.length() > 0.25) { tmpF.normalize(); lastBehind.copy(tmpF); }
+    else tmpF.copy(lastBehind);
+    tmpF.applyAxisAngle(n, orbitYaw);
+    axis.crossVectors(tmpF, n).normalize(); // right
+    const height = THREE.MathUtils.clamp(2.6 - orbitPitch * 1.4, 1.4, 4.2);
+    const backDist = 7.0, shoulder = 1.0;
+    tmpM.copy(player.position)
+      .addScaledVector(n, height)
+      .addScaledVector(tmpF, -backDist)
+      .addScaledVector(axis, shoulder);
+    // pull in if a building sits between the hero and the camera (ray from chest, not feet)
+    tmpR.copy(tmpM).sub(player.position);
+    const wantDist = tmpR.length();
+    if (wantDist > 1e-4) {
+      tmpR.multiplyScalar(1 / wantDist);
+      camRay.set(player.position.clone().addScaledVector(n, 1.2), tmpR);
+      camRay.far = wantDist;
+      const hit = camRay.intersectObjects(occluders, true)[0];
+      if (hit) tmpM.copy(player.position).addScaledVector(tmpR, Math.max(3.0, hit.distance - 0.45));
+    }
+    if (tmpM.length() < R + 0.9) tmpM.setLength(R + 0.9);
+    if (pointInOccluder(tmpM)) {
+      let s = wantDist;
+      do {
+        s -= 0.35;
+        tmpM.copy(player.position).addScaledVector(tmpR, Math.max(s, 3.0));
+      } while (s > 3.0 && pointInOccluder(tmpM));
+    }
+    // chest-height look target, slightly ahead and over the shoulder
+    tmpR.copy(player.position)
+      .addScaledVector(n, 1.6)
+      .addScaledVector(tmpF, 6.0)
+      .addScaledVector(axis, shoulder * 0.35);
+    axis.copy(camPos);
+    camPos.lerp(tmpM, 1 - Math.exp(-11 * dt));
+    if (camPos.lengthSq() < 1) camPos.copy(tmpM);
+    if (pointInOccluder(camPos)) camPos.copy(axis);
+    camera.position.copy(camPos);
+    camLook.lerp(tmpR, 1 - Math.exp(-9 * dt));
+    camUp.lerp(n, 1 - Math.exp(-9 * dt)).normalize();
+    camera.up.copy(camUp);
+    camera.lookAt(camLook.lengthSq() ? camLook : tmpR);
+    if (camShake > 0.001) {
+      camera.position.x += rand(-1, 1) * camShake;
+      camera.position.y += rand(-1, 1) * camShake;
+      camera.position.z += rand(-1, 1) * camShake;
+    }
     return;
   }
   // Diablo-style: high camera trailing behind the player's back, looking ahead.
