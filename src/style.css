@@ -459,12 +459,12 @@ body.custom-cursor #scene { cursor: none; }
 #pause-buttons .menu-btn { width: 100%; box-shadow: none; }
 #pause-title { font-family: 'Cormorant Garamond', serif; font-size: 34px; margin: 2px 0 4px; color: #fff; }
 #settings-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 4px; }
-.set-row {
+#settings-list .set-row {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16);
   border-radius: 12px; padding: 10px 12px; color: #f2f7f9; cursor: pointer; font-family: inherit; font-size: 13px;
 }
-.set-row:hover { border-color: #ffd97a; }
+#settings-list .set-row:hover { border-color: #ffd97a; }
 .set-name { flex: 1; font-weight: 600; }
 .set-val { color: #ffd97a; font-weight: 600; white-space: nowrap; }
 .set-desc { font-size: 11px; color: #c3d2d8; display: block; font-weight: 400; }

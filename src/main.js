@@ -5,6 +5,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import novaGlbUrl from './assets/nova.glb?url';
+import pipGlbUrl from './assets/pip.glb?url';
 
 /* ============================================================
    LITTLE PLANET — A Pocket Adventure (prototype)
@@ -4329,17 +4330,75 @@ function updateHeroGlbAnimation(dt, moving, runF) {
   }
   g.mixer.update(dt);
 }
-{
+const HERO_CHARACTERS = {
+  pip: {
+    key: 'pip', name: 'Pip', title: 'Sprout Keeper', url: pipGlbUrl, scale: 0.95,
+    hint: 'Leaf hat and watering-can pack. Crops grow faster; builds and bridge repairs finish sooner.',
+  },
+  nova: {
+    key: 'nova', name: 'Nova', title: 'Starlight Explorer', url: novaGlbUrl, scale: 1.08,
+    hint: 'Navy coat and star lantern. Wakes starlight after dark.',
+  },
+};
+let activeHeroKey = '';
+// Character perks: the Sprout Keeper tends crops and raises structures faster.
+const HERO_PERKS = {
+  pip: { growth: 1, build: 1.35, bridge: 1.6 },
+  nova: { growth: 0, build: 1, bridge: 1 },
+};
+function heroPerk() { return HERO_PERKS[activeHeroKey] || HERO_PERKS.pip; }
+// Props (axe, lantern, rod...) are built on the hand-made rig. Their bone-local
+// pose is captured once so either exported character can drive them.
+function attachHeroProp(obj, bone) {
+  if (!obj || !bone) return false;
+  if (obj.userData.heroLocal) {
+    bone.add(obj);
+    obj.matrix.copy(obj.userData.heroLocal);
+    obj.matrix.decompose(obj.position, obj.quaternion, obj.scale);
+  } else {
+    bone.attach(obj);
+    obj.userData.heroLocal = obj.matrix.clone();
+  }
+  return true;
+}
+function heroBindGear(bones) {
+  const gear = player.userData.gear || {};
+  attachHeroProp(player.userData.axe, bones.handR);
+  attachHeroProp(player.userData.hammer, bones.handR);
+  attachHeroProp(player.userData.starLantern, bones.handL);
+  player.userData.starLantern?.scale.setScalar(0.72);
+  attachHeroProp(player.userData.scarfLight, bones.chest);
+  attachHeroProp(gear.rod, bones.chest);
+  attachHeroProp(gear.rifleG, bones.chest);
+  attachHeroProp(gear.heatCloak, bones.hips);
+  attachHeroProp(gear.satchel, bones.hips);
+  attachHeroProp(gear.sawTool, bones.hips);
+  attachHeroProp(gear.drillTool, bones.hips);
+  attachHeroProp(gear.holster, bones.hips);
+}
+function loadHeroCharacter(key) {
+  const def = HERO_CHARACTERS[key] ? HERO_CHARACTERS[key] : HERO_CHARACTERS.pip;
   const g = player.userData.heroGlb;
-  g.procedural = player.children.slice();
-  new GLTFLoader().load(novaGlbUrl, (gltf) => {
+  if (!g) return;
+  if (!g.procedural || !g.procedural.length) g.procedural = player.children.slice();
+  activeHeroKey = def.key;
+  if (g.root) {
+    g.mixer?.stopAllAction();
+    player.remove(g.root);
+    g.root.traverse((o) => { if (o.isSkinnedMesh) o.geometry?.dispose(); });
+    g.root = null; g.mixer = null; g.actions = {}; g.clips = [];
+  }
+  g.loaded = false; g.failed = false; g.error = null; g.state = '';
+  player.userData.meshCount = 0;
+  new GLTFLoader().load(def.url, (gltf) => {
     let root = null;
     try {
       root = gltf.scene;
-      root.name = 'NovaGlb';
-      root.scale.setScalar(1.08); // Blender rig is 1.89u; procedural Nova is ~2.04u
+      root.name = def.name + 'Glb';
+      root.scale.setScalar(def.scale);
       player.add(root);
       g.root = root;
+      g.character = def.key;
 
       const bones = {};
       let meshCount = 0;
@@ -4360,27 +4419,10 @@ function updateHeroGlbAnimation(dt, moving, runF) {
       // Reuse the hand-built axe, hammer and star lantern; attach them at their
       // current world pose so the GLB hand bones drive them from here on.
       player.updateMatrixWorld(true);
-      const attach = (obj, bone) => {
-        if (!obj || !bone) return false;
-        bone.attach(obj);
-        return true;
-      };
-      attach(player.userData.axe, bones.handR);
-      attach(player.userData.hammer, bones.handR);
-      attach(player.userData.starLantern, bones.handL);
-      // the hand-built props are a touch large on the GLB's slimmer hands
-      player.userData.starLantern?.scale.setScalar(0.72);
-      attach(player.userData.scarfLight, bones.chest);
+      heroBindGear(bones);
       // Keep the game's functional gear visible on the GLB: fishing rod and
       // rifle on the back, heat cloak/satchel/tool-tier props on the hips.
       const gear = player.userData.gear || {};
-      attach(gear.rod, bones.chest);
-      attach(gear.rifleG, bones.chest);
-      attach(gear.heatCloak, bones.hips);
-      attach(gear.satchel, bones.hips);
-      attach(gear.sawTool, bones.hips);
-      attach(gear.drillTool, bones.hips);
-      attach(gear.holster, bones.hips);
       g.axeParent = player.userData.axe?.parent?.name || '';
       g.lanternParent = player.userData.starLantern?.parent?.name || '';
       g.gearParents = {
@@ -4410,19 +4452,19 @@ function updateHeroGlbAnimation(dt, moving, runF) {
       g.mixer.update(0);
       for (const child of g.procedural) child.visible = false;
       player.userData.meshCount = meshCount;
-      console.info(`[nova] Blender GLB active: ${meshCount} meshes, clips ${g.clips.join(', ')}`);
+      console.info(`[hero] ${def.name} GLB active: ${meshCount} meshes, clips ${g.clips.join(', ')}`);
     } catch (err) {
       g.loaded = false;
       g.failed = true;
       g.error = String(err?.message || err);
       if (root) player.remove(root);
       for (const child of g.procedural) child.visible = true;
-      console.warn('[nova] GLB integration failed; procedural fallback stays active.', err);
+      console.warn('[hero] GLB integration failed; procedural fallback stays active.', err);
     }
   }, undefined, (err) => {
     g.failed = true;
     g.error = String(err?.message || err || 'load error');
-    console.warn('[nova] GLB load failed; procedural fallback stays active.', err);
+    console.warn('[hero] GLB load failed; procedural fallback stays active.', err);
   });
 }
 let playerPos = latLonToVec3(2, 50, 0); // open path south of the farmstead, clear of buildings
@@ -4684,8 +4726,9 @@ function renderJournal() {
     list.appendChild(d);
   };
   if (journalTab === 'story') {
-    addHeading('NOVA · STARLIGHT EXPLORER');
-    addRow('A starry coat, a glowing scarf and a lantern that wakes after dark.', '⭐');
+    addHeading('TRAVELERS');
+    addRow('Pip the Sprout Keeper — leaf hat, watering-can pack, quicker crops and repairs.', '🌱', activeHeroKey === 'pip');
+    addRow('Nova the Starlight Explorer — navy coat, glowing scarf and a lantern that wakes after dark.', '⭐', activeHeroKey === 'nova');
     const ch = chapterNow();
     addHeading(`CHAPTER ${Life.chapter + 1} · ${ch.name.toUpperCase()} · AGE ${Math.round(Life.age || ch.age)}`);
     addRow(ch.blurb, ch.icon);
@@ -6223,7 +6266,7 @@ function fishingTier() { return hasTech('fish-trap') ? 3 : hasTech('fishing-net'
 function farmingTier() { return hasTech('thresher') ? 3 : hasTech('seed-drill') ? 2 : hasTech('plough') ? 1 : 0; }
 function buildingTier() { return hasTech('power-tools') ? 2 : hasTech('saw') ? 1 : 0; }
 function harvestYield() { return 2 + (farmingTier() >= 2 ? 1 : 0) + (farmingTier() >= 3 ? 1 : 0); }
-function buildSpeedMult() { return 1 + (buildingTier() >= 1 ? 0.25 : 0) + (buildingTier() >= 2 ? 0.5 : 0); }
+function buildSpeedMult() { return (1 + (buildingTier() >= 1 ? 0.25 : 0) + (buildingTier() >= 2 ? 0.5 : 0)) * heroPerk().build; }
 function techAvailable(t) {
   if (hasTech(t.id)) return { ok: false, why: 'Researched ✓' };
   if (Research.queue?.id === t.id) return { ok: false, why: 'On the bench' };
@@ -8394,7 +8437,7 @@ function autoWaterCount() {
 }
 function overnightCrops() {
   const winter = seasonNow() === 3;
-  const fast = (Life.bless?.harvest ? 2 : 1) + (hasTech('plough') ? 1 : 0) + (farmingTier() >= 2 ? 1 : 0) + (Research.farmBonus > 1 ? 1 : 0);
+  const fast = (Life.bless?.harvest ? 2 : 1) + (hasTech('plough') ? 1 : 0) + (farmingTier() >= 2 ? 1 : 0) + (Research.farmBonus > 1 ? 1 : 0) + heroPerk().growth;
   let auto = autoWaterCount();
   if (Home.irrigation) auto += 6;
   for (const p of Home.plots) { if (p.bought && p.crop && !p.water && auto > 0) { p.water = true; auto--; } }
@@ -11878,6 +11921,7 @@ const SETTINGS_DEFS = [
   { id: 'sound', name: 'Sound', desc: 'Chimes, barks & toasts', opts: [true, false], labels: { true: 'On 🔊', false: 'Off 🔇' } },
   { id: 'quality', name: 'Graphics quality', desc: 'Low helps slow devices', opts: ['high', 'low'], labels: { high: 'High ✨', low: 'Low ⚡' } },
   { id: 'bloom', name: 'Bloom', desc: 'Glow softness (High is the old look)', opts: ['low', 'medium', 'high'], labels: { low: 'Low', medium: 'Medium', high: 'High' } },
+  { id: 'hero', name: 'Traveler', desc: 'Pip the Sprout Keeper or Nova the Starlight Explorer', opts: ['pip', 'nova'], labels: { pip: 'Pip 🌱', nova: 'Nova ⭐' } },
   { id: 'cam', name: 'Camera orbit speed', desc: 'Mouse-drag sensitivity', opts: ['slow', 'normal', 'fast'], labels: { slow: 'Slow', normal: 'Normal', fast: 'Fast' } },
   { id: 'autosave', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
   { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
@@ -11891,7 +11935,7 @@ const SETTINGS_DEFS = [
   { id: 'thieves', name: 'Thieves & rustlers', desc: 'Night robber and poacher encounters', opts: [true, false], labels: { true: 'On 🥷', false: 'Off 🕊️' } },
   { id: 'permadeath', name: 'Permadeath', desc: 'No respawn after death — return to title', opts: [false, true], labels: { false: 'Off', true: 'On 💀' } },
 ];
-let settings = { sound: true, quality: 'high', bloom: 'medium', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
+let settings = { sound: true, quality: 'high', bloom: 'medium', hero: 'pip', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
@@ -11900,6 +11944,9 @@ function applySettings() {
   if (sb) sb.textContent = muted ? '🔇' : '🔊';
   try { renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(devicePixelRatio, 2)); } catch { /* headless */ }
   applyBloomStrength();
+  const heroKey = HERO_CHARACTERS[settings.hero] ? settings.hero : 'pip';
+  settings.hero = heroKey;
+  if (heroKey !== activeHeroKey) loadHeroCharacter(heroKey);
   try {
     const custom = settings.cursor !== false && !('ontouchstart' in window);
     document.body.classList.toggle('custom-cursor', custom);
@@ -13137,7 +13184,7 @@ Object.assign(window.__lp, {
   sfx: { log: sfxLog, weather: weatherSound },
   legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
-  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), hammerVisible: () => !!(player.userData.hammer && player.userData.hammer.visible), buildHold: () => heroBuildHold, heldTool: () => currentChopPose().tool, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
+  hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, character: () => activeHeroKey, setCharacter: (k) => { if (HERO_CHARACTERS[k]) { settings.hero = k; persistSettings(); applySettings(); } }, list: () => Object.keys(HERO_CHARACTERS), swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), hammerVisible: () => !!(player.userData.hammer && player.userData.hammer.visible), buildHold: () => heroBuildHold, heldTool: () => currentChopPose().tool, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
     gear: () => ({ rod: !!player.userData.gear?.rod?.visible, saw: !!player.userData.gear?.sawTool?.visible, drill: !!player.userData.gear?.drillTool?.visible, holster: !!player.userData.gear?.holster?.visible, heat: !!player.userData.gear?.heatCloak?.visible, rifle: !!player.userData.gear?.rifleG?.visible, sling: !!player.userData.gear?.rifleG?.visible }) },
   nova: {
     lantern: () => !!(player.userData.starLantern && player.userData.starLantern.visible),
@@ -14099,11 +14146,12 @@ function animate() {
   const _bell = bellGroup?.getObjectByName('bell');
   if (_bell?.userData.ringing) _bell.rotation.z = Math.sin(t * 10) * 0.5;
   updateBursts(dt);
-  // bridge repair animation
+  // bridge repair animation (Pip's crew works faster)
+  const bridgeRate = 2 * heroPerk().bridge;
   for (const b of bridges) {
     const target = b.fixed ? 0 : 0.35;
-    b.left.rotation.x += (target - b.left.rotation.x) * dt * 2;
-    b.right.rotation.x += (-target - b.right.rotation.x) * dt * 2;
+    b.left.rotation.x += (target - b.left.rotation.x) * dt * bridgeRate;
+    b.right.rotation.x += (-target - b.right.rotation.x) * dt * bridgeRate;
   }
   const n = updatePlayer(dt);
   updateBoatVisual(t);
