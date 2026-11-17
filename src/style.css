@@ -1,6 +1,16 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; font-family: 'Inter', system-ui, sans-serif; }
+html, body {
+  width: 100%; height: 100%; overflow: hidden;
+  background: radial-gradient(ellipse at 47% 38%, #173c42 0, #102c36 28%, #0c2030 60%, #091727 100%);
+  font-family: 'Inter', system-ui, sans-serif;
+}
 #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+#vignette {
+  position: fixed; inset: 0; z-index: 1; pointer-events: none;
+  background:
+    linear-gradient(to top, rgba(4, 20, 33, 0.4) 0%, transparent 26%, transparent 82%, rgba(4, 20, 33, 0.2) 100%),
+    radial-gradient(ellipse at 50% 40%, transparent 48%, rgba(4, 14, 27, 0.34) 100%);
+}
 
 .pill-dark {
   background: rgba(16, 28, 38, 0.72);
@@ -88,10 +98,20 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #0d1d28; f
 }
 .round-btn:hover { background: rgba(40,60,78,0.85); }
 
-#biome-label { position: fixed; left: 24px; bottom: 88px; z-index: 10; color: #fff; max-width: 320px; text-shadow: 0 2px 18px rgba(0,0,0,0.5); }
-#biome-code { font-size: 11px; letter-spacing: 0.3em; opacity: 0.7; }
-#biome-label h1 { font-family: 'Cormorant Garamond', serif; font-size: 52px; font-weight: 500; line-height: 1; margin: 6px 0; }
-#biome-desc { font-size: 13px; opacity: 0.75; line-height: 1.5; }
+#biome-label { position: fixed; left: 24px; bottom: 92px; z-index: 10; color: #fff; max-width: 280px; text-shadow: 0 2px 18px rgba(0,0,0,0.5); }
+#biome-code { font-size: 9px; letter-spacing: 0.28em; opacity: 0.65; }
+#biome-label h1 { font-family: 'Cormorant Garamond', serif; font-size: 29px; font-weight: 500; line-height: 1; margin: 4px 0; }
+#biome-desc { font-size: 10.5px; opacity: 0.62; line-height: 1.4; max-width: 240px; }
+
+#vitals {
+  position: fixed; left: 20px; bottom: 18px; z-index: 10;
+  width: 216px; padding: 8px 12px; border-radius: 15px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+#vitals .meter { gap: 6px; }
+#vitals .bar { width: 160px; height: 7px; }
+#vitals .meter > span { font-size: 11px; }
+#vitals #status-badges { display: flex; flex-wrap: wrap; gap: 3px; min-height: 0; margin: 0; }
 .hidden { display: none !important; }
 
 #interact-bar {
@@ -149,7 +169,7 @@ body.text-large #place-hint { font-size: 16px; }
 }
 
 #help-overlay {
-  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+  position: fixed; inset: 0; z-index: 82; display: flex; align-items: center; justify-content: center;
   background: rgba(5,12,18,0.45); backdrop-filter: blur(2px);
 }
 .help-card {
@@ -160,7 +180,7 @@ body.text-large #place-hint { font-size: 16px; }
 .help-card ul { margin: 12px 0 12px 18px; font-size: 14px; }
 .help-card .muted { opacity: 0.6; font-size: 12px; margin-top: 8px; }
 .help-card button {
-  margin-top: 16px; background: #ffd97a; border: none; border-radius: 999px;
+  margin-top: 16px; background: #ffd97a; color: #2a2000; border: none; border-radius: 999px;
   padding: 12px 28px; font-weight: 700; cursor: pointer; font-size: 14px;
 }
 
@@ -201,21 +221,20 @@ body.text-large #place-hint { font-size: 16px; }
 /* Survival + RPG + inventory panel */
 #stats {
   position: fixed; right: 20px; bottom: 18px; z-index: 10;
-  padding: 11px 16px; font-size: 13px; white-space: nowrap;
-  display: flex; flex-direction: column; gap: 5px;
-  border-radius: 18px;
+  padding: 8px 12px; font-size: 12px; white-space: nowrap;
+  display: flex; flex-direction: column; gap: 4px;
+  border-radius: 16px;
 }
 #rpg-row {
   display: flex; align-items: center; gap: 8px;
-  font-size: 12px; font-weight: 600; color: #ffd97a;
+  font-size: 11px; font-weight: 600; color: #ffd97a;
 }
 #rpg-lvl {
   background: rgba(255, 217, 122, 0.18); border: 1px solid rgba(255, 217, 122, 0.45);
   padding: 1px 8px; border-radius: 999px; font-weight: 700; color: #ffe596;
 }
-#rpg-weapon { color: #eaf4f8; font-weight: 600; }
-#rpg-xp-text { margin-left: auto; font-size: 11px; opacity: 0.78; font-variant-numeric: tabular-nums; }
-.rpg-xp-meter .bar { width: 170px; height: 5px; }
+#rpg-xp-text { margin-left: auto; font-size: 10px; opacity: 0.78; font-variant-numeric: tabular-nums; }
+.rpg-xp-meter .bar { width: 136px; height: 4px; }
 #xp-fill { background: linear-gradient(90deg, #54e0d0, #ffd97a); width: 0%; transition: width 0.25s ease; }
 .meter-sub { display: none; }
 #status-badges { display: inline-flex; gap: 4px; margin-left: 4px; font-size: 10.5px; }
@@ -295,8 +314,11 @@ body.custom-cursor #scene { cursor: none; }
   18% { opacity: 1; transform: translate(-50%, -10px) scale(1.08); }
   100% { opacity: 0; transform: translate(-50%, -44px) scale(0.94); }
 }
-#inv-row { display: flex; gap: 7px; align-items: center; font-variant-numeric: tabular-nums; }
-#pack-count { opacity: 0.6; font-size: 11px; margin-left: 4px; }
+#inv-row { display: flex; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; font-size: 12px; }
+#inv-row .inv { display: inline-flex; align-items: center; gap: 3px; }
+#inv-row .inv b { font-weight: 600; color: var(--lp-cream); }
+#food-cell { cursor: help; }
+#pack-count { opacity: 0.55; font-size: 10px; margin-left: 3px; }
 .meter { display: flex; gap: 8px; align-items: center; }
 .meter .bar { width: 110px; height: 6px; background: rgba(255,255,255,0.12); border-radius: 4px; overflow: hidden; }
 .meter .bar span { display: block; height: 100%; width: 100%; border-radius: 4px; }
@@ -321,37 +343,65 @@ body.custom-cursor #scene { cursor: none; }
 .gameover-eyebrow { font-size: 11px; letter-spacing: 0.3em; opacity: 0.7; }
 .gameover-card h2 { font-family: 'Cormorant Garamond', serif; font-size: 44px; margin: 8px 0; }
 .gameover-card p { opacity: 0.8; font-size: 14px; }
-/* NPC trade dialogue (scoped under #npc-overlay so .help-card button can't bleed in) */
+/* NPC conversation: a comic speech bubble over the world */
 #npc-overlay {
-  position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
-  background: rgba(5,12,18,0.55); backdrop-filter: blur(3px);
+  position: fixed; inset: 0; z-index: 55; display: flex; align-items: flex-end; justify-content: center;
+  padding: 0 20px 106px; background: transparent; pointer-events: none;
 }
-#npc-overlay .npc-card { position: relative; max-height: 84vh; overflow-y: auto; min-width: min(400px, calc(100vw - 40px)); }
+#npc-overlay .npc-bubble-wrap {
+  position: relative; pointer-events: auto;
+  width: min(580px, calc(100vw - 40px));
+}
+#npc-overlay .npc-card {
+  position: relative; max-height: 64vh; overflow-y: auto;
+  width: 100%; min-width: 0; padding: 20px 24px 16px;
+  color: #1b2a31; background: #fbf3df; border: 3px solid #14262d; border-radius: 22px;
+  box-shadow: 8px 8px 0 rgba(4,16,24,0.38);
+}
+#npc-overlay .npc-bubble-wrap::before,
+#npc-overlay .npc-bubble-wrap::after {
+  content: ''; position: absolute; left: 52px; width: 0; height: 0;
+  border-left: 22px solid transparent; border-right: 6px solid transparent;
+}
+#npc-overlay .npc-bubble-wrap::before { bottom: -25px; border-top: 25px solid #14262d; }
+#npc-overlay .npc-bubble-wrap::after { bottom: -19px; left: 56px; border-top: 21px solid #fbf3df; }
+#npc-overlay .npc-card::-webkit-scrollbar { width: 8px; }
+#npc-overlay .npc-card::-webkit-scrollbar-thumb { background: #c9b893; border-radius: 8px; }
 #npc-overlay .journal-close {
   background: transparent; border: none; border-radius: 50%;
-  padding: 2px 8px; margin-top: 0; font-weight: 400; color: #aabcad;
+  padding: 2px 8px; margin-top: 0; font-weight: 400; color: #44565d;
 }
-#npc-overlay .journal-close:hover { background: rgba(255,255,255,0.08); color: #fff; }
-#npc-name { font-family: 'Cormorant Garamond', serif; font-size: 34px; margin: 2px 0 6px; color: #fff; }
-#npc-line { font-size: 13.5px; line-height: 1.6; color: #d7e3e8; opacity: 1; }
-#npc-trades { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 4px; }
+#npc-overlay .journal-close:hover { background: rgba(20,38,45,0.08); color: #14262d; }
+#npc-eyebrow { color: #7d7258; }
+#npc-name { font-family: 'Cormorant Garamond', serif; font-size: 31px; margin: 2px 0 4px; color: #14262d; }
+#npc-line { font-size: 13.5px; line-height: 1.55; color: #2d3d43; opacity: 1; font-style: italic; }
+#npc-trades { display: flex; flex-direction: column; gap: 6px; margin: 8px 0 4px; }
 #npc-overlay .npc-trade {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
-  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,217,122,0.45);
-  border-radius: 12px; padding: 10px 12px; margin-top: 0;
-  color: #f2f7f9; cursor: pointer; font-family: inherit; font-weight: 400; font-size: 13px;
+  background: #fffdf7; border: 1.5px solid #34474e; border-radius: 12px; padding: 8px 10px; margin-top: 0;
+  color: #1b2a31; cursor: pointer; font-family: inherit; font-weight: 400; font-size: 12.5px;
 }
-#npc-overlay .npc-trade:hover:not(:disabled) { background: rgba(255,217,122,0.18); border-color: rgba(255,217,122,0.8); }
-#npc-overlay .npc-trade:disabled { opacity: 0.55; cursor: default; }
+#npc-overlay .npc-trade:hover:not(:disabled) { background: #fff2c9; border-color: #8a5a00; }
+#npc-overlay .npc-trade:disabled { opacity: 0.5; cursor: default; }
 #npc-overlay .npc-trade .trade-main { flex: 1; }
-#npc-overlay .npc-trade .trade-route { font-size: 13.5px; font-weight: 700; color: #ffd97a; }
-#npc-overlay .npc-trade .trade-blurb { font-size: 11px; color: #c3d2d8; }
-#npc-overlay .npc-trade .trade-count { font-size: 11px; color: #ffd97a; white-space: nowrap; }
-#btn-npc-leave {
-  margin-top: 10px; background: transparent; border: 1px solid rgba(255,255,255,0.25);
-  border-radius: 999px; padding: 9px 22px; color: #eaf2f5; cursor: pointer; font-size: 13px; font-family: inherit;
+#npc-overlay .npc-trade .trade-route { font-size: 13px; font-weight: 700; color: #8a5a00; }
+#npc-overlay .npc-trade .trade-blurb { font-size: 10.5px; color: #516067; }
+#npc-overlay .npc-trade .trade-count { font-size: 10.5px; color: #8a5a00; white-space: nowrap; }
+#npc-overlay .almanac-row {
+  background: #f1e5ca; border-color: #c9b893; color: #2d3d43; font-size: 11px;
 }
-#btn-npc-leave:hover { background: rgba(255,255,255,0.08); }
+#npc-overlay .almanac-row .when { color: #8a5a00; }
+#btn-npc-leave {
+  margin-top: 8px; background: transparent; border: 1.5px solid #34474e;
+  border-radius: 999px; padding: 7px 18px; color: #25353b; cursor: pointer; font-size: 12px; font-family: inherit;
+}
+#btn-npc-leave:hover { background: rgba(20,38,45,0.08); }
+@media (max-width: 640px) {
+  #npc-overlay { padding: 0 12px 176px; }
+  #npc-overlay .npc-bubble-wrap { width: calc(100vw - 24px); }
+  #npc-overlay .npc-card { padding: 16px 18px 13px; max-height: 60vh; }
+  #npc-overlay .npc-bubble-wrap::before, #npc-overlay .npc-bubble-wrap::after { display: none; }
+}
 
 /* Life-sim HUD: day pill, home row, extra need meters, sleep fade */
 #day-pill {
@@ -451,10 +501,49 @@ body.custom-cursor #scene { cursor: none; }
 .slot-del.armed { background: #e03131; color: #fff; }
 .title-footer { margin-top: 22px; font-size: 11px; opacity: 0.6; }
 /* Pause + settings (reuse card theme) */
-#pause-overlay, #settings-overlay {
+#pause-overlay {
   position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
   background: rgba(5,12,18,0.55); backdrop-filter: blur(3px);
 }
+#settings-overlay {
+  position: fixed; inset: 0; z-index: 82; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,12,18,0.55); backdrop-filter: blur(3px);
+}
+#settings-overlay .help-card { max-height: 86vh; overflow-y: auto; scrollbar-width: thin; }
+#options-overlay {
+  position: fixed; inset: 0; z-index: 75; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,12,18,0.38); backdrop-filter: blur(2px);
+}
+#controls-overlay {
+  position: fixed; inset: 0; z-index: 83; display: flex; align-items: center; justify-content: center;
+  background: rgba(5,12,18,0.5); backdrop-filter: blur(3px);
+}
+.options-card { min-width: min(360px, calc(100vw - 40px)); text-align: center; }
+#options-buttons { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+#options-buttons .menu-btn { width: 100%; box-shadow: none; }
+.controls-card { min-width: min(440px, calc(100vw - 40px)); max-height: 84vh; overflow-y: auto; }
+.controls-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; align-items: center; margin: 14px 0 4px; font-size: 12px; color: #d7e3e8; }
+.controls-grid > span:nth-child(odd) { text-align: right; }
+.controls-grid kbd {
+  background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.22);
+  border-radius: 5px; padding: 2px 7px; font-size: 10px; font-family: inherit; margin-left: 2px;
+}
+#settings-categories { display: flex; flex-direction: column; gap: 7px; margin: 10px 0 6px; }
+#settings-categories .set-cat {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 11px 13px; border-radius: 12px; cursor: pointer; font-family: inherit;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16);
+  color: #f2f7f9; box-shadow: none; margin-top: 0;
+}
+#settings-categories .set-cat:hover { background: rgba(255,217,122,0.12); border-color: #ffd97a; }
+#settings-categories .set-cat .cat-icon { font-size: 18px; }
+#settings-categories .set-cat .cat-copy { flex: 1; }
+#settings-categories .set-cat .cat-name { display: block; font-size: 13px; font-weight: 600; }
+#settings-categories .set-cat .cat-desc { display: block; font-size: 10.5px; color: #aebfc7; font-weight: 400; }
+#settings-categories .set-cat .cat-arrow { color: #ffd97a; font-size: 14px; }
+#settings-sub-title { margin: 2px 0 8px; }
+#btn-settings-section-back { margin: 4px 0 2px; }
+#settings-sub .menu-btn-small { width: auto; }
 #pause-buttons { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 #pause-buttons .menu-btn { width: 100%; box-shadow: none; }
 #pause-title { font-family: 'Cormorant Garamond', serif; font-size: 34px; margin: 2px 0 4px; color: #fff; }
@@ -472,17 +561,25 @@ body.custom-cursor #scene { cursor: none; }
 /* Touch controls: hidden unless the device reports touch */
 #touch-ui { display: none; }
 body.touch #touch-ui { display: block; }
-body.touch #controls-hint { display: none; }
 body.touch #stats { bottom: 150px; }
+body.touch #vitals { left: 20px; bottom: 158px; width: 190px; }
 body.touch #wonder-tracker { top: 68px; }
 body.touch #objective-panel { top: 112px; }
-body.touch #biome-label { bottom: 252px; max-width: 220px; }
-body.touch #biome-label h1 { font-size: 34px; }
+body.touch #biome-label { bottom: 258px; max-width: 220px; }
+body.touch #biome-label h1 { font-size: 28px; }
 @media (max-width: 640px) {
   #objective-panel { top: 118px; right: 12px; width: min(248px, calc(100vw - 24px)); padding: 10px 11px 11px; }
   #obj-title { font-size: 19px; }
   .obj-hint { font-size: 9.5px; margin-left: 22px; }
   .obj-sub { font-size: 10.5px; }
+  #stats { right: 12px; bottom: 12px; padding: 7px 10px; }
+  #inv-row { gap: 7px; font-size: 11px; }
+  #vitals { left: 12px; bottom: 12px; width: 190px; padding: 7px 10px; }
+  #vitals .bar { width: 138px; }
+  #biome-label h1 { font-size: 25px; }
+  #biome-desc { display: none; }
+  #npc-overlay { padding-bottom: 164px; }
+  .controls-card, .options-card { width: calc(100vw - 32px); }
 }
 #stick {
   position: fixed; left: 24px; bottom: 24px; z-index: 20;
@@ -767,6 +864,5 @@ body.contrast-high #weather-chip { color: #fff; font-weight: 700; }
 #inv-row span { color: var(--lp-cream); }
 .bar { background: rgba(255, 255, 255, 0.12); }
 .meter > span { opacity: 0.9; }
-#health-fill { background: linear-gradient(90deg, #9ce08a, #63c96f) !important; }
+#health-fill { background: linear-gradient(90deg, #ff9a9a, #ef5a68) !important; }
 #energy-fill { background: linear-gradient(90deg, #ffe7a1, #f0c563) !important; }
-#hunger-fill { background: linear-gradient(90deg, #ffc98a, #ef9a56) !important; }

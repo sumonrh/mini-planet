@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import novaGlbUrl from './assets/nova.glb?url';
 import pipGlbUrl from './assets/pip.glb?url';
@@ -18,46 +17,38 @@ const S = R / 30; // sky, fog and shadow distances scale with the planet
 const canvas = document.getElementById('scene');
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
 } catch (err) {
   const t = document.getElementById('toast');
   t.textContent = '⚠️ 3D unavailable: this browser blocked WebGL. Try Chrome or Edge with hardware acceleration enabled.';
   t.classList.remove('hidden');
   throw err;
 }
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false;
+renderer.shadowMap.needsUpdate = true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 1.0;
+renderer.toneMappingExposure = 1.1;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x0d1d28);
-scene.fog = new THREE.Fog(0x0d1d28, 130 * S, 260 * S);
+scene.background = new THREE.Color(0x0c2030);
 
-const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 500 * S);
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.15, 500 * S);
 camera.position.set(0, 30 * S, 60 * S);
+// Follow-camera distance state must exist before boot calls applySettings().
+let followZoom = 0.5; // effective multiplier (settings base × wheel zoom)
+let followZoomScale = 1;
 
-// Bright, saturated post stack: a soft bloom for emissive accents and a little
-// tone shaping so the stylised palette survives the bright sun.
-const composer = new EffectComposer(renderer);
+// Lightweight post stack: 2× MSAA and tone mapping only.
+const composerTarget = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 2 });
+const composer = new EffectComposer(renderer, composerTarget);
 composer.setPixelRatio(renderer.getPixelRatio());
 composer.setSize(innerWidth, innerHeight);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.72, 0.86);
-composer.addPass(bloomPass);
-// Low / Medium / High bloom strengths; current look (0.34) is kept as High.
-const BLOOM_STRENGTH = { low: 0.08, medium: 0.2, high: 0.34, off: 0 };
-function applyBloomStrength() {
-  try {
-    const key = (typeof settings !== 'undefined' && settings.bloom) || 'medium';
-    bloomPass.strength = BLOOM_STRENGTH[key] ?? BLOOM_STRENGTH.medium;
-    bloomPass.enabled = bloomPass.strength > 0;
-  } catch { /* settings not ready yet */ }
-}
-applyBloomStrength();
 composer.addPass(new OutputPass());
 
 addEventListener('resize', () => {
@@ -69,31 +60,41 @@ addEventListener('resize', () => {
 });
 
 // ---------- lights ----------
-// Warm key, cool sky bounce and a low rim: the classic anime-fantasy read.
-scene.add(new THREE.HemisphereLight(0xcbeaff, 0x7a9658, 0.9));
-const sun = new THREE.DirectionalLight(0xfff1d0, 2.45);
-sun.position.set(40 * S, 55 * S, 25 * S);
+// The reference rig: a warm key, a mint-tinged sky bounce and a broad ambient
+// fill, with no extra coloured rim light.
+const ambientL = new THREE.AmbientLight(0xcce8dc, 0.82);
+scene.add(ambientL);
+const hemiLight = new THREE.HemisphereLight(0xe7f2e0, 0x7a9f91, 1.45);
+scene.add(hemiLight);
+const sun = new THREE.DirectionalLight(0xfff1d0, 3.2);
+scene.add(sun);
+scene.add(sun.target);
+// The shadow frustum follows the traveler: a tight box around the hero keeps
+// texel density constant and stops the ground shadow swimming/juddering as
+// they walk across the planet (a static planet-wide frustum updated at 20 Hz
+// made the contact shadow step behind the feet — the vibration).
+const _sunDir = new THREE.Vector3(-26, 43, 32).normalize();
+sun.position.copy(_sunDir).multiplyScalar(100);
+sun.target.position.set(0, 0, 0);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.camera.left = -45 * S; sun.shadow.camera.right = 45 * S;
-sun.shadow.camera.top = 45 * S; sun.shadow.camera.bottom = -45 * S;
-sun.shadow.camera.near = 10 * S; sun.shadow.camera.far = 140 * S;
-sun.shadow.bias = -0.0002;
-sun.shadow.normalBias = 0.055;
-sun.shadow.radius = 3;
-scene.add(sun);
-const fill = new THREE.DirectionalLight(0x82b8ff, 0.65);
-fill.position.set(-30, 10, -40);
-scene.add(fill);
-const rim = new THREE.DirectionalLight(0xffe4b8, 1.0); // warm low rim for form + depth
-rim.position.set(-15, -20, 35);
-scene.add(rim);
+sun.shadow.camera.left = -8 * S; sun.shadow.camera.right = 8 * S;
+sun.shadow.camera.top = 8 * S; sun.shadow.camera.bottom = -8 * S;
+sun.shadow.camera.near = 60; sun.shadow.camera.far = 140;
+sun.shadow.camera.updateProjectionMatrix();
+sun.shadow.bias = -0.00015;
+sun.shadow.normalBias = 0.05;
+function followSunToHero() {
+  sun.position.copy(player.position).addScaledVector(_sunDir, 100);
+  sun.target.position.copy(player.position);
+  sun.target.updateMatrixWorld();
+}
 
-// Painterly sky dome: a bright azure zenith fading to a sun-warmed horizon.
-// It follows the day/night clock and picks up weather tints from updateSky().
+// Deep-space backdrop: the planet floats in the same dark teal night as the
+// reference, with only a faint horizon lift for depth. The clock still tints it.
 const skyUniforms = {
-  uTop: { value: new THREE.Color(0x2f8fe0) },
-  uHorizon: { value: new THREE.Color(0x9edcff) },
+  uTop: { value: new THREE.Color(0x0a1c2b) },
+  uHorizon: { value: new THREE.Color(0x173c42) },
   uSunDir: { value: new THREE.Vector3(0.4, 0.8, 0.25).normalize() },
   uSunCol: { value: new THREE.Color(0xfff3ce) },
 };
@@ -119,7 +120,7 @@ const skyDome = new THREE.Mesh(
         float h = clamp(d.y * 0.5 + 0.5, 0.0, 1.0);
         vec3 col = mix(uHorizon, uTop, smoothstep(0.42, 1.0, h));
         float sunDot = max(dot(d, normalize(uSunDir)), 0.0);
-        col += uSunCol * (pow(sunDot, 420.0) * 2.4 + pow(sunDot, 18.0) * 0.2 + pow(sunDot, 3.0) * 0.06);
+        col += uSunCol * (pow(sunDot, 420.0) * 0.8 + pow(sunDot, 18.0) * 0.06 + pow(sunDot, 3.0) * 0.02);
         col = mix(col, uHorizon, smoothstep(0.08, -0.4, d.y) * 0.45);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
@@ -147,55 +148,16 @@ function mesh(geo, material, x = 0, y = 0, z = 0, shadow = true) {
   return m;
 }
 
-// ---------- stylised toon pass ----------
-// Four soft ink bands + a warm rim. We convert the *material object in place*
-// (rather than swapping it for a new MeshToonMaterial) so every existing
-// animation that writes emissiveIntensity/opacity keeps working untouched.
-const toonGradientMap = (() => {
-  const data = new Uint8Array([96, 150, 205, 255]);
-  const tex = new THREE.DataTexture(data, data.length, 1, THREE.RedFormat);
-  tex.minFilter = tex.magFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return tex;
-})();
-function toonifyMaterial(m) {
-  if (!m || !m.isMeshStandardMaterial || m.isMeshToonMaterial) return;
-  m.isMeshStandardMaterial = false;
-  m.isMeshPhysicalMaterial = false;
-  m.isMeshToonMaterial = true;
-  // Material.type is a getter driven by the prototype in r170, so switch the
-  // prototype instead of assigning type (which is a no-op setter).
-  Object.setPrototypeOf(m, THREE.MeshToonMaterial.prototype);
-  m.gradientMap = toonGradientMap;
-  m.roughness = 1;
-  m.metalness = 0;
-  m.onBeforeCompile = (shader) => {
-    shader.uniforms.uRimColor = { value: new THREE.Color(0xffe8c0) };
-    shader.uniforms.uRimStrength = { value: 0.3 };
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vToonWorldPos;\nvarying vec3 vToonWorldNormal;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n\tvToonWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;\n\tvToonWorldNormal = normalize(mat3(modelMatrix) * objectNormal);');
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uRimColor;\nuniform float uRimStrength;\nvarying vec3 vToonWorldPos;\nvarying vec3 vToonWorldNormal;')
-      .replace('#include <opaque_fragment>', [
-        'vec3 toonViewDir = normalize(cameraPosition - vToonWorldPos);',
-        'float toonRim = 1.0 - clamp(dot(normalize(vToonWorldNormal), toonViewDir), 0.0, 1.0);',
-        'toonRim = smoothstep(0.45, 0.92, toonRim);',
-        'outgoingLight += uRimColor * (toonRim * uRimStrength);',
-        '#include <opaque_fragment>',
-      ].join('\n'));
-  };
-  m.needsUpdate = true;
-}
-function toonifyScene(root = scene) {
-  root.traverse((o) => {
-    if (!o.material) return;
-    if (Array.isArray(o.material)) o.material.forEach(toonifyMaterial);
-    else toonifyMaterial(o.material);
+// Animated hero parts should cast a ground shadow but not sample their own
+// coarse shadow map: that produced crawling dark patches while walking.
+function cleanHeroShadows() {
+  player.traverse((o) => {
+    if (!o.isMesh) return;
+    o.receiveShadow = false;
+    o.castShadow = true;
   });
 }
-let toonScanAt = -99;
+
 // Five-point star used by Nova's hair clip, lantern and night sparkles.
 function starShapeGeometry(outer = 0.1, inner = 0.045, depth = 0.02) {
   const shape = new THREE.Shape();
@@ -557,87 +519,95 @@ function groundColor(n, out) {
   const micro = Math.sin(n.x * 31.3 + n.y * 19.7) * Math.cos(n.z * 27.1 - n.x * 14.2);
   if (n.y > 0.52) {
     const t = THREE.MathUtils.clamp((n.y - 0.52) * 4 + wob * 0.15, 0, 1);
-    out.setHex(0xf8fdff).lerp(new THREE.Color(0xc4e9fa), t * 0.55);
-    if (wob > 0.5) out.setHex(0xa6dcf4);
-    else if (micro > 0.45) out.setHex(0xffffff);
+    out.setHex(0xd8ebe1).lerp(new THREE.Color(0xbcdcd2), t * 0.55);
+    if (wob > 0.5) out.setHex(0xc4e0e3);
+    else if (micro > 0.45) out.setHex(0xe8f4ec);
     return out;
   }
   const b = biomeAt(n);
-  if (b === 'lagoon') { out.setHex(0x2286b4); return out; }
+  if (b === 'lagoon') { out.setHex(0x2f8f96); return out; }
   if (b === 'farm') {
-    out.setHex(0x7ccb58); // lush clover green
-    if (Math.sin(lon * 9 + lat) > 0.35) out.setHex(0x99e370);
-    if (micro > 0.45) out.setHex(0x69ba4b);
+    out.setHex(0x8da762); // soft clover green
+    if (Math.sin(lon * 9 + lat) > 0.35) out.setHex(0x9fb873);
+    if (micro > 0.45) out.setHex(0x7d9659);
   } else if (b === 'oasis') {
-    out.setHex(0xf2d68e); // honey dunes
-    if (Math.sin(lon * 7 - lat * 0.7) > 0.3) out.setHex(0xfaeab4);
-    if (wob > 0.48) out.setHex(0xdfb46a);
-    if (micro < -0.45) out.setHex(0xeac47c);
-    if (lat < -6) out.setHex(0xf7ecc8); // pale flats
+    out.setHex(0xe6b767); // honey dunes
+    if (Math.sin(lon * 7 - lat * 0.7) > 0.3) out.setHex(0xedc887);
+    if (wob > 0.48) out.setHex(0xd6a656);
+    if (micro < -0.45) out.setHex(0xefd49a);
+    if (lat < -6) out.setHex(0xf0dfa6); // pale flats
   } else if (b === 'forest') {
-    out.setHex(0x45a95c);
-    if (wob > 0.18) out.setHex(0x318c4e);
-    if (wob < -0.45) out.setHex(0x63c86a);
-    if (micro > 0.5) out.setHex(0x287a45);
+    out.setHex(0x54945b);
+    if (wob > 0.18) out.setHex(0x477f50);
+    if (wob < -0.45) out.setHex(0x66a768);
+    if (micro > 0.5) out.setHex(0x3d7449);
   } else if (b === 'reef') {
-    out.setHex(0x8fe3d2); // shallow shelf under the water
-    if (wob > 0.25) out.setHex(0x6bcbb8);
-    if (lat > 6) out.setHex(0xf7e8ba); // sandy rim
+    out.setHex(0x54c9b7); // shallow shelf under the water
+    if (wob > 0.25) out.setHex(0x3fa9a3);
+    if (lat > 6) out.setHex(0xe9cf95); // sandy rim
     let dLonI = Math.abs(lon / DEG - 230);
     if (dLonI > 180) dLonI = 360 - dLonI;
-    if (Math.hypot(lat - 2, dLonI) < 8) out.setHex(0xf9edc9); // lighthouse island sand
+    if (Math.hypot(lat - 2, dLonI) < 8) out.setHex(0xead7a4); // lighthouse island sand
   } else if (b === 'volcano') {
-    out.setHex(0x5b4a41); // warm basalt
-    if (wob > 0.22) out.setHex(0x6c5648);
-    if (wob < -0.4) out.setHex(0x453831);
+    out.setHex(0x68564c); // warm basalt
+    if (wob > 0.22) out.setHex(0x756056);
+    if (wob < -0.4) out.setHex(0x584941);
     if (Math.sin(lon * 13 + lat * 1.7) > 0.89 || micro > 0.72) out.setHex(0xe06a36); // cooling lava flecks
   } else if (b === 'savannah') {
-    out.setHex(0xd9b25a); // sun-bleached grass
-    if (Math.sin(lon * 5 + lat * 0.4) > 0.2) out.setHex(0xe8c96a);
-    if (wob > 0.35) out.setHex(0xc9a24a);
-    if (wob < -0.4) out.setHex(0xb98f45);
-    if (micro > 0.55) out.setHex(0xa87a3f); // dry earth showing through
+    out.setHex(0xc9ad63); // sun-bleached grass
+    if (Math.sin(lon * 5 + lat * 0.4) > 0.2) out.setHex(0xd9be76);
+    if (wob > 0.35) out.setHex(0xb79a57);
+    if (wob < -0.4) out.setHex(0xa58548);
+    if (micro > 0.55) out.setHex(0x8f7440); // dry earth showing through
   } else if (b === 'mangrove') {
-    out.setHex(0x4f7a52); // brackish green
-    if (wob > 0.2) out.setHex(0x5f8a5a);
-    if (wob < -0.4) out.setHex(0x3a5f45);
-    if (micro > 0.45) out.setHex(0x6f9a62);
-    if (micro < -0.5) out.setHex(0x6b5a3f); // mud banks
+    out.setHex(0x4f7454); // brackish green
+    if (wob > 0.2) out.setHex(0x5d8260);
+    if (wob < -0.4) out.setHex(0x45664c);
+    if (micro > 0.45) out.setHex(0x6b8a66);
+    if (micro < -0.5) out.setHex(0x6f6248); // mud banks
   } else if (b === 'river') {
-    out.setHex(0x2f6b5a); // riverbed
+    out.setHex(0x2f7d7a); // riverbed
     return out;
   } else {
-    out.setHex(0xf6e3a9); // cove sand
-    if (lat > 22) out.setHex(0x93d66e);
-    if (wob > 0.5) out.setHex(0xefd696);
+    out.setHex(0xe9cf95); // cove sand
+    if (lat > 22) out.setHex(0x9fb873);
+    if (wob > 0.5) out.setHex(0xe2c586);
   }
-  out.offsetHSL(0, 0, rand(-0.016, 0.016));
   return out;
 }
 let planetMesh = null; // raycast target for click-to-move
 const planetGroup = new THREE.Group();
 scene.add(planetGroup);
 {
-  const geo = new THREE.IcosahedronGeometry(R, 49); // 4x polys: faces 20*50^2=50k (was 20*25^2=12.5k)
+  const geo = new THREE.IcosahedronGeometry(R, 40); // 32k faces: the reference's detail level
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color(), shoreSand = new THREE.Color(0xf3dda4);
-  for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    n.copy(v).normalize();
-    const h = heightFor(n);
-    v.copy(n).multiplyScalar(R + h);
-    pos.setXYZ(i, v.x, v.y, v.z);
-    // per-face jitter: same for each triangle
-    const jitter = (i % 3 === 0) ? rand(-0.02, 0.02) : 0;
+  const v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color(), shoreSand = new THREE.Color(0xe3c98f);
+  // One flat painterly colour per triangle, with a slight brightness wobble:
+  // the reference's faceted paper-craft look, not a smooth vertex gradient.
+  for (let i = 0; i < pos.count; i += 3) {
+    let cx = 0, cy = 0, cz = 0, hAvg = 0;
+    for (let k = 0; k < 3; k++) {
+      v.fromBufferAttribute(pos, i + k);
+      n.copy(v).normalize();
+      const h = heightFor(n);
+      hAvg += h;
+      v.copy(n).multiplyScalar(R + h);
+      pos.setXYZ(i + k, v.x, v.y, v.z);
+      cx += v.x; cy += v.y; cz += v.z;
+    }
+    n.set(cx, cy, cz).normalize();
+    hAvg /= 3;
     groundColor(n, c);
     const bi = biomeAt(n);
     // wet coastal sand transition near waterline (outside arctic/volcano/mangrove)
-    if (n.y < 0.48 && h > 0.02 && h < 0.26 && bi !== 'volcano' && bi !== 'mangrove' && bi !== 'river') {
-      c.lerp(shoreSand, THREE.MathUtils.clamp((0.26 - h) * 2.4, 0, 0.55));
+    if (n.y < 0.48 && hAvg > 0.02 && hAvg < 0.26 && bi !== 'volcano' && bi !== 'mangrove' && bi !== 'river') {
+      c.lerp(shoreSand, THREE.MathUtils.clamp((0.26 - hAvg) * 2.4, 0, 0.55));
     }
-    c.offsetHSL(0, 0, jitter);
-    colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
+    c.multiplyScalar(rand(0.95, 1.03));
+    for (let k = 0; k < 3; k++) {
+      colors[(i + k) * 3] = c.r; colors[(i + k) * 3 + 1] = c.g; colors[(i + k) * 3 + 2] = c.b;
+    }
   }
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.computeVertexNormals();
@@ -651,10 +621,10 @@ scene.add(planetGroup);
 const oceanUniforms = {
   uTime: { value: 0 },
   uSunDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
-  uDeep: { value: new THREE.Color(0x1d7fb2) },
-  uMid: { value: new THREE.Color(0x32c1d4) },
-  uShallow: { value: new THREE.Color(0x8af2df) },
-  uFoam: { value: new THREE.Color(0xffffff) },
+  uDeep: { value: new THREE.Color(0x237b8a) },
+  uMid: { value: new THREE.Color(0x2f9ba0) },
+  uShallow: { value: new THREE.Color(0x64d0c0) },
+  uFoam: { value: new THREE.Color(0xeaf4ed) },
 };
 const ocean = (() => {
   const oGeo = new THREE.SphereGeometry(R + 0.12, 160, 104);
@@ -734,10 +704,10 @@ scene.add(ocean);
   const grassGeo = new THREE.ConeGeometry(0.11, 0.46, 4);
   grassGeo.translate(0, 0.22, 0);
   const grassMat = mat(0xffffff, { roughness: 0.88 });
-  const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, 1600);
+  const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, 1200);
   grassInst.receiveShadow = true;
   let gi = 0;
-  for (let i = 0; i < 2600 && gi < 1600; i++) {
+  for (let i = 0; i < 2000 && gi < 1200; i++) {
     const la = rand(-22, 46), lo = rand(0, 360);
     const n = latLonToVec3(la, lo, 0).normalize();
     const b = biomeAt(n);
@@ -749,7 +719,7 @@ scene.add(ocean);
     dummy.scale.set(rand(0.8, 1.35), rand(0.75, 1.55), rand(0.8, 1.35));
     dummy.updateMatrix();
     grassInst.setMatrixAt(gi, dummy.matrix);
-    c.setHex(b === 'forest' ? (i % 2 ? 0x4fbc63 : 0x6bda78) : (i % 2 ? 0x7fd45c : 0x9ce673));
+    c.setHex(b === 'forest' ? (i % 2 ? 0x3f7d4c : 0x5a9660) : (i % 2 ? 0x8da762 : 0xa3b874));
     c.offsetHSL(0, 0, rand(-0.03, 0.03));
     grassInst.setColorAt(gi, c);
     gi++;
@@ -763,10 +733,10 @@ scene.add(ocean);
   const flowerGeo = new THREE.DodecahedronGeometry(0.11, 0);
   flowerGeo.translate(0, 0.16, 0);
   const flowerMat = mat(0xffffff, { roughness: 0.7 });
-  const flowerInst = new THREE.InstancedMesh(flowerGeo, flowerMat, 420);
+  const flowerInst = new THREE.InstancedMesh(flowerGeo, flowerMat, 320);
   const flowerPalette = [0xffd94a, 0xff8fb3, 0x74c8ff, 0xc792ff, 0xfff4d2];
   let fi = 0;
-  for (let i = 0; i < 900 && fi < 420; i++) {
+  for (let i = 0; i < 700 && fi < 320; i++) {
     const la = rand(-18, 42), lo = rand(0, 210);
     const n = latLonToVec3(la, lo, 0).normalize();
     const b = biomeAt(n);
@@ -790,9 +760,9 @@ scene.add(ocean);
   const pebGeo = new THREE.DodecahedronGeometry(0.16, 0);
   pebGeo.scale(1.2, 0.55, 1.0);
   const pebMat = mat(0xffffff, { roughness: 0.92 });
-  const pebInst = new THREE.InstancedMesh(pebGeo, pebMat, 360);
+  const pebInst = new THREE.InstancedMesh(pebGeo, pebMat, 260);
   let pi = 0;
-  for (let i = 0; i < 650 && pi < 360; i++) {
+  for (let i = 0; i < 500 && pi < 260; i++) {
     const la = rand(-24, 58), lo = rand(0, 360);
     const n = latLonToVec3(la, lo, 0).normalize();
     const h = heightFor(n);
@@ -819,12 +789,12 @@ scene.add(ocean);
 // BackSide + additive keeps it from ever hiding the planet it hugs.
 const ATMO_R = R + 13;
 const atmoUniforms = {
-  uDay: { value: new THREE.Color(0x8fd6ff) },
+  uDay: { value: new THREE.Color(0x65bfc0) },
   uNight: { value: new THREE.Color(0x1b3358) },
-  uDusk: { value: new THREE.Color(0xffb36e) },
+  uDusk: { value: new THREE.Color(0x9fb8a8) },
   uSunDir: { value: new THREE.Vector3(1, 0, 0) },
-  uDensity: { value: 0.0085 },
-  uHeight: { value: 3.4 }, // scale height: density halves roughly every 2.4 units
+  uDensity: { value: 0.0045 },
+  uHeight: { value: 2.4 }, // scale height: a thin, barely-there rim
   uPlanetR: { value: R },
   uAtmoR: { value: ATMO_R },
 };
@@ -1251,9 +1221,9 @@ function steppingStones(pts, colorHex = 0xf7e8bd, size = 0.55) {
 }
 const _pineBarkM = furM('pine-bark', 0x8a5a34, ['#5f3d21', '#a06c40', '#714a29'], { n: 140, rMin: 1, rMax: 2.8 });
 const _pineGreens = [
-  furM('pine-g0', 0x2e9650, ['#237a3e', '#3fb865', '#318f4d'], { n: 120, rMin: 1.2, rMax: 3 }),
-  furM('pine-g1', 0x3aa95d, ['#2b8a48', '#55cf76', '#3fbc63'], { n: 120, rMin: 1.2, rMax: 3 }),
-  furM('pine-g2', 0x4ac06a, ['#348f4f', '#68dd85', '#52cf71'], { n: 120, rMin: 1.2, rMax: 3 }),
+  furM('pine-g0', 0x3f7d4c, ['#326b3f', '#4f9159', '#3c7647'], { n: 120, rMin: 1.2, rMax: 3 }),
+  furM('pine-g1', 0x4b8a52, ['#3b7343', '#5fa064', '#4a834d'], { n: 120, rMin: 1.2, rMax: 3 }),
+  furM('pine-g2', 0x5b9a5d, ['#477d4b', '#6bad6b', '#579157'], { n: 120, rMin: 1.2, rMax: 3 }),
   mat(0x6bdd7e),
 ];
 const _aoDiscGeo = new THREE.CircleGeometry(1.15, 12).rotateX(-Math.PI / 2);
@@ -4108,7 +4078,7 @@ const player = new THREE.Group();
     }
 
     // Phase 0: drive the Blender rig from the same movement/tool state.
-    if (P.heroGlb.loaded) updateHeroGlbAnimation(dt, moving, runF);
+    if (P.heroGlb.loaded) updateHeroGlbAnimation(dt, moving, runF, sp);
   });
 }
 function applyHeroChapter(ch) {
@@ -4298,7 +4268,7 @@ function setHeroGlbState(name, fade = 0.2) {
   if (prev && prev !== next) prev.crossFadeTo(next, fade, false);
   g.state = name;
 }
-function updateHeroGlbAnimation(dt, moving, runF) {
+function updateHeroGlbAnimation(dt, moving, runF, sp = 0) {
   const g = player.userData.heroGlb;
   if (!g || !g.loaded || !g.mixer) return;
   const chopping = chopT > 0;
@@ -4324,9 +4294,12 @@ function updateHeroGlbAnimation(dt, moving, runF) {
       act.setEffectiveTimeScale(1.1);
     }
   } else if (act && g.state === 'Walk') {
-    act.setEffectiveTimeScale(1.1);
+    // Scale cadence with ground speed (like the procedural rig's
+    // phase += dt*(4+sp*0.95)) so the feet keep up instead of gliding.
+    // At the standard 6.2 u/s stroll this lands near the authored 1.1x.
+    act.setEffectiveTimeScale(THREE.MathUtils.clamp(sp / 5.2, 0.6, 1.5));
   } else if (act && g.state === 'Run') {
-    act.setEffectiveTimeScale(1);
+    act.setEffectiveTimeScale(THREE.MathUtils.clamp(sp / 8, 0.8, 1.5));
   }
   g.mixer.update(dt);
 }
@@ -4451,6 +4424,7 @@ function loadHeroCharacter(key) {
       setHeroGlbState('Idle', 0);
       g.mixer.update(0);
       for (const child of g.procedural) child.visible = false;
+      cleanHeroShadows();
       player.userData.meshCount = meshCount;
       console.info(`[hero] ${def.name} GLB active: ${meshCount} meshes, clips ${g.clips.join(', ')}`);
     } catch (err) {
@@ -4935,49 +4909,54 @@ function qsa(sel) {
   try { return document.querySelectorAll ? Array.from(document.querySelectorAll(sel)) : []; } catch { return []; }
 }
 function setText(id, v) {
-  if (statsCache[id] !== v) { statsCache[id] = v; document.getElementById(id).textContent = v; }
+  if (statsCache[id] === v) return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  statsCache[id] = v;
+  el.textContent = v;
 }
-function renderStats() {  setText('inv-wood', inv.wood); setText('inv-stone', inv.stone); setText('inv-gold', inv.gold);
-  setText('inv-food', inv.food); setText('inv-fish', inv.fish || 0); setText('inv-wool', inv.wool); setText('inv-remedy', inv.remedy);
-  setText('inv-egg', inv.egg || 0); setText('inv-milk', inv.milk || 0); setText('inv-meal', inv.meal || 0); setText('inv-meat', inv.meat || 0);
+function renderStats() {
+  // Only the resources that matter moment-to-moment.
+  setText('inv-wood', inv.wood);
+  setText('inv-stone', inv.stone);
+  setText('inv-gold', inv.gold);
+  setText('inv-wool', inv.wool || 0);
+  const fish = inv.fish || 0, meat = inv.meat || 0, egg = inv.egg || 0, milk = inv.milk || 0, meal = inv.meal || 0;
+  setText('inv-food', inv.food + fish + meat + egg + milk + meal);
+  const foodCell = document.getElementById('food-cell');
+  if (foodCell) foodCell.title = `Food — crops ${inv.food} · fish ${fish} · meat ${meat} · eggs ${egg} · milk ${milk} · meals ${meal}`;
   setText('pack-count', packSize() + '/' + packCap());
-  setText('home-tier', Home.build ? `Building ${HOUSE_BUILD_NAMES[Home.build.target] || 'home'}…` : (Home.house >= 2 ? `Farmhouse T${Home.house - 1}` : (Home.house === 1 ? 'Hut' : 'Tent')));
-  setText('clothes-tier', CLOTHES[Life.clothes] || 'Rags');
-  setText('upkeep', `👪 ${familyUpkeep()}🍎/day`);
-  // RPG header: level, weapon tier, XP progress
+  // RPG header: level and XP, nothing else.
   try {
-    updateHeroGear();
     setText('rpg-lvl', `⚔️ Lv ${RPG.level}`);
-    try {
-      const rw = activeRanged();
-      setText('rpg-weapon', rw ? `${rw.name} · ${ensureMag(rw)}/${magCapacity(rw)} (${Ammo[rw.ammo] || 0}) · ⚙${Math.round(weaponCondition(rw.id))}` : `${equippedMelee().name} · ⚙${Math.round(weaponCondition(Loadout.melee))}`);
-    } catch { setText('rpg-weapon', rpgWeaponDef().name); }
     setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP`);
-    try { setText('rpg-xp-text', `${Math.floor(RPG.xp)}/${RPG.xpNext} XP · 💡${Research.insight}`); } catch { /* early boot */ }
     const xf = document.getElementById('xp-fill');
     if (xf) xf.style.width = `${Math.min(100, (RPG.xp / RPG.xpNext) * 100)}%`;
-    // compact status conditions instead of full meter bars
+    // Compact status conditions live with the vitals.
     const badges = [];
     if ((meters.hunger ?? 100) <= 25) badges.push('🍽️ Hungry');
     if ((meters.cold ?? 0) >= 60) badges.push('🥶 Freezing');
     if ((meters.energy ?? 100) <= 15) badges.push('😮‍💨 Tired');
     if ((meters.morale ?? 80) >= 85) badges.push('✨ Inspired');
     if (critBuff > 0) badges.push('💥 Crit x2');
-    const bb = document.getElementById('status-badges');
-    if (bb) bb.innerHTML = badges.map((b) => `<span class="status-pill">${b}</span>`).join('');
+    const badgeHtml = badges.map((b) => `<span class="status-pill">${b}</span>`).join('');
+    if (statsCache.badges !== badgeHtml) {
+      statsCache.badges = badgeHtml;
+      const bb = document.getElementById('status-badges');
+      if (bb) bb.innerHTML = badgeHtml;
+    }
   } catch { /* headless */ }
-  const e = Math.round(meters.energy), c = Math.round(meters.cold), h = Math.round(meters.health);
-  if (statsCache.e !== e) { statsCache.e = e; document.getElementById('energy-fill').style.width = e + '%'; }
-  if (statsCache.c !== c) { statsCache.c = c; document.getElementById('cold-fill').style.width = c + '%'; }
+  const e = Math.round(meters.energy), h = Math.round(meters.health);
+  if (statsCache.e !== e) {
+    statsCache.e = e;
+    const ef = document.getElementById('energy-fill');
+    if (ef) ef.style.width = e + '%';
+  }
   if (statsCache.h !== h) {
     statsCache.h = h;
     const hf = document.getElementById('health-fill');
     if (hf) { hf.style.width = Math.max(0, h) + '%'; hf.classList.toggle('low', h <= 30); }
   }
-  const hu = Math.round(meters.hunger ?? 100), wa = Math.round(meters.warmth ?? 100), mo = Math.round(meters.morale ?? 80);
-  if (statsCache.hu !== hu) { statsCache.hu = hu; document.getElementById('hunger-fill').style.width = Math.max(0, hu) + '%'; }
-  if (statsCache.wa !== wa) { statsCache.wa = wa; document.getElementById('warmth-fill').style.width = Math.max(0, wa) + '%'; }
-  if (statsCache.mo !== mo) { statsCache.mo = mo; document.getElementById('morale-fill').style.width = Math.max(0, mo) + '%'; }
 }
 window.__lp = {
   inv, meters, tools, nodes, player, addItem, eatFood, packSize, packCap,
@@ -6143,11 +6122,6 @@ function closeChapterCard() {
   if (!Life.seenCards.includes(Life.chapter)) Life.seenCards.push(Life.chapter);
   saveCheckpoint();
 }
-function maybeShowChapterCard() {
-  if (!started || playerDead) return;
-  if ((Life.seenCards || []).includes(Life.chapter)) return;
-  showChapterCard(chapterNow());
-}
 function advanceChapter() {
   if (!chapterGoalsMet() || Life.chapter >= CHAPTERS.length - 1) return false;
   const old = chapterNow();
@@ -7290,9 +7264,9 @@ function restoreProgression(p) {
 function seasonOf(day) { return Math.floor((day - 1) / DAYS_PER_SEASON) % 4; }
 function seasonNow() { return seasonOf(Life.day); }
 function isNight() { const t = ((Life.t % 1) + 1) % 1; return t >= 0.62 || t < 0.05; }
-const _skyDay = new THREE.Color(0x65bdf2), _skyNight = new THREE.Color(0x08152b);
-const _skyTopDay = new THREE.Color(0x2f8fe0), _skyTopNight = new THREE.Color(0x061226);
-const _skyHorizonDay = new THREE.Color(0x9edcff), _skyHorizonNight = new THREE.Color(0x1a3352);
+const _skyDay = new THREE.Color(0x12303a), _skyNight = new THREE.Color(0x071522);
+const _skyTopDay = new THREE.Color(0x0a1c2b), _skyTopNight = new THREE.Color(0x040d18);
+const _skyHorizonDay = new THREE.Color(0x173c42), _skyHorizonNight = new THREE.Color(0x0a1c2c);
 let starPts = null, hemiL = null;
 scene.traverse((o) => { if (!starPts && o.isPoints) starPts = o; if (!hemiL && o.isHemisphereLight) hemiL = o; });
 function updateSky() {
@@ -7308,12 +7282,12 @@ function updateSky() {
     else if (ids.includes('eruption')) scene.background.lerp(new THREE.Color(0x6a4a3a), 0.32);
     else if (ids.includes('wildfire')) scene.background.lerp(new THREE.Color(0x7a4a2a), 0.28);
   } catch { /* early boot */ }
-  if (scene.fog) scene.fog.color.copy(scene.background);
   const ang = t * Math.PI * 2 - Math.PI / 2;
   sun.position.set(Math.cos(ang) * 60 * S, Math.sin(ang) * 60 * S + 8 * S, 25 * S);
   atmoUniforms.uSunDir.value.copy(sun.position).normalize();
-  sun.intensity = 0.5 + dayF * 2.15;
-  if (hemiL) hemiL.intensity = 0.55 + dayF * 0.6;
+  sun.intensity = 0.45 + dayF * 1.8;
+  if (hemiL) hemiL.intensity = 0.75 + dayF * 0.6;
+  ambientL.intensity = 0.45 + dayF * 0.35;
   if (starPts) starPts.material.opacity = 0.75 * (1 - dayF) + 0.08;
   for (const L of nightLights) L.l.intensity = L.base * (1 - dayF * 0.7);
   // the dome follows the clock, then borrows the weather-tinted background
@@ -7322,7 +7296,7 @@ function updateSky() {
   skyUniforms.uTop.value.lerp(scene.background, 0.12);
   skyUniforms.uHorizon.value.lerp(scene.background, 0.35);
   skyUniforms.uSunDir.value.copy(sun.position).normalize();
-  renderer.toneMappingExposure = 1.04 + dayF * 0.1;
+  renderer.toneMappingExposure = 0.98 + dayF * 0.02;
 }
 function dayPillText() {
   const icon = isNight() ? '🌙' : '☀️';
@@ -11917,33 +11891,49 @@ tickers.push((t, dt) => {
 // ---------- stone cairns: old waypoint landmarks (they no longer save) ----------
 // ---------- settings ----------
 const SETTINGS_KEY = 'little-planet-settings-v1';
-const SETTINGS_DEFS = [
-  { id: 'sound', name: 'Sound', desc: 'Chimes, barks & toasts', opts: [true, false], labels: { true: 'On 🔊', false: 'Off 🔇' } },
-  { id: 'quality', name: 'Graphics quality', desc: 'Low helps slow devices', opts: ['high', 'low'], labels: { high: 'High ✨', low: 'Low ⚡' } },
-  { id: 'bloom', name: 'Bloom', desc: 'Glow softness (High is the old look)', opts: ['low', 'medium', 'high'], labels: { low: 'Low', medium: 'Medium', high: 'High' } },
-  { id: 'hero', name: 'Traveler', desc: 'Pip the Sprout Keeper or Nova the Starlight Explorer', opts: ['pip', 'nova'], labels: { pip: 'Pip 🌱', nova: 'Nova ⭐' } },
-  { id: 'cam', name: 'Camera orbit speed', desc: 'Mouse-drag sensitivity', opts: ['slow', 'normal', 'fast'], labels: { slow: 'Slow', normal: 'Normal', fast: 'Fast' } },
-  { id: 'autosave', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
-  { id: 'cursor', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
-  { id: 'difficulty', name: 'Life difficulty', desc: 'How hard the planet pushes back', opts: ['cozy', 'standard', 'frontier'], labels: { cozy: 'Cozy 🌤️', standard: 'Standard ⛅', frontier: 'Frontier 🌩️' } },
-  { id: 'effects', name: 'Flashes & shake', desc: 'Reduced is easier on the eyes', opts: ['full', 'reduced'], labels: { full: 'Full ✨', reduced: 'Reduced 🧘' } },
-  { id: 'textSize', name: 'Text size', desc: 'HUD and journal text', opts: ['normal', 'large'], labels: { normal: 'Normal', large: 'Large 🔎' } },
-  { id: 'contrast', name: 'High contrast', desc: 'Stronger panels and outlines', opts: ['normal', 'high'], labels: { normal: 'Normal', high: 'High ◐' } },
-  { id: 'hazardPause', name: 'Pause on hazard', desc: 'Freeze the game when a hazard begins', opts: [false, true], labels: { false: 'Off', true: 'On ⏸️' } },
-  { id: 'hazardIcons', name: 'Hazard icons', desc: 'Colorblind-safe text badges', opts: ['emoji', 'safe'], labels: { emoji: 'Emoji', safe: 'Safe [STORM]' } },
-  { id: 'harshWeather', name: 'Harsh weather', desc: 'Major hazards and damage', opts: [true, false], labels: { true: 'On ⛈️', false: 'Off 🌤️' } },
-  { id: 'thieves', name: 'Thieves & rustlers', desc: 'Night robber and poacher encounters', opts: [true, false], labels: { true: 'On 🥷', false: 'Off 🕊️' } },
-  { id: 'permadeath', name: 'Permadeath', desc: 'No respawn after death — return to title', opts: [false, true], labels: { false: 'Off', true: 'On 💀' } },
+const SETTINGS_GROUPS = [
+  { id: 'gameplay', icon: '🌱', name: 'Gameplay', desc: 'Difficulty, weather, thief encounters and saves' },
+  { id: 'graphics', icon: '✨', name: 'Graphics', desc: 'Quality and visual effects' },
+  { id: 'camera', icon: '🎥', name: 'Camera', desc: 'Distance, orbit speed and cursor' },
+  { id: 'interface', icon: '🖥️', name: 'Interface', desc: 'Text, contrast and hazard alerts' },
+  { id: 'audio', icon: '🔊', name: 'Audio', desc: 'Chimes, barks and toasts' },
 ];
-let settings = { sound: true, quality: 'high', bloom: 'medium', hero: 'pip', cam: 'normal', autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
+const SETTINGS_DEFS = [
+  { id: 'sound', group: 'audio', name: 'Sound', desc: 'Chimes, barks & toasts', opts: [true, false], labels: { true: 'On 🔊', false: 'Off 🔇' } },
+  { id: 'quality', group: 'graphics', name: 'Graphics quality', desc: 'Low helps slow devices', opts: ['high', 'low'], labels: { high: 'High ✨', low: 'Low ⚡' } },
+  { id: 'hero', group: 'gameplay', name: 'Traveler', desc: 'Pip the Sprout Keeper or Nova the Starlight Explorer', opts: ['pip', 'nova'], labels: { pip: 'Pip 🌱', nova: 'Nova ⭐' } },
+  { id: 'cam', group: 'camera', name: 'Camera orbit speed', desc: 'Mouse-drag sensitivity', opts: ['slow', 'normal', 'fast'], labels: { slow: 'Slow', normal: 'Normal', fast: 'Fast' } },
+  { id: 'cameraDistance', group: 'camera', name: 'Camera distance', desc: 'Follow-camera framing', opts: [0.4, 0.5, 0.7, 1.0], labels: { 0.4: 'Very close', 0.5: 'Close', 0.7: 'Medium', 1: 'Wide' } },
+  { id: 'cursor', group: 'camera', name: 'Context cursor', desc: 'Axe, sword & tool icons over the world', opts: [true, false], labels: { true: 'On 🖱️', false: 'Off' } },
+  { id: 'autosave', group: 'gameplay', name: 'Autosave', desc: 'Sleep and trades save quietly on their own', opts: [true, false], labels: { true: 'On 💾', false: 'Off ✋' } },
+  { id: 'difficulty', group: 'gameplay', name: 'Life difficulty', desc: 'How hard the planet pushes back', opts: ['cozy', 'standard', 'frontier'], labels: { cozy: 'Cozy 🌤️', standard: 'Standard ⛅', frontier: 'Frontier 🌩️' } },
+  { id: 'effects', group: 'graphics', name: 'Flashes & shake', desc: 'Reduced is easier on the eyes', opts: ['full', 'reduced'], labels: { full: 'Full ✨', reduced: 'Reduced 🧘' } },
+  { id: 'textSize', group: 'interface', name: 'Text size', desc: 'HUD and journal text', opts: ['normal', 'large'], labels: { normal: 'Normal', large: 'Large 🔎' } },
+  { id: 'contrast', group: 'interface', name: 'High contrast', desc: 'Stronger panels and outlines', opts: ['normal', 'high'], labels: { normal: 'Normal', high: 'High ◐' } },
+  { id: 'hazardPause', group: 'interface', name: 'Pause on hazard', desc: 'Freeze the game when a hazard begins', opts: [false, true], labels: { false: 'Off', true: 'On ⏸️' } },
+  { id: 'hazardIcons', group: 'interface', name: 'Hazard icons', desc: 'Colorblind-safe text badges', opts: ['emoji', 'safe'], labels: { emoji: 'Emoji', safe: 'Safe [STORM]' } },
+  { id: 'harshWeather', group: 'gameplay', name: 'Harsh weather', desc: 'Major hazards and damage', opts: [true, false], labels: { true: 'On ⛈️', false: 'Off 🌤️' } },
+  { id: 'thieves', group: 'gameplay', name: 'Thieves & rustlers', desc: 'Night robber and poacher encounters', opts: [true, false], labels: { true: 'On 🥷', false: 'Off 🕊️' } },
+  { id: 'permadeath', group: 'gameplay', name: 'Permadeath', desc: 'No respawn after death — return to title', opts: [false, true], labels: { false: 'Off', true: 'On 💀' } },
+];
+let settings = { sound: true, quality: 'high', hero: 'pip', cam: 'normal', cameraDistance: 0.5, autosave: true, cursor: true, difficulty: 'standard', effects: 'full', textSize: 'normal', contrast: 'normal', hazardPause: false, hazardIcons: 'emoji', harshWeather: true, thieves: true, permadeath: false };
 try { Object.assign(settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch { /* fresh */ }
 function persistSettings() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* private mode */ } }
 function applySettings() {
   muted = (settings.sound === false);
   const sb = document.getElementById('btn-sound');
   if (sb) sb.textContent = muted ? '🔇' : '🔊';
-  try { renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(devicePixelRatio, 2)); } catch { /* headless */ }
-  applyBloomStrength();
+  try { renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(devicePixelRatio, 1.5)); } catch { /* headless */ }
+  try { composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(innerWidth, innerHeight); } catch { /* headless */ }
+  try {
+    const shadowSize = settings.quality === 'low' ? 1024 : 2048;
+    if (sun.shadow.mapSize.x !== shadowSize) {
+      sun.shadow.mapSize.set(shadowSize, shadowSize);
+      if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+      renderer.shadowMap.needsUpdate = true;
+    }
+  } catch { /* headless */ }
+  applyFollowZoom();
   const heroKey = HERO_CHARACTERS[settings.hero] ? settings.hero : 'pip';
   settings.hero = heroKey;
   if (heroKey !== activeHeroKey) loadHeroCharacter(heroKey);
@@ -11958,6 +11948,10 @@ function applySettings() {
   } catch { /* headless */ }
 }
 function camFactor() { return settings.cam === 'slow' ? 0.5 : (settings.cam === 'fast' ? 2 : 1); }
+function applyFollowZoom() {
+  const base = Number(settings.cameraDistance) || 0.5;
+  followZoom = base * followZoomScale;
+}
 // ---------- save slots (3) ----------
 const SLOT_COUNT = 3;
 const LEGACY_KEY = 'little-planet-save-v1';
@@ -12390,6 +12384,12 @@ function updateHeroGear() {
     }
   } catch { /* noop */ }
 }
+let gearTickAt = -9;
+tickers.push((t) => {
+  if (t - gearTickAt < 0.5) return;
+  gearTickAt = t;
+  updateHeroGear();
+});
 tickers.push(() => {
   try {
     const n = playerPos.clone().normalize();
@@ -12452,12 +12452,13 @@ function startGame(fresh) {
   document.getElementById('title-overlay').style.display = 'none';
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
+  document.getElementById('options-overlay').classList.add('hidden');
+  document.getElementById('controls-overlay').classList.add('hidden');
+  document.getElementById('help-overlay').classList.add('hidden');
   started = true; paused = false;
   orbitYaw = 0; // title-vista drift must not lean the first walk into a curve
   renderStats();
   applyHeroChapter(Life.chapter || 0);
-  renderChapterHUD();
-  renderWeatherChip();
   if (fresh) {
     questNew();
     pushStory('You arrived on the little planet with an axe and a stubborn heart.', '🌱');
@@ -12467,7 +12468,6 @@ function startGame(fresh) {
     chime(660);
   }
   questResume();
-  setTimeout(maybeShowChapterCard, 1100);
 }
 function showTitle() {
   started = false; paused = true;
@@ -12478,6 +12478,8 @@ function showTitle() {
   document.getElementById('help-overlay').classList.add('hidden');
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
+  document.getElementById('options-overlay').classList.add('hidden');
+  document.getElementById('controls-overlay').classList.add('hidden');
   document.getElementById('slot-picker').classList.add('hidden');
   document.getElementById('title-buttons').classList.remove('hidden');
   document.getElementById('title-overlay').style.display = 'flex';
@@ -12550,6 +12552,9 @@ function openPause() {
 function resumeGame() {
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('settings-overlay').classList.add('hidden');
+  document.getElementById('options-overlay').classList.add('hidden');
+  document.getElementById('controls-overlay').classList.add('hidden');
+  document.getElementById('help-overlay').classList.add('hidden');
   paused = false;
   orbitYaw = 0; // pause-menu drift must not angle the next walk
   chime(520);
@@ -12566,8 +12571,11 @@ function quitToTitle() {
   toast('🏠 Saved. See you soon, traveler.');
 }
 let settingsReturn = 'title'; // where the Back button goes
+let settingsGroup = null; // null = category list, id = submenu
+let optionsReturn = 'title';
 function openSettings(from) {
   settingsReturn = from || 'title';
+  settingsGroup = null;
   renderSettings();
   document.getElementById('settings-overlay').classList.remove('hidden');
   chime(520);
@@ -12575,24 +12583,68 @@ function openSettings(from) {
 function closeSettings() {
   document.getElementById('settings-overlay').classList.add('hidden');
 }
+function openOptions(from) {
+  optionsReturn = from || 'title';
+  document.getElementById('options-overlay').classList.remove('hidden');
+  chime(500);
+}
+function closeOptions() {
+  document.getElementById('options-overlay').classList.add('hidden');
+}
+function openControls() {
+  document.getElementById('controls-overlay').classList.remove('hidden');
+  chime(540);
+}
+function closeControls() {
+  document.getElementById('controls-overlay').classList.add('hidden');
+}
 function renderSettings() {
-  const box = document.getElementById('settings-list');
-  box.innerHTML = '';
-  for (const d of SETTINGS_DEFS) {
-    const b = document.createElement('button');
-    b.className = 'set-row';
-    b.innerHTML = `<span class="set-name">${d.name}<span class="set-desc">${d.desc}</span></span><span class="set-val">${d.labels[settings[d.id]]}</span>`;
-    b.onclick = () => {
-      const i = d.opts.indexOf(settings[d.id]);
-      settings[d.id] = d.opts[(i + 1) % d.opts.length];
-      persistSettings(); applySettings(); renderSettings();
-      chime(600);
-    };
-    box.appendChild(b);
+  const cats = document.getElementById('settings-categories');
+  const sub = document.getElementById('settings-sub');
+  const list = document.getElementById('settings-list');
+  const subTitle = document.getElementById('settings-sub-title');
+  const erase = document.getElementById('btn-erase-saves');
+  if (!cats || !sub || !list) return;
+  if (!settingsGroup) {
+    cats.classList.remove('hidden');
+    sub.classList.add('hidden');
+    if (erase) erase.classList.remove('hidden');
+    cats.innerHTML = '';
+    for (const g of SETTINGS_GROUPS) {
+      const count = SETTINGS_DEFS.filter((d) => d.group === g.id).length;
+      const b = document.createElement('button');
+      b.className = 'set-cat';
+      b.innerHTML = `<span class="cat-icon">${g.icon}</span><span class="cat-copy"><span class="cat-name">${g.name}</span><span class="cat-desc">${g.desc}</span></span><span class="cat-arrow">${count} ›</span>`;
+      b.onclick = () => { settingsGroup = g.id; renderSettings(); chime(560); };
+      cats.appendChild(b);
+    }
+  } else {
+    cats.classList.add('hidden');
+    sub.classList.remove('hidden');
+    if (erase) erase.classList.add('hidden');
+    const g = SETTINGS_GROUPS.find((x) => x.id === settingsGroup);
+    if (subTitle) subTitle.textContent = `${g?.icon || ''} ${(g?.name || 'Settings').toUpperCase()}`;
+    list.innerHTML = '';
+    for (const d of SETTINGS_DEFS.filter((x) => x.group === settingsGroup)) {
+      const b = document.createElement('button');
+      b.className = 'set-row';
+      b.innerHTML = `<span class="set-name">${d.name}<span class="set-desc">${d.desc}</span></span><span class="set-val">${d.labels[settings[d.id]]}</span>`;
+      b.onclick = () => {
+        const i = d.opts.indexOf(settings[d.id]);
+        settings[d.id] = d.opts[(i + 1) % d.opts.length];
+        if (d.id === 'cameraDistance') followZoomScale = 1;
+        persistSettings(); applySettings(); renderSettings();
+        chime(600);
+      };
+      list.appendChild(b);
+    }
   }
-  const eb = document.getElementById('btn-erase-saves');
-  eb.classList.toggle('armed', !!eb.dataset.armed);
-  eb.textContent = eb.dataset.armed ? 'Tap again to ERASE EVERYTHING ⚠️' : 'Erase ALL saves 🗑️';
+  if (erase) {
+    erase.classList.toggle('armed', !!erase.dataset.armed);
+    erase.textContent = erase.dataset.armed ? 'Tap again to ERASE EVERYTHING ⚠️' : 'Erase ALL saves 🗑️';
+  }
+  const back = document.getElementById('btn-settings-back');
+  if (back) back.textContent = '← Back';
 }
 // ---------- life journey / research / weather / loadout UI ----------
 let workshopOpen = false, almanacOpen = false, loadoutOpen = false, traitOpen = false, robberOpen = null;
@@ -12626,8 +12678,6 @@ function renderWeatherChip() {
 tickers.push((t) => {
   if (t - lastJourneyHud < 0.4) return;
   lastJourneyHud = t;
-  renderChapterHUD();
-  renderWeatherChip();
   if (workshopOpen) updateWorkshopProgress();
 });
 let treeView = null;
@@ -13094,7 +13144,14 @@ function closeRobber() {
   document.getElementById('robber-overlay').classList.add('hidden');
 }
 function handleEscape() {
-  if (!started) return; // title screen: nothing to do
+  const vis = (id) => !document.getElementById(id)?.classList.contains('hidden');
+  if (!started) {
+    if (vis('controls-overlay')) { closeControls(); return; }
+    if (vis('settings-overlay')) { closeSettings(); return; }
+    if (vis('help-overlay')) { document.getElementById('help-overlay').classList.add('hidden'); return; }
+    if (vis('options-overlay')) { closeOptions(); return; }
+    return;
+  }
   if (placement) { cancelPlacement(); return; }
   if (!document.getElementById('chapter-card').classList.contains('hidden')) { closeChapterCard(); return; }
   if (workshopOpen || almanacOpen || loadoutOpen || traitOpen || robberOpen || bountyOpen) {
@@ -13102,8 +13159,10 @@ function handleEscape() {
     return;
   }
   if (npcOpen || buildOpen) { closeTrade(); closeBuild(); return; }
-  if (!document.getElementById('settings-overlay').classList.contains('hidden')) { closeSettings(); return; }
-  if (!document.getElementById('help-overlay').classList.contains('hidden')) { document.getElementById('help-overlay').classList.add('hidden'); return; }
+  if (vis('controls-overlay')) { closeControls(); return; }
+  if (vis('settings-overlay')) { closeSettings(); return; }
+  if (vis('help-overlay')) { document.getElementById('help-overlay').classList.add('hidden'); return; }
+  if (vis('options-overlay')) { closeOptions(); return; }
   toggleJournal(false);
   if (!document.getElementById('pause-overlay').classList.contains('hidden')) resumeGame();
   else openPause();
@@ -13529,8 +13588,16 @@ addEventListener('pointerup', (e) => {
 addEventListener('pointercancel', () => { try { cursorEl?.classList.remove('aiming'); } catch { /* noop */ } });
 addEventListener('pointermove', (e) => {
   if (!dragging) return;
-  const yawDelta = (e.clientX - px) * 0.005 * camFactor();
-  orbitPitch += (e.clientY - py) * 0.005 * camFactor();
+  const dx = e.clientX - px, dy = e.clientY - py;
+  if (globeMode) {
+    globeTheta -= dx * 0.006 * camFactor();
+    globePhi = THREE.MathUtils.clamp(globePhi - dy * 0.005 * camFactor(), 0.08, Math.PI - 0.08);
+    globeIdleAt = clock.elapsedTime;
+    px = e.clientX; py = e.clientY;
+    return;
+  }
+  const yawDelta = dx * 0.005 * camFactor();
+  orbitPitch += dy * 0.005 * camFactor();
   orbitPitch = THREE.MathUtils.clamp(orbitPitch, -0.5, 0.7);
   // Drag turns the traveler (not just the camera): rotate the shared heading
   // around the local surface normal so W stays straight-on-screen. Rotating
@@ -13554,6 +13621,18 @@ addEventListener('pointermove', (e) => {
   } catch { /* heading not ready yet */ }
   px = e.clientX; py = e.clientY;
 });
+addEventListener('wheel', (e) => {
+  if (!started || paused) return;
+  if (e.target !== canvas && e.target !== document.body) return;
+  e.preventDefault();
+  const dz = Math.exp(THREE.MathUtils.clamp(e.deltaY, -120, 120) * 0.0017);
+  if (globeMode) globeZoom = THREE.MathUtils.clamp(globeZoom * dz, 0.72, 1.6);
+  else {
+    followZoomScale = THREE.MathUtils.clamp(followZoomScale * dz, 0.7, 2.0);
+    applyFollowZoom();
+  }
+  globeIdleAt = clock.elapsedTime;
+}, { passive: false });
 // ---------- touch controls (joystick + buttons, touch devices only) ----------
 const touchMove = { x: 0, y: 0 };
 if ('ontouchstart' in window) {
@@ -13592,6 +13671,14 @@ if ('ontouchstart' in window) {
   hold('btn-run', () => { if (started && !paused) keys.ShiftLeft = true; }, () => (keys.ShiftLeft = false));
 }
 let globeMode = false;
+// Reference-style orbit camera state: globe drag/zoom, and a follow distance
+// that matches the demo's wide diorama framing (planet radius × ~0.9).
+let globeTheta = -0.42, globePhi = 0.9, globeZoom = 1;
+let globeIdleAt = 0;
+function globeDistance() {
+  // Pull back on portrait screens so the whole sphere fits across the width.
+  return R * 3.1 * globeZoom * Math.max(1, 1 / camera.aspect);
+}
 let thirdPerson = false; // C: Tomb Raider-style over-the-shoulder chase camera
 function toggleThirdPersonView() {
   thirdPerson = !thirdPerson;
@@ -13601,7 +13688,17 @@ function toggleThirdPersonView() {
   toast(thirdPerson ? '🎥 Third-person camera — drag to look around' : '🎥 Tactical camera');
 }
 let photoMode = null; // { dist, height, side, aim } — QA portrait camera
-function toggleGlobe() { globeMode = !globeMode; toast(globeMode ? '🌐 Globe view — the patchwork planet' : '🧭 Back to traveler view'); }
+function toggleGlobe() {
+  globeMode = !globeMode;
+  if (globeMode) {
+    // Start over the traveler's own patch of the planet, like the reference.
+    const n0 = playerPos.clone().normalize();
+    globeTheta = Math.atan2(n0.x, n0.z);
+    globePhi = Math.acos(THREE.MathUtils.clamp(n0.y, -0.95, 0.95));
+    globeIdleAt = clock.elapsedTime;
+  }
+  toast(globeMode ? '🌐 Globe view — the patchwork planet' : '🧭 Back to traveler view');
+}
 document.getElementById('btn-globe').onclick = toggleGlobe;
 document.getElementById('btn-workshop').onclick = () => (workshopOpen ? closeWorkshop() : openWorkshop());
 document.getElementById('btn-almanac').onclick = () => (almanacOpen ? closeAlmanac() : openAlmanac());
@@ -13642,22 +13739,31 @@ document.getElementById('btn-close-help').onclick = () => document.getElementByI
 document.getElementById('btn-close-journal').onclick = () => toggleJournal(false);
 document.getElementById('wonder-tracker').onclick = () => toggleJournal();
 document.getElementById('btn-pause').onclick = () => { if (started && !paused) openPause(); };
-// title / pause / settings menus
+// title / pause / options / settings menus
 document.getElementById('btn-continue').onclick = () => openSlots('load');
 document.getElementById('btn-newgame').onclick = () => openSlots('new');
 document.getElementById('btn-slot-back').onclick = () => {
   document.getElementById('slot-picker').classList.add('hidden');
   document.getElementById('title-buttons').classList.remove('hidden');
 };
-document.getElementById('btn-title-help').onclick = () => document.getElementById('help-overlay').classList.remove('hidden');
-document.getElementById('btn-title-settings').onclick = () => openSettings('title');
+document.getElementById('btn-title-options').onclick = () => openOptions('title');
 document.getElementById('btn-resume').onclick = () => resumeGame();
 document.getElementById('btn-save').onclick = () => manualSave();
-document.getElementById('btn-pause-help').onclick = () => document.getElementById('help-overlay').classList.remove('hidden');
-document.getElementById('btn-pause-settings').onclick = () => openSettings('pause');
+document.getElementById('btn-pause-options').onclick = () => openOptions('pause');
 document.getElementById('btn-quit-title').onclick = () => quitToTitle();
+document.getElementById('btn-options-controls').onclick = () => openControls();
+document.getElementById('btn-options-settings').onclick = () => openSettings('options');
+document.getElementById('btn-options-help').onclick = () => document.getElementById('help-overlay').classList.remove('hidden');
+document.getElementById('btn-options-back').onclick = () => closeOptions();
+document.getElementById('btn-close-controls').onclick = () => closeControls();
+document.getElementById('btn-controls-back').onclick = () => closeControls();
 document.getElementById('btn-close-settings').onclick = () => closeSettings();
 document.getElementById('btn-settings-back').onclick = () => closeSettings();
+document.getElementById('btn-settings-section-back').onclick = () => { settingsGroup = null; renderSettings(); };
+for (const [id, close] of [['options-overlay', closeOptions], ['controls-overlay', closeControls]]) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('pointerdown', (e) => { if (e.target.id === id) close(); });
+}
 document.getElementById('btn-erase-saves').onclick = (e) => {
   const b = e.currentTarget;
   if (!b.dataset.armed) { b.dataset.armed = '1'; renderSettings(); return; }
@@ -13685,9 +13791,6 @@ document.getElementById('npc-overlay').addEventListener('pointerdown', (e) => {
 // Help opens only via the ⚙ button, so the 3D planet is visible from the first frame.
 
 // ---------- HUD refs ----------
-const interactBar = document.getElementById('interact-bar');
-const interactLabel = document.getElementById('interact-label');
-const interactKind = document.getElementById('interact-kind');
 const biomeCode = document.getElementById('biome-code');
 const biomeName = document.getElementById('biome-name');
 const biomeDesc = document.getElementById('biome-desc');
@@ -13696,6 +13799,12 @@ let currentTarget = null, lastBiome = '';
 
 // ---------- main loop ----------
 const clock = new THREE.Clock();
+let perfFrames = 0, perfStart = performance.now(), perfTuned = false, perfStarted = false;
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  perfFrames = 0;
+  perfStart = performance.now();
+});
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 const camUp = new THREE.Vector3(0, 1, 0); // smoothed up: world-Y in globe view, surface normal when following
 const lastBehind = new THREE.Vector3(0, 0, 1); // smoothed behind-the-back follow direction
@@ -13709,8 +13818,9 @@ function snapFollowCamera() {
   if (f.lengthSq() < 1e-6) f.copy(lastBehind);
   if (f.lengthSq() < 1e-6) f.copy(V3(0, 0, 1));
   f.normalize();
-  camPos.copy(playerPos).addScaledVector(f, -15).addScaledVector(n0, 16);
-  camLook.copy(playerPos).addScaledVector(f, 5);
+  const dist = R * 0.914 * followZoom;
+  camPos.copy(playerPos).addScaledVector(f, -Math.cos(0.88) * dist).addScaledVector(n0, Math.sin(0.88) * dist);
+  camLook.copy(playerPos).addScaledVector(n0, 1.2);
   camUp.copy(n0);
   camera.position.copy(camPos);
   camera.up.copy(n0);
@@ -13933,8 +14043,14 @@ function updatePlayer(dt) {
   // orient (+Z faces travel direction; backpack stays behind at -Z)
   const m = new THREE.Matrix4().lookAt(V3(0, 0, 0), facing.clone().negate(), nn);
   player.quaternion.setFromRotationMatrix(m);
-  // bob
-  player.position.addScaledVector(nn, Math.abs(Math.sin(performance.now() * 0.008)) * ((ix || iz || autoMove) ? 0.12 : 0.03));
+  // bob — the GLB walk/run clips carry the stride, so the group stays planted
+  // while moving (a wall-clock hop beats against the leg cycle and reads as
+  // vibration). The procedural fallback keeps its livelier hop.
+  const glbHero = !!player.userData.heroGlb?.loaded;
+  const bobAmp = glbHero
+    ? ((ix || iz || autoMove) ? 0 : 0.008)
+    : ((ix || iz || autoMove) ? 0.12 : 0.03);
+  player.position.addScaledVector(nn, Math.abs(Math.sin(performance.now() * 0.008)) * bobAmp);
   // lagoon splash while wading (flavor only)
   const lagoonD = player.position.distanceTo(lagoonCenter);
   if (lagoonD < 5) {
@@ -13964,11 +14080,12 @@ function updateCamera(dt, n) {
     return;
   }
   if (globeMode) {
-    const t = performance.now() * 0.00012;
-    tmpM.copy(n).multiplyScalar(R * 3.1).add(V3(Math.cos(t) * 18 * S, 10 * S, Math.sin(t) * 18 * S));
-    camPos.lerp(tmpM, 1 - Math.exp(-2 * dt));
+    // Slow idle orbit, like the reference; any drag resets the timer.
+    if (!dragging && clock.elapsedTime - globeIdleAt > 14) globeTheta += dt * 0.009;
+    tmpM.setFromSphericalCoords(globeDistance(), globePhi, globeTheta);
+    camPos.lerp(tmpM, 1 - Math.exp(-5.2 * dt));
     camera.position.copy(camPos);
-    camUp.lerp(UP, 1 - Math.exp(-2 * dt)).normalize();
+    camUp.lerp(UP, 1 - Math.exp(-5.2 * dt)).normalize();
     camera.up.copy(camUp);
     camera.lookAt(0, 0, 0);
     return;
@@ -14025,15 +14142,20 @@ function updateCamera(dt, n) {
     }
     return;
   }
-  // Diablo-style: high camera trailing behind the player's back, looking ahead.
+  // Reference-style follow camera: wide and elevated, about 50° above the
+  // local horizon at 0.9 planet radii behind the traveler, with no look-ahead.
   tmpF.copy(moveDirSmooth).addScaledVector(n, -moveDirSmooth.dot(n));
   // Hold the last good side while the facing vector dips (e.g. instant 180° turns).
   if (tmpF.length() > 0.25) { tmpF.normalize(); lastBehind.copy(tmpF); }
   else tmpF.copy(lastBehind);
   tmpF.applyAxisAngle(n, orbitYaw); // manual drag-orbit around the follow direction
-  const height = 16 - orbitPitch * 8, backDist = 15;
-  tmpR.copy(player.position).addScaledVector(tmpF, 5); // look ahead of the player
-  tmpM.copy(player.position).addScaledVector(tmpF, -backDist).addScaledVector(n, height);
+  const tilt = THREE.MathUtils.clamp(0.88 - orbitPitch, 0.34, 1.28);
+  const widthLift = camera.aspect < 0.65 ? 1.13 : 1;
+  const dist = R * 0.914 * followZoom * widthLift;
+  tmpR.copy(player.position).addScaledVector(n, 1.2); // chest-height target
+  tmpM.copy(player.position)
+    .addScaledVector(tmpF, -Math.cos(tilt) * dist)
+    .addScaledVector(n, Math.sin(tilt) * dist);
   // pull in front of any tall building blocking the view (ray starts at the
   // player, min distance keeps the player between camera and look target)
   axis.copy(tmpM).sub(player.position);
@@ -14054,7 +14176,7 @@ function updateCamera(dt, n) {
       s -= 0.5;
       tmpM.copy(player.position).addScaledVector(axis, Math.max(s, 7));
     } while (s > 7 && pointInOccluder(tmpM));
-    if (pointInOccluder(tmpM)) tmpM.copy(player.position).addScaledVector(n, height + 7);
+    if (pointInOccluder(tmpM)) tmpM.copy(player.position).addScaledVector(n, Math.sin(tilt) * dist + 7);
   }
   // rise over obstacles: trade blocked horizontal distance for height
   const lack = wantDist - tmpM.distanceTo(player.position);
@@ -14064,16 +14186,16 @@ function updateCamera(dt, n) {
     if (pointInOccluder(tmpM)) tmpM.copy(axis); // rise clipped: keep the marched spot
   }
   axis.copy(camPos); // remember last good before lerping
-  camPos.lerp(tmpM, 1 - Math.exp(-4 * dt));
+  camPos.lerp(tmpM, 1 - Math.exp(-5.2 * dt));
   if (camPos.lengthSq() < 1) camPos.copy(tmpM);
   if (pointInOccluder(camPos)) camPos.copy(axis); // lerp cut a corner: revert
   // safety: never let the follow camera strand itself far from the hero
-  if (camPos.distanceTo(player.position) > 42) camPos.copy(tmpM);
+  if (camPos.distanceTo(player.position) > 100) camPos.copy(tmpM);
   camera.position.copy(camPos);
-  camLook.lerp(tmpR, 1 - Math.exp(-6 * dt)); // tmpR already holds the ahead-look target
+  camLook.lerp(tmpR, 1 - Math.exp(-5.2 * dt)); // tmpR already holds the chest target
   // Lock the camera's up to the surface normal: with default world-Y up, lookAt
   // degenerates and rolls upside-down on the far side of the planet.
-  camUp.lerp(n, 1 - Math.exp(-6 * dt)).normalize();
+  camUp.lerp(n, 1 - Math.exp(-5.2 * dt)).normalize();
   camera.up.copy(camUp);
   camera.lookAt(camLook.lengthSq() ? camLook : tmpR);
   if (camShake > 0.001) {
@@ -14084,23 +14206,18 @@ function updateCamera(dt, n) {
 }
 
 function updateInteract() {
-  if (placement) { interactBar?.classList.add('hidden'); currentTarget = null; return; }
-  let best = null, bestD = 1e9;
+  // The floating E prompt is gone; interactions stay on click / E and the
+  // context cursor over the world.
+  if (placement) { currentTarget = null; return; }
+  let best = null, bestD = Infinity;
+  const p = player.position;
   for (const it of interactables) {
-    const d = player.position.distanceTo(it.pos);
-    if (d < (it.radius || 3.6) && d < bestD) { best = it; bestD = d; }
+    const dx = p.x - it.pos.x, dy = p.y - it.pos.y, dz = p.z - it.pos.z;
+    const d2 = dx * dx + dy * dy + dz * dz;
+    const r = it.radius || 3.6;
+    if (d2 < r * r && d2 < bestD) { best = it; bestD = d2; }
   }
-  // an active auto-task keeps its bar pinned even at the edge of range
-  const show = (activeTask && interactables.includes(activeTask.interact)) ? activeTask.interact : best;
   currentTarget = best;
-  if (show) {
-    interactBar.classList.remove('hidden');
-    const auto = activeTask && activeTask.interact === show;
-    interactKind.textContent = (auto ? '⚙️ AUTO · ' : '') + (show.kind || 'INTERACT');
-    try {
-      interactLabel.textContent = (typeof show.label === 'function' ? show.label() : show.label) + (auto ? ' — working…' : ' — click / E to auto');
-    } catch { interactLabel.textContent = show.label || ''; }
-  } else interactBar.classList.add('hidden');
 }
 
 function updateBiomeLabel(n) {
@@ -14116,28 +14233,47 @@ function updateBiomeLabel(n) {
   biomeLabel.classList.add('swap');
 }
 
-// turn on the stylised look for everything already in the world, and pick up
-// anything crafted/placed later without touching each builder.
-toonifyScene();
-// Title vista: frame the green homestead and its coastline instead of the pole.
-{
-  const focus = latLonToVec3(9, 47, 2);
-  const n = focus.clone().normalize();
-  const east = new THREE.Vector3(-n.z, 0, n.x).normalize();
-  camera.position.copy(focus).addScaledVector(n, 30 * S).addScaledVector(east, 16 * S);
-  camera.up.copy(n);
-  camera.lookAt(focus.clone().addScaledVector(n, 5).addScaledVector(east, -3));
-}
+// Keep the sightline fade installed on props crafted or placed after boot.
+cleanHeroShadows();
+let heroShadowScanAt = -99;
 tickers.push((t) => {
-  if (t - toonScanAt < 1.5) return;
-  toonScanAt = t;
-  toonifyScene();
+  if (t - heroShadowScanAt < 10) return;
+  heroShadowScanAt = t;
+  cleanHeroShadows();
 });
+
+// Title vista: the whole little planet from space, framed like the reference.
+// Sit over the green belt (forest / farm / oasis) rather than the pole.
+{
+  camera.position.setFromSphericalCoords(globeDistance(), 1.31, 1.44);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(0, 0, 0);
+  camPos.copy(camera.position);
+  camUp.copy(camera.up);
+  camLook.set(0, 0, 0);
+}
 function animate() {
   requestAnimationFrame(animate);
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
   if (paused) { orbitYaw += dt * 0.04; hideContextCursor(); composer.render(); return; } // menu vista: slow drift
+  // Adaptive safety: if the first seconds are slow, drop to 1× pixel density
+  // before the player notices the stutter.
+  if (!document.hidden) {
+    if (!perfStarted) { perfStarted = true; perfStart = performance.now(); perfFrames = 0; }
+    perfFrames++;
+    if (!perfTuned && performance.now() - perfStart > 5000) {
+      const fps = (perfFrames * 1000) / (performance.now() - perfStart);
+      if (fps < 48) {
+        try {
+          renderer.setPixelRatio(1);
+          composer.setPixelRatio(1);
+          composer.setSize(innerWidth, innerHeight);
+        } catch { /* headless */ }
+      }
+      perfTuned = true;
+    }
+  }
   if (started) playtime += dt;
   combatNow = t;
   camShake = Math.max(0, camShake - dt * 2.4);
@@ -14154,6 +14290,10 @@ function animate() {
     b.right.rotation.x += (-target - b.right.rotation.x) * dt * bridgeRate;
   }
   const n = updatePlayer(dt);
+  // The shadow frustum tracks the hero and refreshes every frame, so the
+  // contact shadow stays glued to the feet instead of stepping at 20 Hz.
+  followSunToHero();
+  renderer.shadowMap.needsUpdate = true;
   updateBoatVisual(t);
   updateCamera(dt, n);
   updateInteract();
