@@ -1,58 +1,138 @@
-# Little Planet — A Pocket Adventure
+<div align="center">
 
-Charming low-poly tiny-planet exploration prototype (Three.js + Vite), built from your screenshots.
+# 🌍 Little Planet — A Pocket Adventure
 
-One traversable sphere, 10 biomes, 7 Small Wonders, contextual `E` interactions, globe view, and a patchwork→restored progression loop. The southern ocean is now broken up by the Golden Savannah, the Great River and the Mangrove Delta.
+*A charming 3D tiny-planet exploration, survival, and homesteading adventure built with Three.js — one seamless traversable sphere, 10 smooth-blended biomes, 7 Small Wonders, sailing, wildlife, and a multi-generation legacy.*
 
-## Play (double-click, no terminal needed)
+[![Play Online](https://img.shields.io/badge/▶%20Play%20Online-Live%20Demo-2ea44f?style=for-the-badge)](https://studio-9373398923-6294b.web.app)
+[![Three.js](https://img.shields.io/badge/Three.js-0.170-000000?style=for-the-badge&logo=threedotjs)](https://threejs.org/)
+[![Vite](https://img.shields.io/badge/Vite-Single--File%20Build-646cff?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev/)
+[![Biomes](https://img.shields.io/badge/10%20Biomes-7%20Small%20Wonders-e8a33d?style=for-the-badge)](#-the-10-biomes--7-small-wonders)
 
-- **Online:** **https://studio-9373398923-6294b.web.app** (Firebase Hosting)
-- **Easiest locally:** double-click **`Play Little Planet.bat`** — it installs, builds, and opens the game by itself.
-- **Or:** double-click **`index.html`** (forwards to the bundle) or **`dist/index.html`** directly — one self-contained file, no server needed. Clicking `index.html` before ever building shows nothing: run the `.bat` (or `npm run build`) first.
-- **Dev mode:** `npm install` then `npm run dev`.
+**[▶ Play Online Now — https://studio-9373398923-6294b.web.app](https://studio-9373398923-6294b.web.app)**
 
-### Deploying
+<br/>
 
-```bash
-npm run build
-firebase deploy --only hosting --project studio-9373398923-6294b
-```
+<img src="docs/screenshots/hero-banner.png" alt="Little Planet — A Pocket Adventure" width="100%" />
 
-Firebase serves `dist/` (`firebase.json`), which is the single self-contained `index.html`.
+</div>
 
-## Controls
+---
 
-- `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view · `C` camera · `3` lamp
-- Drag mouse to orbit the camera slightly.
-- **Characters:** you start as **Pip the Sprout Keeper** — brown hat, watering-can backpack, quicker planting and bridge repairs. Switch to **Nova the Starlight Explorer** in Settings → Traveler. Both travel empty-handed; the axe appears only while chopping, the hammer while building, and the hunting tool while a ranged weapon is drawn. Press `3` to carry the star lantern in daylight; after dark it wakes, lights nearby dark wonders, and reveals hidden starlight sparkles. The playable heroes are Blender-authored GLBs (`src/assets/pip.glb`, `src/assets/nova.glb`, 19-bone rig, `Idle`/`Walk`/`Run`/`Chop`) loaded with `GLTFLoader` + `AnimationMixer`; the hand-built rig remains the automatic fallback if a GLB cannot load.
-- **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.
-- **Trail beacon:** the current objective shows a gold light in the world + distance (`➤ 12m`). Walk toward it — `✨ You are here` means press `E`.
-- **Homestead:** press `H` — light a campfire (1 wood), pitch a tent (2 wood), then raise a Mud Hut (3 wood). Big Pack (+8 slots) is buildable, and cooking the same mix twice discovers recipes.
-- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless. The southern continent adds lions, impala, wildebeest, giraffes, rhinos and elephants to the Golden Savannah; tigers, deer and monkeys to the Mangrove Delta; and the Great River is home to fish, crocodiles and hippos. **Apex predators** — lions, tigers, crocodiles, hippos and the polar bear — hunt on sight and shrug off an axe. Research **Spearmaking** for the javelin, then **Bowyer** for the bow, before hunting them; run until then. They are territorial: outside their home biome (savannah, mangrove, river or arctic ice) they slow down, lose most of their bite and turn back. Wild prey and predators replenish at dawn; well-fed pairs of livestock may raise a new animal.
-- **Biome relics:** each of the ten biomes hides a guarded artifact. Wardens ask for a hard offering; beasts must be defeated. Claiming one grants its technology immediately — seed drill, irrigation, saw, fishing net, boatbuilding, forge, heat gear, bowyer, fish trap or thresher. The journal's technology tab tracks all ten.
-- **Sea life:** sharks and orcas patrol the deep water and bite swimmers; dolphins surf the reef and whales breach in the open blue. Boats are safe.
-- **Travellers:** from day 6, strangers may arrive at the edge of the homestead. Some bring gifts, maps or ammunition; some are con artists. Welcome, question or send them on — the outcome is the surprise.
-- **World threat:** predators, wolves, outlaws and storms scale with explorer level. Higher technology eras also need a higher level, so the next bench project demands both resources and experience.
-- **Audio:** procedural footsteps by surface, swimming, rowing, swings, hits, animal calls, birds, crickets, surf, whale song and traveller knocks — no external audio files.
+**Little Planet** drops you onto a living, breathing miniature world you can walk all the way around. Start with a campfire and a stubborn heart in **Clover Fields**, sail across turquoise reefs, cross the meandering **Great River**, brave territorial apex predators in the **Golden Savannah** and **Mangrove Delta**, unlock 44 technologies from handmade stone tools to powder-era gear, and raise a homestead that passes down to your heir.
 
-## The Worlds & Small Wonders
+---
 
-| # | World | Moment | How |
-|---|-------|--------|-----|
-| 1 | Fernwood | 🔥 Eternal Flame | Campfire `E` ×3 to tend |
-| 2 | Clover Fields | 🌾 Bountiful Harvest | Till a plot at the homestead (`H`), then plant → water → harvest |
-| 3 | Sunstone Oasis | ☀️ Wake the Oasis | Spring `E` ×3: brush sand → turn stones → wake |
-| 4 | Shell Cove | 🔔 Ring the Bell | Dune bell `E` to ring |
-| 5 | Tideglass Reef | 💡 Light the Lighthouse | Rock lighthouse `E` to light (swimmable shallows) |
-| 6 | Ember Heights | 🌋 Scan the Volcano | Tripod `E`, hold still 2.5s |
-| 7 | Northlight | 🌌 Wake the Aurora | Stone circle `E` |
+## 📸 Screenshots
 
-At 2 / 4 / 6 wonders the three broken bridges repair. At 7/7 the planet is whole.
-Press `J` (or click the tracker) for the field journal. Deep links: `dist/index.html#oasis` etc. (`fernwood clover oasis cove reef ember north`).
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/clover-fields.png" alt="Clover Fields" width="100%" />
+      <br/>
+      <strong>🌱 Clover Fields &amp; Blossom Meadows</strong>
+      <br/>
+      <sub><em>Pip exploring rolling meadows, cherry blossoms, sheep, and smooth coastal transitions.</em></sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/globe-view.png" alt="Globe View" width="100%" />
+      <br/>
+      <strong>🌐 Seamless Globe View</strong>
+      <br/>
+      <sub><em>Press <code>M</code> anytime to zoom out and admire the entire patchwork sphere.</em></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/great-river-savannah.png" alt="The Great River and Golden Savannah" width="100%" />
+      <br/>
+      <strong>🐊 The Great River &amp; Golden Savannah</strong>
+      <br/>
+      <sub><em>Meandering riverbanks with cattail reeds, acacia trees, giraffes, and elephants across the water.</em></sub>
+    </td>
+    <td align="center" width="50%">
+      <img src="docs/screenshots/tideglass-reef.png" alt="Tideglass Reef" width="100%" />
+      <br/>
+      <strong>💡 Tideglass Reef &amp; Lighthouse</strong>
+      <br/>
+      <sub><em>Swim or sail out to the lighthouse island surrounded by coral spires, sea turtles, and sharks.</em></sub>
+    </td>
+  </tr>
+</table>
 
-## Structure
+---
 
-- `mcp/` — optional stdio MCP server for playtesting in Chrome (`game_open`, `game_state`, `game_teleport`, `game_artifact_hints`); see `mcp/README.md`.
-- `index.html` — HUD matching the screenshots (brand, wonder tracker, collection panel, biome label, `[E]` bar, controls hint)
-- `src/style.css` — dark-pill minimalist UI, serif biome titles
-- `src/main.js` — planet generation, biomes + props, spherical player controller + isometric follow camera, wonders, particles, synth chimes
+## ✨ What Makes Little Planet Special
+
+- **🌐 One Seamless Traversable Sphere &amp; 10 Biomes** — Walk, swim, and sail around a continuous 3D globe with smooth organic biome transitions, a meandering Great River with cattail banks, Golden Savannah, Mangrove Delta, Ember Heights volcano, and Northlight aurora.
+- **🧭 Playable Travelers** — Start as **Pip the Sprout Keeper** (felt hat, watering-can pack, faster crop growth &amp; repairs) or switch to **Nova the Starlight Explorer** (navy coat &amp; star lantern that wakes hidden night sparkles). Powered by Blender-authored 19-bone GLB rigs with contextual tools.
+- **🏡 Homestead, Farming &amp; 44-Tech Research Tree** — Progress from a campfire and A-frame tent to half-timbered farmhouses, red barns, stone wells, windmills, sawmills, and gunsmiths across five eras: *Handmade → Copper → Iron → Mechanical → Powder*.
+- **⛵ Sailing, Fishing &amp; Living Oceans** — Board your sea skiff or dock raft, trim the sail with `Q`, and fill your Fish Book across day, night, reef, and deep water while whales breach, dolphins surf, and sharks &amp; orcas patrol the deep.
+- **🦁 Territorial Apex Predators &amp; 10 Guarded Relics** — Lions, tigers, crocodiles, hippos, and polar bears defend their home biomes. Research spears and bows before hunting them, or claim each biome's hidden relic for instant technology shortcuts.
+- **🌦️ Seasons, Hazards, Strangers &amp; Generational Legacy** — Survive dynamic weather disasters, question or welcome wandering travellers, court and marry a villager, raise children, and retire into your heir.
+- **🎵 100% Procedural Web Audio** — Surface-aware footsteps, swimming, rowing, axe swings, animal calls, whale song, surf, and storm audio synthesized live with zero external audio files.
+
+---
+
+## 🗺️ The 10 Biomes &amp; 7 Small Wonders
+
+| # | Biome | Small Wonder / Role | How to Awaken / Explore |
+|---|---|---|---|
+| 1 | **Fernwood** | 🔥 Eternal Flame | Tend the forest campfire (`E` × 3) |
+| 2 | **Clover Fields** | 🌾 Bountiful Harvest | Till a homestead plot (`H`), plant, water &amp; harvest |
+| 3 | **Sunstone Oasis** | ☀️ Wake the Oasis | Brush sand &amp; turn the sunstones (`E` × 3) |
+| 4 | **Shell Cove** | 🔔 Ring the Bell | Ring the timber dune bell (`E`) |
+| 5 | **Tideglass Reef** | 💡 Light the Lighthouse | Swim or sail to the island lighthouse (`E`) |
+| 6 | **Ember Heights** | 🌋 Scan the Volcano | Stand at the crater tripod and hold still (`E`) |
+| 7 | **Northlight** | 🌌 Wake the Aurora | Activate the polar stone circle (`E`) |
+| 8 | **Golden Savannah** | 🦁 Southern Frontier | Acacia plains, giraffes, rhinos, elephants &amp; lions |
+| 9 | **The Great River** | 🐊 Living Waterway | Meandering river dividing the south with crocs &amp; hippos |
+| 10 | **Mangrove Delta** | 🐅 Tidal Rootlands | Brackish creeks, prop roots, monkeys &amp; tigers |
+
+At **2 / 4 / 6** wonders, the three fractured landmass bridges repair. At **7 / 7**, the planet is whole.
+
+---
+
+## 🎮 Controls
+
+| Key / Input | Action |
+|---|---|
+| `W A S D` / Click | Walk (or sail when aboard a boat) |
+| `Shift` / `Q` | Run / Dash (or trim sail) |
+| `Space` | Hop |
+| `E` | Context interact (chop, mine, talk, board, fish, awaken wonders) |
+| `H` / `K` / `J` / `L` | Homestead Board / Workshop Research / Field Journal / Loadout |
+| `M` / `C` / `3` | Globe View / Camera View / Carry Star Lantern |
+| Mouse Drag / Wheel | Orbit &amp; zoom camera |
+
+Deep-link straight to any world: `#clover`, `#fernwood`, `#oasis`, `#cove`, `#reef`, `#ember`, `#north`.
+
+---
+
+## 🚀 Play Locally, Develop &amp; Deploy
+
+- **Play Online:** **https://studio-9373398923-6294b.web.app**
+- **Easiest Locally (Windows):** Double-click **`Play Little Planet.bat`** — installs, builds, and launches automatically.
+- **Standalone Bundle:** Open **`dist/index.html`** directly in any modern browser (self-contained single-file build).
+- **Dev Server:**
+  ```bash
+  npm install
+  npm run dev
+  ```
+- **Build &amp; Deploy (Firebase Hosting):**
+  ```bash
+  npm run build
+  firebase deploy --only hosting --project studio-9373398923-6294b
+  ```
+
+---
+
+## 📁 Project Structure
+
+- [`index.html`](index.html) — Minimalist HUD (wonder tracker, biome banner, inventory, `[E]` prompt, modals)
+- [`src/main.js`](src/main.js) — Spherical terrain, smooth biome blending, 3D models, shaders, gameplay loop &amp; Web Audio synth
+- [`src/style.css`](src/style.css) — Dark-pill UI &amp; typography
+- [`src/assets/`](src/assets) — Blender-authored GLB hero rigs (`pip.glb`, `nova.glb`)
+- [`dist/index.html`](dist/index.html) — Production single-file bundle served by Firebase Hosting
+- [`docs/screenshots/`](docs/screenshots) — Showcase screenshots for this README
+- [`mcp/`](mcp/README.md) — Optional stdio MCP server for browser playtesting
