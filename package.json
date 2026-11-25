@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "play": "vite build && vite preview --open"
+    "play": "vite build && vite preview --open",
+    "mcp": "node mcp/little-planet-mcp.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

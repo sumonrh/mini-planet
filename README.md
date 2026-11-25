@@ -28,7 +28,12 @@ Firebase serves `dist/` (`firebase.json`), which is the single self-contained `i
 - **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.
 - **Trail beacon:** the current objective shows a gold light in the world + distance (`➤ 12m`). Walk toward it — `✨ You are here` means press `E`.
 - **Homestead:** press `H` — light a campfire (1 wood), pitch a tent (2 wood), then raise a Mud Hut (3 wood). Big Pack (+8 slots) is buildable, and cooking the same mix twice discovers recipes.
-- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless. The southern continent adds lions, impala, wildebeest, giraffes, rhinos and elephants to the Golden Savannah; tigers, deer and monkeys to the Mangrove Delta; and the Great River is home to fish, crocodiles and hippos. **Apex predators** — lions, tigers, crocodiles and hippos — hunt on sight and shrug off an axe. Research **Spearmaking** for the javelin, then **Bowyer** for the bow, before hunting them; run until then.
+- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless. The southern continent adds lions, impala, wildebeest, giraffes, rhinos and elephants to the Golden Savannah; tigers, deer and monkeys to the Mangrove Delta; and the Great River is home to fish, crocodiles and hippos. **Apex predators** — lions, tigers, crocodiles, hippos and the polar bear — hunt on sight and shrug off an axe. Research **Spearmaking** for the javelin, then **Bowyer** for the bow, before hunting them; run until then. They are territorial: outside their home biome (savannah, mangrove, river or arctic ice) they slow down, lose most of their bite and turn back. Wild prey and predators replenish at dawn; well-fed pairs of livestock may raise a new animal.
+- **Biome relics:** each of the ten biomes hides a guarded artifact. Wardens ask for a hard offering; beasts must be defeated. Claiming one grants its technology immediately — seed drill, irrigation, saw, fishing net, boatbuilding, forge, heat gear, bowyer, fish trap or thresher. The journal's technology tab tracks all ten.
+- **Sea life:** sharks and orcas patrol the deep water and bite swimmers; dolphins surf the reef and whales breach in the open blue. Boats are safe.
+- **Travellers:** from day 6, strangers may arrive at the edge of the homestead. Some bring gifts, maps or ammunition; some are con artists. Welcome, question or send them on — the outcome is the surprise.
+- **World threat:** predators, wolves, outlaws and storms scale with explorer level. Higher technology eras also need a higher level, so the next bench project demands both resources and experience.
+- **Audio:** procedural footsteps by surface, swimming, rowing, swings, hits, animal calls, birds, crickets, surf, whale song and traveller knocks — no external audio files.
 
 ## The Worlds & Small Wonders
 
@@ -47,6 +52,7 @@ Press `J` (or click the tracker) for the field journal. Deep links: `dist/index.
 
 ## Structure
 
+- `mcp/` — optional stdio MCP server for playtesting in Chrome (`game_open`, `game_state`, `game_teleport`, `game_artifact_hints`); see `mcp/README.md`.
 - `index.html` — HUD matching the screenshots (brand, wonder tracker, collection panel, biome label, `[E]` bar, controls hint)
 - `src/style.css` — dark-pill minimalist UI, serif biome titles
 - `src/main.js` — planet generation, biomes + props, spherical player controller + isometric follow camera, wonders, particles, synth chimes

@@ -992,7 +992,7 @@ function startChop(nd, action) {
   gatherAction = action || nodeGatherAction(nd);
 }
 function swingChop(nd) { if (nd) startChop(nd); }
-function startAttack() { attackT = 0.0001; }
+function startAttack() { attackT = 0.0001; sfxSwing(); }
 // keyframe sampler: [[t, value], ...] with smoothstep easing between keys
 function kfAt(keys, t) {
   if (t <= keys[0][0]) return keys[0][1];
@@ -1919,6 +1919,7 @@ function spawnBear(la, lon, scale, cub, parent) {
     adult: !cub && scale >= 0.9, cub,
     dead: false, attackT: 0, attackCd: 0, hitFlash: 0, wanderT: rand(2, 5),
     target: null, speedNow: 0, phase: rand(Math.PI * 2),
+    biome: 'arctic', discomfort: 0, retreatT: 0, comfortAnnounced: false, strikeMult: 1,
   };
   // initial facing: tangent toward increasing longitude
   const n = pos.clone().normalize();
@@ -4334,6 +4335,160 @@ function workshopClatter() {
   for (let i = 0; i < 4; i++) noiseBurst(0.07, 0.12, 2600, 'bandpass', i * 0.11);
   chime(760); setTimeout(() => chime(1040), 120);
 }
+// Small procedural effects keep the pocket planet alive without shipping
+// large audio files. Each one is deliberately quiet and short.
+function tone(freq, dur = 0.12, vol = 0.07, type = 'sine', slide = 0) {
+  if (muted) return;
+  try {
+    const ctx = ac(), o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(Math.max(20, freq), ctx.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), ctx.currentTime + dur);
+    g.gain.setValueAtTime(Math.max(0.0001, vol), ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    o.connect(g).connect(ctx.destination);
+    o.start(); o.stop(ctx.currentTime + dur);
+  } catch { /* no audio */ }
+}
+function sfxFootstep(surface = 'grass') {
+  if (muted) return;
+  const s = surface === 'water' ? 'water' : surface === 'oasis' || surface === 'cove' || surface === 'reef' ? 'sand' : surface === 'arctic' ? 'snow' : surface === 'volcano' ? 'stone' : 'grass';
+  logSfx('step:' + s);
+  if (s === 'water') { noiseBurst(0.12, 0.06, 950, 'bandpass'); tone(180, 0.06, 0.018, 'sine', 40); }
+  else if (s === 'sand') noiseBurst(0.08, 0.035, 1700, 'highpass');
+  else if (s === 'snow') { noiseBurst(0.1, 0.045, 2400, 'highpass'); tone(240, 0.05, 0.012, 'triangle', -30); }
+  else if (s === 'stone') { noiseBurst(0.05, 0.045, 900, 'bandpass'); tone(125, 0.045, 0.022, 'triangle', -20); }
+  else { noiseBurst(0.07, 0.035, 700 * rand(0.9, 1.08), 'lowpass'); }
+}
+function sfxSwim() {
+  if (muted) return;
+  logSfx('swim');
+  noiseBurst(0.2, 0.06, 760, 'bandpass');
+  tone(260, 0.12, 0.016, 'sine', 70);
+}
+function sfxRow() {
+  if (muted) return;
+  logSfx('row');
+  noiseBurst(0.22, 0.07, 520, 'lowpass');
+  tone(92, 0.18, 0.028, 'sine', -18);
+}
+function sfxSwing() {
+  if (muted) return;
+  logSfx('swing');
+  noiseBurst(0.08, 0.045, 1500, 'bandpass');
+  tone(380, 0.06, 0.022, 'sawtooth', -180);
+}
+function sfxHit() {
+  if (muted) return;
+  logSfx('hit');
+  noiseBurst(0.08, 0.16, 1300, 'bandpass');
+  tone(170, 0.09, 0.07, 'square', -70);
+}
+function sfxHurt() {
+  if (muted) return;
+  logSfx('hurt');
+  tone(120, 0.22, 0.09, 'sawtooth', -40);
+  noiseBurst(0.18, 0.08, 480, 'lowpass');
+}
+function sfxBird() {
+  if (muted) return;
+  logSfx('bird');
+  const base = rand(1450, 2200);
+  tone(base, 0.08, 0.025, 'sine', 260);
+  setTimeout(() => tone(base * 0.82, 0.07, 0.022, 'sine', -180), 110);
+  if (Math.random() < 0.45) setTimeout(() => tone(base * 1.12, 0.06, 0.02, 'sine', 120), 240);
+}
+function sfxOwl() {
+  if (muted) return;
+  logSfx('owl');
+  tone(340, 0.35, 0.028, 'sine', -50);
+  setTimeout(() => tone(300, 0.28, 0.022, 'sine', -40), 420);
+}
+function sfxCrickets() {
+  if (muted) return;
+  logSfx('crickets');
+  for (let i = 0; i < 5; i++) noiseBurst(0.035, 0.018, 4200, 'highpass', i * 0.12);
+}
+function sfxWave() {
+  if (muted) return;
+  logSfx('wave');
+  noiseBurst(1.4, 0.045, 800, 'lowpass');
+}
+function sfxRoar(name = '') {
+  if (muted) return;
+  logSfx('roar:' + name);
+  const base = name === 'Tiger' ? 150 : name === 'Lion' ? 120 : 105;
+  tone(base, 0.55, 0.08, 'sawtooth', -45);
+  noiseBurst(0.5, 0.09, 420, 'lowpass');
+  setTimeout(() => tone(base * 1.25, 0.28, 0.045, 'square', -60), 170);
+}
+function sfxCroc() {
+  if (muted) return;
+  logSfx('croc');
+  noiseBurst(0.42, 0.075, 2800, 'highpass');
+  tone(74, 0.28, 0.06, 'sawtooth', -18);
+}
+function sfxBear() {
+  if (muted) return;
+  logSfx('bear');
+  tone(82, 0.5, 0.075, 'sawtooth', -20);
+  noiseBurst(0.35, 0.06, 340, 'lowpass');
+}
+function sfxWolfHowl() {
+  if (muted) return;
+  logSfx('wolf');
+  tone(420, 0.8, 0.045, 'sine', -230);
+  setTimeout(() => tone(500, 0.55, 0.03, 'triangle', 180), 260);
+}
+function sfxWhale() {
+  if (muted) return;
+  logSfx('whale');
+  tone(145, 1.5, 0.05, 'sine', -55);
+  setTimeout(() => tone(220, 1.2, 0.035, 'sine', -80), 500);
+}
+function sfxDolphin() {
+  if (muted) return;
+  logSfx('dolphin');
+  for (let i = 0; i < 4; i++) setTimeout(() => tone(rand(1600, 2600), 0.05, 0.022, 'sine', rand(-300, 350)), i * 75);
+}
+function sfxShark() {
+  if (muted) return;
+  logSfx('shark');
+  noiseBurst(0.35, 0.06, 600, 'bandpass');
+  tone(95, 0.3, 0.035, 'triangle', -25);
+}
+function sfxOrca() {
+  if (muted) return;
+  logSfx('orca');
+  tone(260, 0.5, 0.05, 'sine', -120);
+  for (let i = 0; i < 3; i++) setTimeout(() => tone(rand(900, 1500), 0.06, 0.02, 'sine', 80), 300 + i * 95);
+}
+function sfxTraveller() {
+  if (muted) return;
+  logSfx('traveller');
+  tone(520, 0.16, 0.045, 'sine', 80);
+  setTimeout(() => tone(700, 0.2, 0.038, 'sine', -40), 140);
+}
+// A quiet layer of birds, crickets, surf and wind so each biome has a voice.
+let ambientSfxT = 4;
+tickers.push((t, dt) => {
+  if (muted || playerDead || !started) return;
+  ambientSfxT -= dt;
+  if (ambientSfxT > 0) return;
+  ambientSfxT = rand(4.5, 9.5);
+  const b = biomeAt(player.position.clone().normalize());
+  if (isNight()) {
+    if (Math.random() < 0.38) sfxOwl(); else sfxCrickets();
+  } else if (b === 'forest' || b === 'farm' || b === 'oasis' || b === 'savannah' || b === 'mangrove') {
+    sfxBird();
+  } else if (b === 'cove' || b === 'reef') {
+    sfxWave();
+  } else if (b === 'arctic') {
+    noiseBurst(1.8, 0.035, 1900, 'highpass');
+  } else if (b === 'volcano') {
+    noiseBurst(1.4, 0.03, 110, 'lowpass');
+  }
+});
 
 // ---------- wonders / HUD ----------
 // Seven worlds, seven small moments (mirrors the field journal).
@@ -4433,6 +4588,7 @@ function legacyScoreParts() {
     ['Hazard kinds', hazardKinds * 35],
     ['Hazards weathered', hazardTotal * 10],
     ['Technologies', techs * 15],
+    ['Artifacts recovered', ArtifactState.count * 30],
     ['Life traits', (Life.traits || []).length * 25],
     ['Family', (Life.spouse ? 20 : 0) + (Life.kids || []).length * 10],
     ['Gold earned', Math.floor((Life.stats?.goldEarned || 0) / 2)],
@@ -4529,6 +4685,15 @@ function renderJournal() {
     for (const t of TECH.filter((x) => !hasTech(x.id) && x.req.every(hasTech)).slice(0, 4)) addRow(`${t.name} — ${t.desc}`, '○');
     addHeading('TOOLS');
     addRow(`Axe ×${(tools.axe || 1).toFixed(2)} · Pick ×${(tools.pick || 1).toFixed(2)}`, '🛠️');
+    addHeading(`RELICS · ${ArtifactState.count}/10`);
+    if (typeof ARTIFACTS !== 'undefined') {
+      for (const a of ARTIFACTS) {
+        const got = !!ArtifactState.claimed[a.id];
+        addRow(`${a.icon} ${a.name} — ${got ? 'claimed' : (a.taskHint || 'still guarded')}`, got ? '✓' : '🏺', got);
+      }
+    }
+    addHeading('WORLD THREAT');
+    addRow(`Predators, outlaws and storms grow with you: ×${threatScale().toFixed(2)}.`, '⚠️');
   } else if (journalTab === 'wonders') {
     WORLDS.forEach((w, i) => {
       const done = wonders[i].done;
@@ -4608,6 +4773,13 @@ renderCollection();
 // ---------- inventory + survival meters (step 1: food/energy/cold + health/remedy) ----------
 const inv = { wood: 0, stone: 0, gold: 0, food: 2, fish: 0, meat: 0, wool: 0, fur: 0, leather: 0, remedy: 0, egg: 0, milk: 0, meal: 0 };
 const meters = { energy: 100, cold: 0, health: 100, hunger: 100, warmth: 100, morale: 80 };
+const ArtifactState = { claimed: {}, count: 0 };
+let threatLevel = 1;
+// The wilds grow bolder as the traveler levels and the generations turn.
+function threatScale() {
+  const diff = settings.difficulty === 'frontier' ? 0.18 : settings.difficulty === 'cozy' ? -0.12 : 0;
+  return Math.max(0.7, 1 + (threatLevel - 1) * 0.055 + ((Life.gen || 1) - 1) * 0.07 + diff);
+}
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
 let lastDamageT = -99; // last time the player took a hit (for slow recovery)
@@ -4811,15 +4983,18 @@ addInteract({ id: 'aurora', pos: anchor(60, 140), kind: 'A SMALL WONDER', label:
 addInteract({ id: 'plant', pos: anchor(28, 166), kind: 'FERNWOOD', label: () => 'Nurture the sprout', onUse });
 // Polar-bear combat targets are registered once the bear entities exist.
 // Each entry tracks its bear live (pos updates every frame in updateBears).
-for (const [i, b] of bears.entries()) {
+let bearSeq = 0;
+function registerBearInteract(b) {
+  if (!b || b.interact) return;
   const it = {
-    id: 'bear' + i, pos: b.mesh.position.clone(), bear: b, radius: 4.2,
+    id: 'bear' + (++bearSeq), pos: b.mesh.position.clone(), bear: b, radius: 4.2,
     kind: b.adult ? '⚔️ POLAR BEAR' : '🐻 BEAR CUB',
     label: () => bearLabel(b), onUse: (t) => attackBear(b),
   };
   b.interact = it;
   addInteract(it);
 }
+for (const b of bears) registerBearInteract(b);
 addInteract({ id: 'fish', pos: anchor(57, 118), kind: 'ICE FISHING', label: () => (fishStage === 1 ? 'Pull! (E)' : 'Cast the line'), onUse });
 
 const FISH_TYPES = [
@@ -5067,6 +5242,7 @@ function onUse(it) {
 // One click/E locks the bear: the hero pursues and auto-swings until it falls.
 // Health regens slowly out of combat; 🌿 remedy heals fast.
 const BEAR_AGGRO = 7, BEAR_STRIKE = 3.1, BEAR_LEASH = 14;
+const BEAR_OFFBIOME_SPEED = 0.5, BEAR_OFFBIOME_DAMAGE = 0.4;
 let playerAttackCd = 0;
 function bearLabel(b) {
   if (b.dead) return 'The bear is still… (victory)';
@@ -5092,6 +5268,7 @@ function damagePlayer(amount, from, cause) {
   if (cause) { lastDamageCause = cause; lastDamageCauseAt = combatNow; }
   meters.health = Math.max(0, meters.health - amount * (settings.difficulty === 'cozy' ? 0.5 : 1));
   lastDamageT = combatNow;
+  sfxHurt();
   flashDamage();
   spawnPopup(player.position.clone(), `-${amount * (settings.difficulty === 'cozy' ? 0.5 : 1)}`, '#ff8787');
   burst(player.position.clone(), 0xe03131, 12, 2.2);
@@ -5127,7 +5304,7 @@ function attackBear(b) {
     b.hitFlash = 1;
     burst(b.mesh.position.clone(), 0xffd97a, 14, 2.4);
     spawnPopup(b.mesh.position.clone(), `-${dmg}`, dmg >= 30 ? '#ffb35a' : '#ffffff');
-    chime(300);
+    chime(300); sfxHit();
     toast(b.cub ? `You shoo the cub (${dmg} dmg) — it flees!` : `🪓 You strike the bear for ${dmg}! (${Math.max(0, Math.ceil(b.hp))}/${b.maxHp})`);
     if (b.hp <= 0) killBear(b);
     else if (b.cub) {
@@ -5157,6 +5334,10 @@ function killBear(b) {
     addItem('meat', 4);
     if (onGainXp) onGainXp(45, b.mesh.position.clone());
     spawnPopup(b.mesh.position.clone(), '❄️ Frost Pelt +2🍎 +4🍖', '#9fdcff');
+  }
+  if (b.artifactGuardian) {
+    const msg = claimArtifact(b.artifactGuardian);
+    if (msg) toast(msg);
   }
   saveCheckpoint(); // a victory is worth remembering quietly
 }
@@ -5256,10 +5437,37 @@ function updateBears(t, dt) {
     const n = b.pos.clone().normalize();
     const toPlayer = player.position.clone().sub(b.mesh.position);
     const dist = toPlayer.length();
+    const homeD = b.pos.distanceTo(b.home);
+    const inBiome = biomeAt(n) === b.biome;
+    const playerInBiome = biomeAt(player.position.clone().normalize()) === b.biome;
+    const outside = !inBiome || homeD > BEAR_LEASH;
+    const speedMult = outside ? BEAR_OFFBIOME_SPEED : 1;
+    const damageMult = outside ? BEAR_OFFBIOME_DAMAGE : 1;
+    b.discomfort = Math.max(0, (b.discomfort || 0) + ((outside || (b.adult && !playerInBiome && dist < BEAR_AGGRO)) ? dt : -dt * 2.5));
+    if (b.adult && b.discomfort > 1.1 && !b.retreatT) {
+      b.retreatT = 3;
+      b.discomfort = 0;
+      b.windup = 0;
+      if (!inBiome && !b.comfortAnnounced) {
+        b.comfortAnnounced = true;
+        toast('🐻‍❄️ The polar bear feels the warmth away from Northlight — it lumbers back to the ice.');
+      }
+    }
+    if (b.retreatT > 0 && homeD < 2) {
+      b.retreatT = 0;
+      b.discomfort = 0;
+      b.comfortAnnounced = false;
+    }
     let moveDir = null, speed = 0, engaged = false;
     if (!playerDead && b.adult) {
-      const homeD = b.pos.distanceTo(b.home);
-      if (dist < BEAR_STRIKE) {
+      if (b.retreatT > 0) {
+        // uncomfortable: abandon the hunt and head for home
+        b.retreatT -= dt;
+        const toHome = b.home.clone().sub(b.pos);
+        const flat = toHome.addScaledVector(n, -toHome.dot(n));
+        if (flat.lengthSq() > 1e-6) { moveDir = flat.normalize(); speed = 2.2 * speedMult; }
+        else b.retreatT = 0;
+      } else if (dist < BEAR_STRIKE && playerInBiome) {
         // strike range: plant the feet and fight. Facing is handled here alone
         // (one capped pivot per frame) — the wander below stands down while
         // engaged so the bear can't double-turn and snap.
@@ -5277,25 +5485,28 @@ function updateBears(t, dt) {
             b.attackCd = 1.35;
             b.attackT = 0.65;
             setTimeout(() => {
-              if (!b.dead && !playerDead && player.position.distanceTo(b.mesh.position) < BEAR_STRIKE + 0.6) {
-                damagePlayer(Math.round(10 + Math.random() * 6), b.mesh.position);
+              const playerStillInBiome = biomeAt(player.position.clone().normalize()) === b.biome;
+              if (!b.dead && !playerDead && b.retreatT <= 0 && playerStillInBiome && player.position.distanceTo(b.mesh.position) < BEAR_STRIKE + 0.6) {
+                damagePlayer(Math.round((10 + Math.random() * 6) * (b.strikeMult || 1) * threatScale()), b.mesh.position);
                 toast('🐻‍❄️ The bear swipes you! Tap the bear to fight back — or dodge (Q)!');
               }
             }, 140);
           }
         } else if (b.attackCd <= 0) {
           b.windup = 0.7;
+          b.strikeMult = damageMult;
+          sfxBear();
           b.hitFlash = Math.max(b.hitFlash, 0.25);
           burst(b.mesh.position.clone().addScaledVector(n, 1.2), 0xe03131, 8, 1.6);
           spawnPopup(b.mesh.position.clone(), '❗', '#ff6b6b', true);
           chime(140);
         }
-      } else if (dist < BEAR_AGGRO && homeD < BEAR_LEASH) {
+      } else if (dist < BEAR_AGGRO && homeD < BEAR_LEASH && playerInBiome) {
         // chase the traveler across the ice
         const flat = toPlayer.addScaledVector(n, -toPlayer.dot(n));
-        if (flat.lengthSq() > 1e-6) { moveDir = flat.normalize(); speed = 4.2; }
+        if (flat.lengthSq() > 1e-6) { moveDir = flat.normalize(); speed = 4.2 * speedMult; }
       } else if (homeD > 4) {
-        // leashed: amble home
+        // leashed or uncomfortable: amble home
         const toHome = b.home.clone().sub(b.pos);
         const flat = toHome.addScaledVector(n, -toHome.dot(n));
         if (flat.lengthSq() > 1e-6) { moveDir = flat.normalize(); speed = 1.6; }
@@ -5555,6 +5766,66 @@ const NPCS = [
       { id: 'wool-gold', give: { wool: 1 }, get: { gold: 2 }, blurb: 'Wool for a parka' },
     ],
   },
+  {
+    id: 'warden-rowan', name: 'Rowan the Field Warden', zone: 'CLOVER FIELDS', lat: 4, lon: 56,
+    look: { coat: 0x6f8a3a, hat: 'hood', hatColor: 0x3f4a22 },
+    lines: [
+      'The first harvest is a promise. Break it, and the fields remember.',
+      'Bring ten days of food and five timbers, and I will open the Seedkeeper’s reliquary.',
+    ],
+    trades: [
+      { id: 'relic-farm', give: { food: 10, wood: 5 }, get: {}, blurb: 'Offer ten days of food and five timbers — claim the Seedkeeper’s Bowl', once: true, effect: () => claimArtifact('farm'), doneText: 'Artifact claimed ✓' },
+      { id: 'farm-food', give: { wood: 2 }, get: { food: 1 }, blurb: 'Firewood for seed stock' },
+    ],
+  },
+  {
+    id: 'warden-sefu', name: 'Sefu the Sunwarden', zone: 'SUNSTONE OASIS', lat: 6, lon: 114,
+    look: { coat: 0xc9a23a, hat: 'circlet', hatColor: 0xffd97a },
+    lines: [
+      'Water is the only coin the desert truly respects.',
+      'Eight cut stones and three gold will prove you can carry the Sunstone Lens.',
+    ],
+    trades: [
+      { id: 'relic-oasis', give: { stone: 8, gold: 3 }, get: {}, blurb: 'Carry the stones to the sun altar — claim the Sunstone Lens', once: true, effect: () => claimArtifact('oasis'), doneText: 'Artifact claimed ✓' },
+      { id: 'oasis-food', give: { gold: 1 }, get: { food: 2 }, blurb: 'Spiced dates and flatbread' },
+    ],
+  },
+  {
+    id: 'warden-elowen', name: 'Elowen the Moss Warden', zone: 'FERNWOOD', lat: 20, lon: 163,
+    look: { coat: 0x3f6b45, hat: 'hood', hatColor: 0x23402a },
+    lines: [
+      'The old wood asks a steep price: twelve timbers and three furs, given freely.',
+      'The Heartwood Knot remembers every hand that took without asking.',
+    ],
+    trades: [
+      { id: 'relic-forest', give: { wood: 12, fur: 3 }, get: {}, blurb: 'Lay twelve timbers and three furs at the root altar — claim the Heartwood Knot', once: true, effect: () => claimArtifact('forest'), doneText: 'Artifact claimed ✓' },
+      { id: 'forest-remedy', give: { fur: 1 }, get: { remedy: 1 }, blurb: 'Moss and resin poultice' },
+    ],
+  },
+  {
+    id: 'warden-neri', name: 'Neri the Tide Warden', zone: 'SHELL COVE', lat: 7, lon: 289,
+    look: { coat: 0x2e8b8b, hat: 'cap', hatColor: 0xf3e9dc },
+    lines: [
+      'The sea gives to those who give back. Six fish and three fleeces will do.',
+      'The Bellkeeper’s Pearl is the tide’s memory. It will teach your boat to read the water.',
+    ],
+    trades: [
+      { id: 'relic-cove', give: { fish: 6, wool: 3 }, get: {}, blurb: 'Make the tide offering — claim the Bellkeeper’s Pearl', once: true, effect: () => claimArtifact('cove'), doneText: 'Artifact claimed ✓' },
+      { id: 'cove-food', give: { fish: 1 }, get: { food: 1 }, blurb: 'Salt fish and sea bread' },
+    ],
+  },
+  {
+    id: 'warden-brann', name: 'Brann the Cinder Warden', zone: 'EMBER HEIGHTS', lat: 10, lon: 331,
+    look: { coat: 0x4a4038, hat: 'hood', hatColor: 0x2a2320 },
+    lines: [
+      'The mountain tests everything. Ten stones, four gold — then the Forge Heart is yours.',
+      'Metal is only patient fire. Bring patience.',
+    ],
+    trades: [
+      { id: 'relic-volcano', give: { stone: 10, gold: 4 }, get: {}, blurb: 'Quench the offering in the forge altar — claim the Ember Heart', once: true, effect: () => claimArtifact('volcano'), doneText: 'Artifact claimed ✓' },
+      { id: 'volcano-gold', give: { stone: 2 }, get: { gold: 1 }, blurb: 'Volcanic glass stock' },
+    ],
+  },
 ];
 for (const n of NPCS) {
   for (const t of n.trades) t.count = 0;
@@ -5602,7 +5873,7 @@ function doTrade(n, t) {
     renderStats();
     return toast('🎒 Pack full — trade cancelled.');
   }
-  if (t.effect) t.effect();
+  const effectMsg = t.effect ? t.effect() : null;
   // Community trait + reputation: a small rebate on every barter
   try {
     if (Research.tradeBonus > 1) {
@@ -5623,7 +5894,7 @@ function doTrade(n, t) {
   burst(player.position.clone(), 0xffd97a, 16, 2);
   chime(660);
   const got = Object.keys(t.get).length ? ` (+${fmtItems(t.get)})` : '';
-  toast(`🤝 ${t.blurb}${got}`);
+  toast(effectMsg || `🤝 ${t.blurb}${got}`);
   renderTradePanel();
   saveCheckpoint(); // persist the barter quietly so progress survives death
   renderStats();
@@ -5985,6 +6256,9 @@ function farmingTier() { return hasTech('thresher') ? 3 : hasTech('seed-drill') 
 function buildingTier() { return hasTech('power-tools') ? 2 : hasTech('saw') ? 1 : 0; }
 function harvestYield() { return 2 + (farmingTier() >= 2 ? 1 : 0) + (farmingTier() >= 3 ? 1 : 0); }
 function buildSpeedMult() { return (1 + (buildingTier() >= 1 ? 0.25 : 0) + (buildingTier() >= 2 ? 0.5 : 0)) * heroPerk().build; }
+function techLevel(t) {
+  return t.minLevel || (t.era >= 4 ? 12 : t.era === 3 ? 8 : t.era === 2 ? 5 : t.era === 1 ? 2 : 1);
+}
 function techAvailable(t) {
   if (hasTech(t.id)) return { ok: false, why: 'Researched ✓' };
   if (Research.queue?.id === t.id) return { ok: false, why: 'On the bench' };
@@ -5992,6 +6266,8 @@ function techAvailable(t) {
   if (Research.queue && Research.queued) return { ok: false, why: 'Bench full' };
   for (const r of t.req) if (!hasTech(r)) return { ok: false, why: `Needs ${TECH.find((x) => x.id === r)?.name || r}` };
   if (!Home.workshop && t.era >= 1 && t.id !== 'workshop') return { ok: false, why: 'Build a workshop first' };
+  const needLv = techLevel(t);
+  if (threatLevel < needLv) return { ok: false, why: `Need level ${needLv}` };
   for (const [k, n] of Object.entries(t.cost)) if ((inv[k] || 0) < n) return { ok: false, why: `Need ${n} ${ITEM_ICON[k] || k}` };
   if (Research.insight < t.insight) return { ok: false, why: `Need ${t.insight} 💡` };
   return { ok: true };
@@ -6069,6 +6345,16 @@ function applyTech(id) {
   pushStory(`Researched ${t.name}. ${t.desc}`, '🔬');
   renderStats(); renderWorkshop();
   saveCheckpoint();
+}
+// Relic rewards bypass the bench: they are knowledge carried out of a guarded
+// place, not something the homestead can simply research.
+function grantTech(id) {
+  if (hasTech(id)) return false;
+  const t = TECH.find((x) => x.id === id);
+  if (!t) return false;
+  Research.unlocked.push(id);
+  applyTech(id);
+  return true;
 }
 function tickResearch(dt) {
   if (!Research.queue) return;
@@ -6849,8 +7135,16 @@ function fireAt(target) {
         // Slings and other first-generation ranged tools barely scratch them.
         dmg = w.tier < 1 ? Math.max(1, Math.round(dmg * 0.18)) : Math.round(dmg * (1 + Math.max(0, w.tier - 1) * 0.12));
         target.fleeT = 0;
-        target.aggro = true;
-        target.aggroAnnounced = false;
+        const info = apexBiomeInfo(target);
+        const playerLeftBiome = !!info.homeBiome && biomeAt(player.position.clone().normalize()) !== info.homeBiome;
+        if (info.outside || playerLeftBiome) {
+          target.aggro = false;
+          target.returning = true;
+          target.discomfort = 0;
+        } else {
+          target.aggro = true;
+          target.aggroAnnounced = false;
+        }
       }
       if (critBuff > 0 && p === 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical shot!'); }
       target.hp -= dmg;
@@ -7085,6 +7379,7 @@ function sleepUntilMorning() {
   }, 1000);
 }
 // --- the overnight engine: every subsystem resolves here at dawn ---
+let overnightNews = [];
 function dawnRoutine(rested) {
   Life.nights++;
   Life.festival = (Life.day % DAYS_PER_SEASON === 0);
@@ -7095,12 +7390,14 @@ function dawnRoutine(rested) {
   rollForecast();
   overnightNeeds(rested);
   overnightAnimals();
+  overnightWildlife();
   overnightCrops();
   overnightSpoilage();
   overnightWorkers();
   overnightFamily(rested);
   overnightStall();
   overnightTech();
+  overnightTravellers();
   ageKids();
   const bedQ = [70, 85, 100, 100, 100][Home.house] ?? 70;
   if (rested) {
@@ -7129,6 +7426,8 @@ function dawnRoutine(rested) {
   else msg += ' — herd ate, fields drank';
   if (ripe > 0) msg += ` · ${ripe} plot${ripe > 1 ? 's' : ''} ripe!`;
   else msg += ' · tomorrow: water + check traps';
+  if (overnightNews.length) msg += ' · ' + overnightNews.join(' · ');
+  overnightNews = [];
   if (Life.forecast) msg += ` — ⚠️ ${DISASTER_ICON[Life.forecast]} tomorrow! Prepare!`;
   toast(msg);
   chime(520);
@@ -7150,6 +7449,8 @@ function saveLife() {
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
     home: { house: Home.house, tent: !!Home.tent, campfire: !!Home.campfire, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, dock: !!Home.dock, raft: !!Home.raft, boat: !!Home.boat, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
+    artifacts: { ...ArtifactState.claimed },
+    lastTravellerDay: Life.lastTravellerDay || 0,
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
   };
@@ -7175,12 +7476,17 @@ function restoreLife(s) {
   Life.wolfRaid = s.wolfRaid || 0;
   Life.fishBook = { ...(s.fishBook || {}) };
   Life.recipes = { ...(s.recipes || {}) };
+  Life.lastTravellerDay = s.lastTravellerDay || 0;
+  ArtifactState.claimed = { ...(s.artifacts || {}) };
+  ArtifactState.count = Object.keys(ArtifactState.claimed).length;
+  if (typeof refreshArtifactVisuals === 'function') refreshArtifactVisuals();
   if (s.rpg) {
     RPG.level = Math.max(1, Math.min(20, s.rpg.level | 0 || 1));
     RPG.xp = Math.max(0, s.rpg.xp || 0);
     RPG.xpNext = s.rpg.xpNext || (35 + (RPG.level - 1) * 28);
     RPG.weapon = Math.max(0, Math.min(3, s.rpg.weapon | 0 || 0));
     RPG.perkChop = s.rpg.perkChop || 1; RPG.perkRun = s.rpg.perkRun || 1; RPG.perkTame = s.rpg.perkTame || 1;
+    threatLevel = RPG.level;
     rpgRefreshMults();
   }
   if (typeof s.packBonus === 'number') packBonus = Math.max(0, Math.min(24, s.packBonus | 0));
@@ -9382,6 +9688,8 @@ function clearAnimals() {
 }
 function overnightAnimals() {
   const winter = seasonNow() === 3;
+  const ready = {};
+  for (const a of animals) if (a.fed && !a.sick) ready[a.kind] = (ready[a.kind] || 0) + 1;
   for (const a of animals) {
     if (!a.fed) { a.sick = true; continue; }
     a.sick = false;
@@ -9390,6 +9698,50 @@ function overnightAnimals() {
     const got = ANIMAL_INFO[a.kind].produce;
     if (!addItem(got, 1)) toast('🎒 Pack full — morning produce left in the barn.');
     a.fed = false;
+  }
+  // A well-fed pair may raise one new animal. The barn cap still applies.
+  const kinds = Object.keys(ANIMAL_INFO).filter((k) => (ready[k] || 0) >= 2 && animals.filter((a) => a.kind === k).length >= 2);
+  if (kinds.length && animals.length < animalCap() && Math.random() < 0.35) {
+    const kind = kinds[(Math.random() * kinds.length) | 0];
+    const baby = spawnAnimal(kind, true);
+    if (baby) {
+      baby.fed = true;
+      overnightNews.push(`🐣 a new ${ANIMAL_INFO[kind].name.toLowerCase()} was born`);
+    }
+  }
+}
+// Wild populations replenish overnight: prey is born, and dead predators
+// return to their territories. Hunting stays viable without emptying the map.
+const PREY_CAP = { deer: 6, hare: 8, boar: 4 };
+const PREY_BIOMES = { deer: ['forest', 'farm'], hare: ['farm', 'forest'], boar: ['forest'] };
+function overnightWildlife() {
+  const born = {};
+  for (const kind of Object.keys(PREY_CAP)) {
+    const alive = Prey.filter((p) => p.kind === kind && !p.dead).length;
+    const count = Math.min(2, PREY_CAP[kind] - alive);
+    for (let i = 0; i < count; i++) {
+      const spot = randomLandSpot(PREY_BIOMES[kind], -18, 55, 0.2);
+      if (!spot) continue;
+      spawnPrey(kind, spot[0], spot[1]);
+      born[kind] = (born[kind] || 0) + 1;
+    }
+  }
+  const preyPlural = { deer: 'deer', hare: 'hares', boar: 'boars' };
+  const preyLine = Object.entries(born).map(([k, n]) => `${n} ${preyPlural[k] || PREY_INFO[k].name.toLowerCase()}`).join(', ');
+  if (preyLine) overnightNews.push(`🦌 ${preyLine} returned`);
+  let restored = 0;
+  for (const e of ambientWanderers) {
+    if (!e.dead || !e.hunt?.apex) continue;
+    if (e.respawnTimer) { clearTimeout(e.respawnTimer); e.respawnTimer = null; }
+    reviveAmbient(e);
+    restored++;
+  }
+  if (restored) overnightNews.push(`🐾 ${restored} predator${restored === 1 ? '' : 's'} returned`);
+  const aliveBears = bears.filter((b) => !b.dead).length;
+  if (aliveBears < 3 && bears.length < 5 && Math.random() < 0.45) {
+    const nb = spawnBear(rand(54, 62), rand(100, 140), rand(0.95, 1.1), false, scene);
+    registerBearInteract(nb);
+    overnightNews.push('🐻‍❄️ a young polar bear wandered in from the floes');
   }
 }
 tickers.push((t, dt) => {
@@ -9559,6 +9911,7 @@ function lanternWard(pos) {
   return false;
 }
 function spawnWolves(n) {
+  n += Math.max(0, Math.floor((threatLevel - 1) / 4));
   const c = homeSpot(HOME.lat, HOME.lon, 0);
   const up = c.clone().normalize();
   const u = V3(-up.z, 0, up.x).normalize(), v = new THREE.Vector3().crossVectors(up, u).normalize();
@@ -9567,7 +9920,8 @@ function spawnWolves(n) {
     const p = c.clone().addScaledVector(u, Math.cos(a) * rand(10, 13)).addScaledVector(v, Math.sin(a) * rand(10, 13)).normalize();
     const m = makeWolf();
     const pos = p.clone().multiplyScalar(R + heightFor(p) + 0.1);
-    const w = { mesh: m, pos, facing: u.clone(), hp: 30, atkCd: 0, phase: rand(6), state: 'stalk' };
+    const hp = Math.round(30 * threatScale());
+    const w = { mesh: m, pos, facing: u.clone(), hp, maxHp: hp, atkCd: 0, phase: rand(6), state: 'stalk' };
     m.position.copy(pos);
     scene.add(m);
     wolves.push(w);
@@ -9577,6 +9931,7 @@ function spawnWolves(n) {
   }
   toast('🐺 Wolves stalk your herd! (axe, lanterns, dog, fences)');
   chime(140);
+  sfxWolfHowl();
 }
 function nearestAnimal(pos) {
   let best = null, bd = 1e9;
@@ -9598,7 +9953,7 @@ function attackWolf(w) {
     wearWeapon(Loadout.melee, 0.5);
     burst(w.mesh.position.clone(), 0xffd97a, 12, 2);
     spawnPopup(w.mesh.position.clone(), `-${dmg}`, '#ffffff');
-    chime(300);
+    chime(300); sfxHit();
     toast(`🪓 You strike the wolf for ${dmg}!`);
     if (w.hp <= 0) killWolf(w);
     renderStats();
@@ -9701,7 +10056,7 @@ function updateWolves(t, dt) {
         if (w.windup <= 0) {
           w.atkCd = 1.5;
           if (w.huntsPlayer && !playerDead && w.pos.distanceTo(player.position) < 2.6) {
-            damagePlayer(Math.round(6 + Math.random() * 5), w.mesh.position);
+            damagePlayer(Math.round((6 + Math.random() * 5) * threatScale()), w.mesh.position);
             toast('🐺 The wolf snaps at you! Tap it to fight back — or dodge (Q)!');
           }
         }
@@ -9766,7 +10121,7 @@ function spawnRobber(kind = 'thief') {
   const name = wanted.name;
   const r = {
     name, kindTag: 'robber', wanted: wanted.name, wantedReward: wanted.reward, mesh: m, pos, facing: V3(-up.z, 0, up.x).normalize(),
-    hp: 45, maxHp: 45, state: 'approach', t: 0, demanded: false,
+    hp: Math.round(45 * threatScale()), maxHp: Math.round(45 * threatScale()), state: 'approach', t: 0, demanded: false,
     demandText: kind === 'rustler' ? '“Your herd looks heavy. I’ll lighten it.”' : '“Coin or cargo. Your choice.”',
   };
   const it = {
@@ -9782,6 +10137,162 @@ function spawnRobber(kind = 'thief') {
   pushStory(`${name} came in the night.`, '⚠️');
   return r;
 }
+// --- late-game travellers: a knock at the edge of the homestead ---
+const Travellers = [];
+let travellerSeq = 0;
+const TRAVELLER_TYPES = [
+  { id: 'peddler', title: 'A road-worn peddler', line: '“Fine walking weather. Care to see what I carry?”', look: { coat: 0x9a6b42, hat: 'cap', hatColor: 0x6b4a2f } },
+  { id: 'pilgrim', title: 'A quiet pilgrim', line: '“I walked a long way to see a small green world.”', look: { coat: 0x6a5a8a, hat: 'hood', hatColor: 0x3a3050 } },
+  { id: 'refugee', title: 'A tired family', line: '“We heard there was food here. We can work.”', look: { coat: 0x8a7a5a, hat: 'cap', hatColor: 0x5a4a32 } },
+  { id: 'scout', title: 'A sharp-eyed scout', line: '“I map old places. Some of them are still guarded.”', look: { coat: 0x4a6b6a, hat: 'fur', hatColor: 0x2f4a48 } },
+  { id: 'con-artist', title: 'A smiling stranger', line: '“A little luck for a little coin, friend?”', look: { coat: 0x8a3a4a, hat: 'cap', hatColor: 0x5a2530 } },
+  { id: 'deserter', title: 'A nervous deserter', line: '“Don’t shout. I just need a place to breathe.”', look: { coat: 0x4a5a4a, hat: 'hood', hatColor: 0x2a352a } },
+];
+function spawnTraveller() {
+  if (playerDead || Travellers.length) return null;
+  const type = TRAVELLER_TYPES[(Math.random() * TRAVELLER_TYPES.length) | 0];
+  const m = makeVillager(type.look);
+  const home = homeSpot(HOME.lat, HOME.lon, 0);
+  const up = home.clone().normalize();
+  const u = V3(-up.z, 0, up.x).normalize();
+  const p = home.clone().addScaledVector(u, rand(10, 14)).normalize();
+  const pos = p.clone().multiplyScalar(R + heightFor(p) + 0.08);
+  m.position.copy(pos);
+  m.add(mesh(new THREE.BoxGeometry(0.32, 0.4, 0.18), mat(0x6b4a2f), 0, 1.1, -0.3, false)); // travel pack
+  scene.add(m);
+  const t = {
+    id: 'traveller' + (++travellerSeq), kind: type.id, title: type.title, line: type.line,
+    mesh: m, pos, facing: V3(-up.z, 0, up.x).normalize(), life: 120, resolved: false,
+  };
+  const it = {
+    id: 'traveller' + t.id, pos: pos.clone(), traveller: t, radius: 4.4, kind: '🧭 TRAVELLER',
+    label: () => 'Approach the traveller', onUse: () => openTravellerDialog(t),
+  };
+  t.interact = it;
+  addInteract(it);
+  Travellers.push(t);
+  toast('🧭 A traveller has arrived at the edge of your land…');
+  chime(540);
+  sfxTraveller();
+  return t;
+}
+function openTravellerDialog(t) {
+  if (!t) return;
+  openRobberDialog({ traveller: t, name: t.title, demandText: t.line, hp: 1, maxHp: 1 });
+}
+function removeTraveller(t) {
+  const ix = Travellers.indexOf(t);
+  if (ix >= 0) Travellers.splice(ix, 1);
+  if (t.mesh) scene.remove(t.mesh);
+  if (t.interact) { const jx = interactables.indexOf(t.interact); if (jx >= 0) interactables.splice(jx, 1); }
+  closeRobber();
+}
+function resolveTraveller(t, choice) {
+  if (!t || t.resolved) return;
+  t.resolved = true;
+  removeTraveller(t);
+  const kind = t.kind;
+  if (choice === 'leave') {
+    toast(`🧭 ${t.title} nods and walks on.`);
+    saveCheckpoint();
+    return;
+  }
+  if (kind === 'peddler') {
+    if (choice === 'welcome') {
+      addItem('food', 3); addItem('remedy', 1);
+      grantInsight(2, 'A peddler’s road-news');
+      toast('🧳 The peddler shares food, herbs and a map of safe paths. (+3🍎 +1🌿)');
+    } else {
+      addItem('food', 1);
+      toast('🧳 The peddler trades one good meal for a place by the fire. (+1🍎)');
+    }
+    pushStory('Shared a fire with a road-worn peddler.', '🧳');
+  } else if (kind === 'pilgrim') {
+    grantInsight(choice === 'welcome' ? 4 : 2, 'A pilgrim’s blessing');
+    meters.morale = Math.min(100, (meters.morale || 80) + (choice === 'welcome' ? 15 : 6));
+    toast('🕯️ The pilgrim leaves a quiet blessing. (+insight, +morale)');
+    pushStory('A pilgrim blessed the homestead and walked on.', '🕯️');
+  } else if (kind === 'refugee') {
+    if (choice === 'welcome' && inv.food >= 2) {
+      inv.food -= 2;
+      addRep('kind', 1);
+      addItem('remedy', 1);
+      grantInsight(3, 'A family’s gratitude');
+      toast('🍲 The family eats, rests, and leaves a herbal charm. (+1🌿, +reputation)');
+      pushStory('Fed a tired family at the homestead.', '🍲');
+    } else {
+      meters.morale = Math.min(100, (meters.morale || 80) + 5);
+      grantInsight(1, 'A hard road');
+      toast('🥣 They share what little they have and move on. (+morale)');
+    }
+  } else if (kind === 'scout') {
+    const target = ARTIFACTS.find((a) => !ArtifactState.claimed[a.id]);
+    grantInsight(choice === 'welcome' ? 4 : 2, 'A scout’s map');
+    if (target) toast(`🗺️ The scout marks the ${target.name} in ${target.biome} — ${target.taskHint}.`);
+    else toast('🗺️ The scout studies your map and admits you have found more than they have.');
+    pushStory('Traded news with a sharp-eyed scout.', '🗺️');
+  } else if (kind === 'con-artist') {
+    const guarded = !!Home.dog || (Threats.reputation || 0) >= 4 || threatLevel >= 5;
+    if (choice === 'welcome') {
+      if (guarded) {
+        inv.gold += 2;
+        grantInsight(2, 'A con caught out');
+        toast('🐕 Your welcome is too sharp — the stranger drops 2🪙 and flees!');
+      } else {
+        if (inv.gold >= 3) inv.gold -= 3; else if (inv.food >= 3) inv.food -= 3;
+        meters.morale = Math.max(0, (meters.morale || 80) - 10);
+        toast('🎭 The stranger’s smile curdles — they vanish with your coin. (−3🪙)');
+        pushStory('A smiling stranger robbed the homestead.', '🎭');
+      }
+    } else {
+      if (guarded || Math.random() < 0.5) {
+        grantInsight(2, 'A con caught out');
+        toast('🎭 You see through the stranger. They laugh and disappear empty-handed.');
+      } else {
+        if (inv.gold >= 1) inv.gold -= 1;
+        toast('🎭 A quick hand dips into your purse. (−1🪙)');
+      }
+    }
+  } else if (kind === 'deserter') {
+    if (choice === 'welcome') {
+      Ammo.arrows = (Ammo.arrows || 0) + 4;
+      Ammo.javelins = (Ammo.javelins || 0) + 2;
+      grantInsight(2, 'A deserter’s warning');
+      toast('🏹 The deserter leaves arrows, two javelins and a warning about the big cats. (+4 arrows, +2 javelins)');
+      pushStory('Sheltered a nervous deserter for a night.', '🏹');
+    } else {
+      addItem('remedy', 1);
+      grantInsight(1, 'A deserter’s warning');
+      toast('🌿 They trade a field poultice for directions and slip away. (+1🌿)');
+    }
+  }
+  saveCheckpoint();
+  renderStats();
+}
+function overnightTravellers() {
+  if (Life.day < 6 || Travellers.length) return;
+  if (Life.day - (Life.lastTravellerDay || 0) < 3) return;
+  if (Math.random() < 0.35) {
+    Life.lastTravellerDay = Life.day;
+    if (spawnTraveller()) overnightNews.push('🧭 a traveller waits at the edge of your land');
+  }
+}
+tickers.push((t, dt) => {
+  for (let i = Travellers.length - 1; i >= 0; i--) {
+    const tr = Travellers[i];
+    tr.life -= dt;
+    const v = tr.mesh.userData.villager;
+    const n = tr.pos.clone().normalize();
+    tr.mesh.position.copy(n).multiplyScalar(R + heightFor(n) + 0.05 + Math.sin(t * 1.8 + (v?.phase || 0)) * 0.04);
+    if (v) v.arm.rotation.z = -0.2 + Math.sin(t * (1.6 + (v.phase || 0))) * 0.35;
+    if (tr.interact) tr.interact.pos.copy(tr.mesh.position);
+    if (tr.life <= 0) {
+      removeTraveller(tr);
+      toast('🧭 The traveller moves on before dusk.');
+    }
+  }
+});
+
 const WANTED = [
   { name: 'Red Mara', kind: 'thief', reward: 8 },
   { name: 'Crow Finn', kind: 'toll', reward: 8 },
@@ -10024,7 +10535,7 @@ tickers.push((t, dt) => {
   robberSpawnT = 0;
   // a known/trusted neighbour is a less tempting target
   const repShield = Math.min(0.08, (Threats.reputation || 0) * 0.008);
-  const chance = 0.16 + (Life.gen - 1) * 0.04 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield - (Home.scarecrow ? 0.05 : 0) - Math.min(0.06, (Threats.feared || 0) * 0.005);
+  const chance = 0.16 + (Life.gen - 1) * 0.04 + (threatLevel - 1) * 0.004 + (settings.difficulty === 'frontier' ? 0.12 : settings.difficulty === 'cozy' ? -0.08 : 0) - repShield - (Home.scarecrow ? 0.05 : 0) - Math.min(0.06, (Threats.feared || 0) * 0.005);
   if (!Threats.robbers.length && Math.random() < chance) spawnRobber(['thief', 'toll', 'rustler'][(Math.random() * 3) | 0]);
 });
 
@@ -10079,7 +10590,7 @@ function attackPrey(p) {
     p.hp -= dmg;
     wearWeapon(Loadout.melee, 0.4);
     spawnPopup(p.mesh.position.clone(), `-${dmg}`, '#ffd97a');
-    chime(300);
+    chime(300); sfxHit();
     if (p.hp <= 0) killPrey(p);
     else {
       // wounded: it bolts, then tires — follow the blood trail to finish the hunt
@@ -10290,6 +10801,33 @@ function attachAmbientHunt(entry) {
   addInteract(it);
   entry.interact = interactables[interactables.length - 1];
 }
+// Apex predators belong to a biome. Outside it they lose their stride and
+// their bite, refuse to start a new hunt, and head home instead of following
+// the traveler across the planet.
+function apexBiomeInfo(entry) {
+  const h = entry?.hunt || {};
+  const homeBiome = h.biome || entry?.homeBiome || (entry?.home ? biomeAt(entry.home) : null);
+  const n = entry?.mesh ? entry.mesh.position.clone().normalize() : null;
+  const inBiome = !homeBiome || !n ? true : biomeAt(n) === homeBiome;
+  const homeDist = entry?.home && n ? entry.home.angleTo(n) * R : 0;
+  const range = h.range || 18;
+  return {
+    homeBiome,
+    inBiome,
+    homeDist,
+    range,
+    outside: !!homeBiome && (!inBiome || homeDist > range),
+  };
+}
+function apexPlaceName(biome) {
+  return BIOME_META[biome]?.name || 'its home ground';
+}
+function apexComfortWarning(entry) {
+  if (entry.comfortAnnounced) return;
+  entry.comfortAnnounced = true;
+  const h = entry.hunt || {};
+  toast(`${h.icon || '⚠️'} The ${h.name || 'predator'} belongs to ${apexPlaceName(h.biome || entry.homeBiome)} — it turns back.`);
+}
 // Apex predators do not wait to be attacked: they pick up the traveler within
 // sight range, close the distance, and strike. With a first-generation axe the
 // best option is to run; javelins, bows and firearms are the real answer.
@@ -10298,15 +10836,30 @@ function updateApexPredator(entry, t, dt, river = false) {
   if (!h || !h.apex || entry.dead) return false;
   const mesh = entry.mesh;
   const n = mesh.position.clone().normalize();
+  const biomeInfo = apexBiomeInfo(entry);
+  const outside = biomeInfo.outside;
+  const playerLeftBiome = !!biomeInfo.homeBiome && biomeAt(player.position.clone().normalize()) !== biomeInfo.homeBiome;
+  // Out of their element, apex predators lose their stride and their bite.
+  const speedMult = outside ? (h.offBiomeSpeed ?? 0.45) : 1;
+  const damageMult = outside ? (h.offBiomeDamage ?? 0.4) : 1;
+  const resolve = h.resolve || 0.95;
+  entry.discomfort = Math.max(0, (entry.discomfort || 0) + ((outside || (entry.aggro && playerLeftBiome)) ? dt : -dt * 2.5));
   entry.attackCd = Math.max(0, (entry.attackCd || 0) - dt);
   const sight = h.sight || 12;
   const dPlayer = mesh.position.distanceTo(player.position);
   if (!playerDead && (dPlayer < sight || entry.aggro)) {
-    if (entry.aggro && dPlayer > sight * 2.4) {
-      // The traveler got away; go home instead of snapping back to the path.
+    if (entry.aggro && (dPlayer > sight * 2.4 || playerLeftBiome || entry.discomfort > resolve)) {
+      // The traveler escaped the biome, or the predator has been uncomfortable
+      // long enough: give up the chase and head home.
+      const discomfortGiveUp = outside || playerLeftBiome || entry.discomfort > resolve;
       entry.aggro = false;
       entry.aggroAnnounced = false;
       entry.hitAnnounced = false;
+      entry.returning = true;
+      entry.discomfort = 0;
+      if (discomfortGiveUp) apexComfortWarning(entry);
+    } else if (!entry.aggro && (outside || playerLeftBiome)) {
+      // Do not start a new hunt outside the predator's home biome.
       entry.returning = true;
     } else {
       entry.aggro = true;
@@ -10315,6 +10868,7 @@ function updateApexPredator(entry, t, dt, river = false) {
         entry.aggroAnnounced = true;
         toast(h.warning || `${h.icon || '⚠️'} The ${h.name} has caught your scent — run!`);
         chime(160);
+        if (h.name === 'Crocodile' || h.name === 'Hippo') sfxCroc(); else sfxRoar(h.name);
       }
       const toP = player.position.clone().sub(mesh.position);
       const flat = toP.clone();
@@ -10322,7 +10876,7 @@ function updateApexPredator(entry, t, dt, river = false) {
       if (mesh.position.distanceTo(player.position) > (h.attackRange || 2.6)) {
         if (flat.lengthSq() > 1e-6) {
           const dir = flat.normalize();
-          const step = Math.min(dPlayer, (h.speed || 3.5) * dt);
+          const step = Math.min(dPlayer, (h.speed || 3.5) * speedMult * dt);
           const ax = new THREE.Vector3().crossVectors(n, dir).normalize();
           mesh.position.applyAxisAngle(ax, step / R);
           const nn = mesh.position.clone().normalize();
@@ -10331,8 +10885,8 @@ function updateApexPredator(entry, t, dt, river = false) {
           faceAlong(mesh, mesh.position, dir);
         }
       } else if (entry.attackCd <= 0) {
-        entry.attackCd = h.attackCd || 1.4;
-        damagePlayer(h.damage || 18, mesh.position.clone(), `the ${h.name}`);
+        entry.attackCd = (h.attackCd || 1.4) * (outside ? 1.6 : 1);
+        damagePlayer(Math.max(1, Math.round((h.damage || 18) * damageMult * threatScale())), mesh.position.clone(), `the ${h.name}`);
         burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 0.9), 0xe03131, 10, 1.8);
         chime(150);
         if (!entry.hitAnnounced) {
@@ -10341,7 +10895,7 @@ function updateApexPredator(entry, t, dt, river = false) {
         }
       }
       if (entry.interact) entry.interact.pos.copy(mesh.position);
-      animateAnimal(mesh, t, 1, dt);
+      animateAnimal(mesh, t, outside ? 0.55 : 1, dt);
       return true;
     }
   }
@@ -10354,7 +10908,8 @@ function updateApexPredator(entry, t, dt, river = false) {
       if (flat.lengthSq() > 1e-6) {
         const dir = flat.normalize();
         const ax = new THREE.Vector3().crossVectors(n, dir).normalize();
-        mesh.position.applyAxisAngle(ax, Math.min(mesh.position.distanceTo(homePos), 1.8 * dt) / R);
+        const returnSpeed = outside ? 1.2 : 1.8;
+        mesh.position.applyAxisAngle(ax, Math.min(mesh.position.distanceTo(homePos), returnSpeed * dt) / R);
         const nn = mesh.position.clone().normalize();
         const ground = river ? Math.max(0.12, heightFor(nn)) : heightFor(nn);
         mesh.position.copy(nn.clone().multiplyScalar(R + ground + 0.05));
@@ -10365,6 +10920,8 @@ function updateApexPredator(entry, t, dt, river = false) {
       }
     }
     entry.returning = false;
+    entry.discomfort = 0;
+    entry.comfortAnnounced = false;
   }
   return false;
 }
@@ -10386,15 +10943,25 @@ function huntAmbient(entry) {
     entry.hitFlash = 1;
     wearWeapon(Loadout.melee, 0.3);
     spawnPopup(entry.mesh.position.clone(), `-${dmg}`, '#ffd97a');
-    chime(300);
+    chime(300); sfxHit();
     if (entry.hp <= 0) killAmbient(entry);
     else if (h.apex) {
       entry.fleeT = 0;
-      entry.aggro = true;
-      entry.returning = false;
-      entry.aggroAnnounced = true;
-      entry.attackCd = Math.min(entry.attackCd || 0.4, 0.45);
-      toast(`🪓 Your axe barely bites the ${h.name} — it turns on you! Run!`);
+      const info = apexBiomeInfo(entry);
+      const playerLeftBiome = !!info.homeBiome && biomeAt(player.position.clone().normalize()) !== info.homeBiome;
+      if (info.outside || playerLeftBiome) {
+        entry.aggro = false;
+        entry.returning = true;
+        entry.discomfort = 0;
+        entry.comfortAnnounced = true;
+        toast(`🪓 The ${h.name} is too uncomfortable to fight here — it retreats toward its territory.`);
+      } else {
+        entry.aggro = true;
+        entry.returning = false;
+        entry.aggroAnnounced = true;
+        entry.attackCd = Math.min(entry.attackCd || 0.4, 0.45);
+        toast(`🪓 Your axe barely bites the ${h.name} — it turns on you! Run!`);
+      }
     } else {
       entry.fleeT = 6;
       toast(`🩸 The ${h.name} bolts — follow and finish the hunt.`);
@@ -10424,21 +10991,33 @@ function killAmbient(entry) {
   toast(`🍖 ${h.icon || '🐾'} ${h.name || 'Game'} hunted! (+${meatN}🍖${h.fur ? `, +${h.fur} fur` : ''}${h.pelt ? `, +${h.pelt} wool` : ''})`);
   if (onGainXp) onGainXp(h.apex ? 35 : 16, entry.mesh.position.clone());
   grantInsight(h.apex ? 3 : 1, `Hunted a ${h.name || 'creature'}`);
+  if (entry.artifactGuardian) {
+    const msg = claimArtifact(entry.artifactGuardian);
+    if (msg) toast(msg);
+  }
   saveCheckpoint();
   renderStats();
-  setTimeout(() => {
+  entry.respawnTimer = setTimeout(() => {
     if (!entry.dead) return;
-    entry.dead = false;
-    entry.hp = entry.maxHp || entry.hp;
-    entry.fleeT = 0;
-    entry.aggro = false;
-    entry.returning = false;
-    entry.aggroAnnounced = false;
-    entry.hitAnnounced = false;
-    entry.attackCd = 0;
-    (entry.parent || scene).add(entry.mesh);
-    attachAmbientHunt(entry);
+    reviveAmbient(entry);
   }, 75000);
+}
+function reviveAmbient(entry) {
+  if (!entry) return;
+  entry.dead = false;
+  entry.maxHp = Math.round((entry.baseMaxHp || entry.maxHp || 20) * threatScale());
+  entry.hp = entry.maxHp;
+  entry.fleeT = 0;
+  entry.aggro = false;
+  entry.returning = false;
+  entry.aggroAnnounced = false;
+  entry.hitAnnounced = false;
+  entry.attackCd = 0;
+  entry.discomfort = 0;
+  entry.comfortAnnounced = false;
+  entry.respawnTimer = null;
+  (entry.parent || scene).add(entry.mesh);
+  attachAmbientHunt(entry);
 }
 function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase = rand(Math.PI * 2), hunt = null) {
   const home = latLonToVec3(lat, lon, 0).normalize();
@@ -10449,7 +11028,9 @@ function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase
   const start = home.clone().multiplyScalar(R + heightFor(home) + 0.06);
   meshObj.position.copy(start);
   scene.add(meshObj);
-  const entry = { mesh: meshObj, home, radius, speed, phase, dead: false, hp: hunt?.hp || 20, maxHp: hunt?.hp || 20, hunt, kindTag: 'ambient', fleeT: 0 };
+  const homeBiome = hunt ? (hunt.biome || biomeAt(home)) : null;
+  if (hunt) hunt.biome = hunt.biome || homeBiome;
+  const entry = { mesh: meshObj, home, homeBiome, radius, speed, phase, dead: false, hp: hunt?.hp || 20, maxHp: hunt?.hp || 20, baseMaxHp: hunt?.hp || 20, hunt, kindTag: 'ambient', fleeT: 0, returning: false, discomfort: 0, comfortAnnounced: false, respawnTimer: null };
   ambientWanderers.push(entry);
   if (hunt) attachAmbientHunt(entry);
   let prev = start.clone();
@@ -10557,7 +11138,9 @@ function addRiverWanderer(meshObj, lat, lon, radius = 2.2, speed = 0.14, phase =
   const north = new THREE.Vector3().crossVectors(home, east).normalize();
   meshObj.position.copy(home).multiplyScalar(R + 0.14);
   scene.add(meshObj);
-  const entry = { mesh: meshObj, home, radius, speed, phase, dead: false, hp: hunt?.hp || 20, maxHp: hunt?.hp || 20, hunt, kindTag: 'river', fleeT: 0 };
+  const homeBiome = hunt ? (hunt.biome || biomeAt(home)) : null;
+  if (hunt) hunt.biome = hunt.biome || homeBiome;
+  const entry = { mesh: meshObj, home, homeBiome, radius, speed, phase, dead: false, hp: hunt?.hp || 20, maxHp: hunt?.hp || 20, baseMaxHp: hunt?.hp || 20, hunt, kindTag: 'river', fleeT: 0, returning: false, discomfort: 0, comfortAnnounced: false, respawnTimer: null };
   ambientWanderers.push(entry);
   if (hunt) attachAmbientHunt(entry);
   let prev = meshObj.position.clone();
@@ -10609,29 +11192,30 @@ function addRiverFish(lat, lon, color, phase) {
 }
 const riverFishCols = [0x7ad9ff, 0x9fe4ff, 0x6ac7a8, 0xffd97a, 0xff9a8a];
 for (let i = 0; i < 9; i++) addRiverFish(rand(-56, -28), rand(96.2, 100.8), riverFishCols[i % riverFishCols.length], rand(Math.PI * 2));
-addRiverWanderer(makeCrocodile(1.0), -32, 97.2, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 120, meat: 4, pelt: 1, apex: true, sight: 11, speed: 6.8, damage: 20, attackRange: 2.8, attackCd: 1.35, warning: '🐊 A crocodile surges out of the shallows — run!' });
-addRiverWanderer(makeCrocodile(0.85), -54, 99.5, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 100, meat: 3, pelt: 1, apex: true, sight: 10, speed: 6.6, damage: 18, attackRange: 2.6, attackCd: 1.4, warning: '🐊 The crocodile has you in its sight — run!' });
-addRiverWanderer(makeHippo(1.0), -42, 98.2, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 220, meat: 6, apex: true, sight: 12, speed: 6.5, damage: 28, attackRange: 3.1, attackCd: 1.6, warning: '🦛 The hippo charges — get out of the water!' });
-addRiverWanderer(makeHippo(0.9), -48, 99.6, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 190, meat: 5, apex: true, sight: 11, speed: 6.3, damage: 25, attackRange: 3.0, attackCd: 1.7, warning: '🦛 A hippo is coming for you — run!' });
+const crocGuardian = addRiverWanderer(makeCrocodile(1.0), -32, 97.2, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 120, meat: 4, pelt: 1, apex: true, biome: 'river', range: 10, resolve: 0.8, offBiomeSpeed: 0.35, offBiomeDamage: 0.25, sight: 11, speed: 6.8, damage: 20, attackRange: 2.8, attackCd: 1.35, warning: '🐊 A crocodile surges out of the shallows — run!' });
+addRiverWanderer(makeCrocodile(0.85), -54, 99.5, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 100, meat: 3, pelt: 1, apex: true, biome: 'river', range: 10, resolve: 0.8, offBiomeSpeed: 0.35, offBiomeDamage: 0.25, sight: 10, speed: 6.6, damage: 18, attackRange: 2.6, attackCd: 1.4, warning: '🐊 The crocodile has you in its sight — run!' });
+addRiverWanderer(makeHippo(1.0), -42, 98.2, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 220, meat: 6, apex: true, biome: 'river', range: 11, resolve: 0.9, offBiomeSpeed: 0.45, offBiomeDamage: 0.35, sight: 12, speed: 6.5, damage: 28, attackRange: 3.1, attackCd: 1.6, warning: '🦛 The hippo charges — get out of the water!' });
+addRiverWanderer(makeHippo(0.9), -48, 99.6, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 190, meat: 5, apex: true, biome: 'river', range: 11, resolve: 0.9, offBiomeSpeed: 0.45, offBiomeDamage: 0.35, sight: 11, speed: 6.3, damage: 25, attackRange: 3.0, attackCd: 1.7, warning: '🦛 A hippo is coming for you — run!' });
 // Savannah and mangrove wildlife
 const southHunts = {
-  lion: { name: 'Lion', icon: '🦁', hp: 140, meat: 5, fur: 1, apex: true, sight: 15, speed: 7.0, damage: 23, attackRange: 2.9, attackCd: 1.3, warning: '🦁 The lion has caught your scent — run!' },
+  lion: { name: 'Lion', icon: '🦁', hp: 140, meat: 5, fur: 1, apex: true, biome: 'savannah', range: 26, resolve: 1.1, offBiomeSpeed: 0.55, offBiomeDamage: 0.4, sight: 15, speed: 7.0, damage: 23, attackRange: 2.9, attackCd: 1.3, warning: '🦁 The lion has caught your scent — run!' },
   impala: { name: 'Impala', icon: '🦌', hp: 40, meat: 2, pelt: 1 },
   wildebeest: { name: 'Wildebeest', icon: '🐃', hp: 75, meat: 4, pelt: 1 },
   giraffe: { name: 'Giraffe', icon: '🦒', hp: 90, meat: 5 },
   rhino: { name: 'Rhino', icon: '🦏', hp: 150, meat: 6 },
   elephant: { name: 'Elephant', icon: '🐘', hp: 180, meat: 7 },
-  tiger: { name: 'Tiger', icon: '🐅', hp: 150, meat: 5, fur: 1, apex: true, sight: 14, speed: 7.2, damage: 25, attackRange: 2.7, attackCd: 1.2, warning: '🐅 The tiger is stalking you — run!' },
+  tiger: { name: 'Tiger', icon: '🐅', hp: 150, meat: 5, fur: 1, apex: true, biome: 'mangrove', range: 24, resolve: 1.1, offBiomeSpeed: 0.55, offBiomeDamage: 0.4, sight: 14, speed: 7.2, damage: 25, attackRange: 2.7, attackCd: 1.2, warning: '🐅 The tiger is stalking you — run!' },
   deer: { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 },
   monkey: { name: 'Monkey', icon: '🐒', hp: 30, meat: 1 },
 };
-for (const [la, lo, ph] of [[-34, 36, 0.4], [-47, 56, 3.1]]) addAmbientWanderer(makeLion(1.05), la, lo, 3.4, 0.1, ph, southHunts.lion);
+const lionGuardian = addAmbientWanderer(makeLion(1.05), -34, 36, 3.4, 0.1, 0.4, southHunts.lion);
+addAmbientWanderer(makeLion(1.05), -47, 56, 3.4, 0.1, 3.1, southHunts.lion);
 for (const [la, lo, ph] of [[-31, 61, 0.8], [-34, 67, 2.4], [-38, 63, 4.9], [-41, 71, 1.7]]) addAmbientWanderer(makeImpala(1), la, lo, 2.8, 0.22, ph, southHunts.impala);
 for (const [la, lo, ph] of [[-42, 42, 1.2], [-45, 47, 3.6], [-48, 51, 5.2]]) addAmbientWanderer(makeWildebeest(1), la, lo, 3.0, 0.12, ph, southHunts.wildebeest);
 for (const [la, lo, ph] of [[-33, 76, 0.6], [-37, 81, 3.9]]) addAmbientWanderer(makeGiraffe(1), la, lo, 3.2, 0.09, ph, southHunts.giraffe);
 addAmbientWanderer(makeRhino(1.05), -52, 33, 3.0, 0.08, 1.5, southHunts.rhino);
 for (const [la, lo, ph] of [[-56, 60, 2.2], [-51, 72, 5.1]]) addAmbientWanderer(makeElephant(1.05), la, lo, 3.4, 0.07, ph, southHunts.elephant);
-addAmbientWanderer(makeTiger(1.05), -35, 128, 3.0, 0.12, 2.8, southHunts.tiger);
+const tigerGuardian = addAmbientWanderer(makeTiger(1.05), -35, 128, 3.0, 0.12, 2.8, southHunts.tiger);
 for (const [la, lo, ph] of [[-38, 141, 0.9], [-43, 151, 3.3], [-46, 136, 5.7]]) addAmbientWanderer(makeDeer(), la, lo, 2.7, 0.14, ph, southHunts.deer);
 for (const [la, lo, ph] of [[-31, 116, 0.2], [-34, 123, 2.8]]) addAmbientWanderer(makeMonkey(1), la, lo, 2.0, 0.28, ph, southHunts.monkey);
 
@@ -10712,6 +11296,353 @@ addFishSchool(-28, 302, 5, 2.1, 2.5);
 addFishSchool(-2, 216, 5, 1.9, 1.3);
 addFishSchool(5, 245, 6, 2.3, 3.8);
 addFishSchool(-9, 235, 4, 1.7, 5.4);
+
+// --- sea life: sharks, dolphins, whales and orcas ---
+function makeShark(scale = 1) {
+  const g = new THREE.Group();
+  const hide = mat(0x53656d, { roughness: 0.72 });
+  const belly = mat(0xe6edf0, { roughness: 0.85 });
+  const finM = mat(0x43545c);
+  const body = new THREE.Group(); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.58, 14, 10), hide, 0, 0, 0);
+  torso.scale.set(0.95, 0.7, 2.0); body.add(torso);
+  const under = mesh(new THREE.SphereGeometry(0.45, 12, 8), belly, 0, -0.2, 0.1, false);
+  under.scale.set(0.9, 0.45, 1.5); body.add(under);
+  const snout = mesh(new THREE.ConeGeometry(0.34, 0.9, 8), hide, 0, -0.02, 1.25);
+  snout.rotation.x = Math.PI / 2; body.add(snout);
+  const mouth = mesh(new THREE.BoxGeometry(0.36, 0.08, 0.55), mat(0x2a2020), 0, -0.2, 1.1, false);
+  body.add(mouth);
+  const dorsal = mesh(new THREE.ConeGeometry(0.32, 0.9, 3), finM, 0, 0.72, -0.08, false);
+  dorsal.scale.set(0.35, 1, 1.2); body.add(dorsal);
+  const fins = [];
+  for (const sx of [-1, 1]) {
+    const fin = mesh(new THREE.ConeGeometry(0.28, 0.9, 3), finM, sx * 0.62, -0.12, 0.3, false);
+    fin.rotation.z = sx * 1.15; fin.rotation.x = 0.2; fin.scale.set(0.35, 1, 0.8);
+    body.add(fin); fins.push(fin);
+    body.add(mesh(new THREE.SphereGeometry(0.055, 7, 6), mat(0x120f0f), sx * 0.29, 0.1, 1.0, false));
+  }
+  for (const sx of [-1, 1]) for (let i = 0; i < 3; i++)
+    body.add(mesh(new THREE.BoxGeometry(0.025, 0.13, 0.02), mat(0x2a3a40), sx * 0.5, 0, 0.38 - i * 0.13, false));
+  const tail = new THREE.Group(); tail.position.set(0, 0, -1.05); body.add(tail);
+  for (const sy of [-1, 1]) {
+    const fluke = mesh(new THREE.ConeGeometry(0.3, 0.85, 3), finM, 0, sy * 0.33, -0.28, false);
+    fluke.rotation.x = sy * 0.32; fluke.scale.set(0.18, 1, 0.9); tail.add(fluke);
+  }
+  g.userData.anim = { body, tail, fins };
+  g.scale.setScalar(scale);
+  return g;
+}
+function makeDolphin(scale = 1) {
+  const g = new THREE.Group();
+  const hide = mat(0x5f8fa8, { roughness: 0.65 });
+  const belly = mat(0xe8f2f4, { roughness: 0.85 });
+  const finM = mat(0x4a7a92);
+  const body = new THREE.Group(); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.46, 14, 10), hide, 0, 0, 0);
+  torso.scale.set(0.9, 0.85, 1.9); body.add(torso);
+  const under = mesh(new THREE.SphereGeometry(0.36, 12, 8), belly, 0, -0.18, 0.1, false);
+  under.scale.set(0.86, 0.4, 1.45); body.add(under);
+  body.add(mesh(new THREE.SphereGeometry(0.34, 12, 9), hide, 0, 0.04, 0.85, false));
+  const snout = mesh(new THREE.ConeGeometry(0.17, 0.55, 8), hide, 0, -0.02, 1.35);
+  snout.rotation.x = Math.PI / 2; body.add(snout);
+  const dorsal = mesh(new THREE.ConeGeometry(0.26, 0.6, 3), finM, 0, 0.52, -0.1, false);
+  dorsal.scale.set(0.35, 1, 1.1); body.add(dorsal);
+  const fins = [];
+  for (const sx of [-1, 1]) {
+    const fin = mesh(new THREE.ConeGeometry(0.2, 0.65, 3), finM, sx * 0.46, -0.12, 0.3, false);
+    fin.rotation.z = sx * 1.05; fin.rotation.x = 0.25; fin.scale.set(0.3, 1, 0.8);
+    body.add(fin); fins.push(fin);
+    body.add(mesh(new THREE.SphereGeometry(0.045, 7, 6), mat(0x101820), sx * 0.23, 0.08, 1.05, false));
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0, -0.95); body.add(tail);
+  for (const sx of [-1, 1]) {
+    const fluke = mesh(new THREE.ConeGeometry(0.24, 0.7, 3), finM, sx * 0.22, 0, -0.3, false);
+    fluke.rotation.z = sx * 0.55; fluke.scale.set(0.2, 0.8, 1); tail.add(fluke);
+  }
+  g.userData.anim = { body, tail, fins };
+  g.scale.setScalar(scale);
+  return g;
+}
+function makeWhale(scale = 1) {
+  const g = new THREE.Group();
+  const hide = mat(0x3d5866, { roughness: 0.8 });
+  const belly = mat(0xbcd3d8, { roughness: 0.9 });
+  const finM = mat(0x334a56);
+  const body = new THREE.Group(); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.95, 16, 12), hide, 0, 0, 0);
+  torso.scale.set(1.15, 0.9, 2.7); body.add(torso);
+  const under = mesh(new THREE.SphereGeometry(0.78, 14, 10), belly, 0, -0.22, 0.3, false);
+  under.scale.set(1.0, 0.5, 2.1); body.add(under);
+  const head = mesh(new THREE.SphereGeometry(0.72, 14, 10), hide, 0, 0.04, 1.65, false);
+  head.scale.set(1.05, 0.8, 1.2); body.add(head);
+  const mouth = mesh(new THREE.BoxGeometry(1.0, 0.08, 0.8), mat(0x1c2428), 0, -0.32, 2.1, false);
+  body.add(mouth);
+  for (let i = 0; i < 4; i++)
+    body.add(mesh(new THREE.BoxGeometry(0.05, 0.03, 1.1), mat(0x7f9aa2), (i - 1.5) * 0.24, -0.4, 1.55, false));
+  const fins = [];
+  for (const sx of [-1, 1]) {
+    const fin = mesh(new THREE.ConeGeometry(0.4, 1.4, 3), finM, sx * 1.0, -0.35, 0.55, false);
+    fin.rotation.z = sx * 1.25; fin.rotation.x = 0.15; fin.scale.set(0.35, 1, 0.8);
+    body.add(fin); fins.push(fin);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0, -2.35); body.add(tail);
+  for (const sx of [-1, 1]) {
+    const fluke = mesh(new THREE.ConeGeometry(0.5, 1.4, 3), finM, sx * 0.5, 0, -0.55, false);
+    fluke.rotation.z = sx * 0.7; fluke.scale.set(0.22, 0.9, 1); tail.add(fluke);
+  }
+  body.add(mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.12, 6), mat(0x1c2428), 0, 0.82, 1.0, false));
+  for (let i = 0; i < 5; i++) {
+    const b = mesh(new THREE.SphereGeometry(rand(0.05, 0.1), 6, 5), mat(0xc9d8d8), rand(-0.8, 0.8), 0.5, rand(-0.5, 1.2), false);
+    body.add(b);
+  }
+  g.userData.anim = { body, tail, fins };
+  g.scale.setScalar(scale);
+  return g;
+}
+function makeOrca(scale = 1) {
+  const g = new THREE.Group();
+  const hide = mat(0x151b22, { roughness: 0.6, metalness: 0.05 });
+  const white = mat(0xf3f6f7, { roughness: 0.85 });
+  const finM = mat(0x0d1216);
+  const body = new THREE.Group(); g.add(body);
+  const torso = mesh(new THREE.SphereGeometry(0.62, 16, 10), hide, 0, 0, 0);
+  torso.scale.set(1.0, 0.85, 2.2); body.add(torso);
+  const under = mesh(new THREE.SphereGeometry(0.52, 14, 9), white, 0, -0.23, 0.2, false);
+  under.scale.set(0.95, 0.45, 1.75); body.add(under);
+  const head = mesh(new THREE.SphereGeometry(0.48, 14, 10), hide, 0, 0.02, 1.35, false);
+  head.scale.set(1.0, 0.8, 1.15); body.add(head);
+  body.add(mesh(new THREE.SphereGeometry(0.24, 10, 8), white, 0.24, 0.08, 1.55, false)); // eye patch
+  body.add(mesh(new THREE.SphereGeometry(0.045, 7, 6), mat(0x080b0d), 0.32, 0.08, 1.68, false));
+  const dorsal = mesh(new THREE.ConeGeometry(0.3, 1.25, 3), finM, 0, 0.88, -0.15, false);
+  dorsal.scale.set(0.28, 1, 1.1); body.add(dorsal);
+  const fins = [];
+  for (const sx of [-1, 1]) {
+    const fin = mesh(new THREE.ConeGeometry(0.3, 0.95, 3), finM, sx * 0.72, -0.25, 0.35, false);
+    fin.rotation.z = sx * 1.2; fin.rotation.x = 0.18; fin.scale.set(0.3, 1, 0.8);
+    body.add(fin); fins.push(fin);
+  }
+  const tail = new THREE.Group(); tail.position.set(0, 0, -1.9); body.add(tail);
+  for (const sx of [-1, 1]) {
+    const fluke = mesh(new THREE.ConeGeometry(0.36, 1.0, 3), finM, sx * 0.32, 0, -0.4, false);
+    fluke.rotation.z = sx * 0.6; fluke.scale.set(0.2, 0.9, 1); tail.add(fluke);
+  }
+  body.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.1, 6), mat(0x080b0d), 0, 0.55, 0.9, false));
+  g.userData.anim = { body, tail, fins };
+  g.scale.setScalar(scale);
+  return g;
+}
+const SEA_HUNTS = {
+  shark: { name: 'Shark', icon: '🦈', hp: 110, meat: 5, pelt: 1, apex: true },
+  orca: { name: 'Orca', icon: '🐋', hp: 240, meat: 9, apex: true },
+};
+let sharkGuardian = null;
+const SEA_LIFE = [];
+function addSeaLife(kind, lat, lon, radius = 5, speed = 0.2, opts = {}) {
+  const factory = kind === 'shark' ? makeShark : kind === 'dolphin' ? makeDolphin : kind === 'whale' ? makeWhale : makeOrca;
+  const obj = factory(opts.scale || 1);
+  const center = latLonToVec3(lat, lon, 0).normalize();
+  const east = V3(-center.z, 0, center.x);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(center, east).normalize();
+  const phase = opts.phase ?? rand(Math.PI * 2);
+  obj.position.copy(center).multiplyScalar(R + 0.12);
+  scene.add(obj);
+  const hunt = opts.hunt || null;
+  const entry = {
+    kind, mesh: obj, center, east, north, radius, speed, phase, dead: false, kindTag: 'ambient',
+    hunt, hp: hunt?.hp || 60, maxHp: hunt?.hp || 60, baseMaxHp: hunt?.hp || 60,
+    attackCd: 0, nextSound: rand(3, 8), respawnTimer: null,
+  };
+  SEA_LIFE.push(entry);
+  if (hunt) { ambientWanderers.push(entry); attachAmbientHunt(entry); }
+  if (opts.guardian) sharkGuardian = entry;
+  const hunter = kind === 'shark' || kind === 'orca';
+  tickers.push((t, dt) => {
+    if (entry.dead) return;
+    entry.attackCd = Math.max(0, entry.attackCd - dt);
+    const a = t * speed + phase;
+    const circleN = center.clone()
+      .addScaledVector(east, Math.cos(a) * radius / R)
+      .addScaledVector(north, Math.sin(a) * radius * 0.72 / R)
+      .normalize();
+    let n = circleN;
+    const playerN = player.position.clone().normalize();
+    const playerWater = !inBoat && heightFor(playerN) < -0.1;
+    const dPlayer = obj.position.distanceTo(player.position);
+    if (hunter && !playerDead && playerWater && dPlayer < 16) {
+      const fromHere = obj.position.clone().normalize();
+      const flat = player.position.clone().sub(obj.position);
+      flat.addScaledVector(fromHere, -flat.dot(fromHere));
+      if (dPlayer > (kind === 'orca' ? 3.4 : 2.6) && flat.lengthSq() > 1e-6 && center.angleTo(fromHere) * R < 26) {
+        const chase = fromHere.clone().addScaledVector(flat.normalize(), (opts.chaseSpeed || 5.4) * dt / R).normalize();
+        if (heightFor(chase) < 0.05) n = chase;
+      }
+      if (dPlayer < (kind === 'orca' ? 3.4 : 2.6) && entry.attackCd <= 0) {
+        entry.attackCd = kind === 'orca' ? 1.8 : 1.4;
+        damagePlayer(Math.round((kind === 'orca' ? 16 : 9) * threatScale()), obj.position, kind === 'orca' ? 'an orca' : 'a shark');
+        toast(kind === 'orca' ? '🐋 The orca slams into you — get to land!' : '🦈 The shark bites — get out of the water!');
+        sfxShark();
+      }
+    }
+    const breach = kind === 'dolphin' ? Math.pow(Math.max(0, Math.sin(t * 0.35 + phase + 1.2)), 6) * 1.15 : 0;
+    const p = n.clone().multiplyScalar(R + 0.12 + Math.sin(t * 1.6 + phase) * 0.025 + breach);
+    const move = p.clone().sub(obj.position);
+    move.addScaledVector(n, -move.dot(n));
+    if (move.lengthSq() > 1e-6) faceAlong(obj, p, move.normalize());
+    obj.position.copy(p);
+    if (entry.interact) entry.interact.pos.copy(p);
+    const anim = obj.userData.anim;
+    if (anim) {
+      if (anim.tail) anim.tail.rotation.y = Math.sin(t * (kind === 'whale' ? 2.4 : 6) + phase) * (kind === 'whale' ? 0.28 : 0.55);
+      if (anim.body) anim.body.rotation.z = Math.sin(t * 2.3 + phase) * 0.05 + (breach ? -0.18 : 0);
+      for (let i = 0; i < (anim.fins || []).length; i++) anim.fins[i].rotation.x = 0.18 + Math.sin(t * 3 + phase + i) * 0.12;
+    }
+    if (kind === 'whale' && t > (entry.nextBlow || 0)) {
+      entry.nextBlow = t + rand(9, 18);
+      burst(obj.position.clone().addScaledVector(n, 1.4), 0xd9f2ff, 14, 1.6);
+    }
+    if (t > entry.nextSound) {
+      entry.nextSound = t + rand(8, 17);
+      if (dPlayer < 38) {
+        if (kind === 'whale') sfxWhale();
+        else if (kind === 'dolphin') sfxDolphin();
+        else if (kind === 'orca') sfxOrca();
+        else sfxShark();
+      }
+    }
+  });
+  return entry;
+}
+const sharkArtifactGuardian = addSeaLife('shark', 0, 220, 5.5, 0.22, { hunt: SEA_HUNTS.shark, guardian: true, scale: 1.15, chaseSpeed: 5.8 });
+addSeaLife('shark', -18, 245, 6.0, 0.18, { hunt: SEA_HUNTS.shark, scale: 1.0 });
+addSeaLife('dolphin', -4, 240, 4.5, 0.32, { scale: 1.0, phase: 0.7 });
+addSeaLife('dolphin', 7, 251, 4.0, 0.28, { scale: 0.9, phase: 3.2 });
+addSeaLife('whale', -35, 205, 7.0, 0.07, { scale: 1.8, phase: 1.4 });
+addSeaLife('orca', -28, 270, 6.0, 0.13, { hunt: SEA_HUNTS.orca, scale: 1.4, phase: 4.1, chaseSpeed: 5.0 });
+
+// --- biome relics: guarded knowledge that shortcuts the long research path ---
+function makeArtifactRelic(color) {
+  const g = new THREE.Group();
+  const stoneM = mat(0x7f8a86, { roughness: 0.9 });
+  const trimM = mat(0xd9c48a, { metalness: 0.35, roughness: 0.35 });
+  g.add(mesh(new THREE.CylinderGeometry(0.58, 0.72, 0.3, 8), stoneM, 0, 0.15, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.38, 0.48, 0.72, 8), stoneM, 0, 0.66, 0));
+  g.add(mesh(new THREE.TorusGeometry(0.42, 0.045, 5, 18).rotateX(Math.PI / 2), trimM, 0, 1.02, 0, false));
+  const relicM = new THREE.MeshStandardMaterial({
+    color, emissive: color, emissiveIntensity: 0.85, metalness: 0.45, roughness: 0.25,
+    transparent: true, opacity: 0.95,
+  });
+  const relic = new THREE.Mesh(new THREE.OctahedronGeometry(0.3, 0), relicM);
+  relic.position.y = 1.38;
+  relic.userData.baseY = 1.38;
+  g.add(relic);
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.48, 0.025, 4, 22).rotateX(Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false })
+  );
+  ring.position.y = 1.38; g.add(ring);
+  const glowM = new THREE.SpriteMaterial({
+    map: makeGlowTexture(), color, transparent: true, opacity: 0.42,
+    depthWrite: false, blending: THREE.AdditiveBlending,
+  });
+  const glow = new THREE.Sprite(glowM);
+  glow.position.y = 1.38; glow.scale.setScalar(1.35); g.add(glow);
+  return { g, relic, ring, glow };
+}
+function artifactSpot(lat, lon, lift = 0.35) {
+  const n = latLonToVec3(lat, lon, 0).normalize();
+  return n.multiplyScalar(R + Math.max(heightFor(n), -0.25) + lift + 0.1);
+}
+const ARTIFACTS = [];
+function refreshArtifactVisuals() {
+  for (const a of ARTIFACTS) {
+    const claimed = !!ArtifactState.claimed[a.id];
+    if (a.relic) a.relic.visible = !claimed;
+    if (a.ring) a.ring.visible = !claimed;
+    if (a.glow) a.glow.visible = !claimed;
+  }
+}
+function claimArtifact(id) {
+  const a = ARTIFACTS.find((x) => x.id === id);
+  if (!a || ArtifactState.claimed[id]) return null;
+  ArtifactState.claimed[id] = true;
+  ArtifactState.count = Object.keys(ArtifactState.claimed).length;
+  const granted = grantTech(a.tech);
+  const tech = TECH.find((x) => x.id === a.tech);
+  if (!granted) grantInsight(4, `Relic: ${a.name}`); else grantInsight(2, `Relic: ${a.name}`);
+  if (onGainXp) onGainXp(80, a.pos);
+  refreshArtifactVisuals();
+  burst(a.pos, a.color, 30, 3);
+  chime(920); setTimeout(() => chime(1220), 140);
+  pushStory(`Recovered the ${a.name} in ${a.biome}.`, '🏺');
+  saveCheckpoint();
+  renderStats();
+  try { renderJournal(); } catch { /* closed */ }
+  return `🏺 ${a.name} claimed! ${granted && tech ? `${tech.name} unlocked` : 'The knowledge deepens (+4 insight)'}`;
+}
+function addArtifact(def) {
+  const pos = artifactSpot(def.lat, def.lon, def.lift ?? 0.35);
+  const model = makeArtifactRelic(def.color);
+  model.g.position.copy(pos);
+  orientOnSphere(model.g, pos, rand(Math.PI * 2));
+  scene.add(model.g);
+  const a = { ...def, pos, group: model.g, relic: model.relic, ring: model.ring, glow: model.glow, phase: rand(6) };
+  const it = {
+    id: 'artifact-' + def.id, pos, kind: '🏺 ARTIFACT', radius: 4.8,
+    label: () => {
+      if (ArtifactState.claimed[a.id]) return `${a.name} — claimed`;
+      if (a.guardianNpc) {
+        const n = NPCS.find((x) => x.id === a.guardianNpc);
+        return `The ${a.name} — earn ${n?.name || 'the Warden'}'s trust`;
+      }
+      return `The ${a.name} — guardian: ${a.guardianName}`;
+    },
+    onUse: () => {
+      if (ArtifactState.claimed[a.id]) return toast(a.lore || 'The reliquary is empty now.');
+      if (a.guardianNpc) {
+        const n = NPCS.find((x) => x.id === a.guardianNpc);
+        if (n) return openTrade(n);
+        return toast('The guardian has not returned.');
+      }
+      const dead = (a.guardianEntry && a.guardianEntry.dead) || (a.guardianBear && a.guardianBear.dead);
+      if (dead) { const msg = claimArtifact(a.id); if (msg) toast(msg); }
+      else toast(`⚠️ ${a.guardianName} still guards the ${a.name}.`);
+    },
+  };
+  a.interact = it;
+  addInteract(it);
+  ARTIFACTS.push(a);
+  return a;
+}
+const ARTIFACT_DEFS = [
+  { id: 'farm', name: 'Seedkeeper’s Bowl', icon: '🌾', biome: 'Clover Fields', lat: 4.5, lon: 57, color: 0x9df0a8, tech: 'seed-drill', guardianNpc: 'warden-rowan', guardianName: 'Rowan the Field Warden', taskHint: 'offer Rowan 10🍎 + 5🪵', lore: 'The bowl is warm. Somewhere beneath the soil, seeds remember the shape of the harvest.' },
+  { id: 'oasis', name: 'Sunstone Lens', icon: '☀️', biome: 'Sunstone Oasis', lat: 8, lon: 116.5, color: 0xffd97a, tech: 'irrigation', guardianNpc: 'warden-sefu', guardianName: 'Sefu the Sunwarden', taskHint: 'bring Sefu 8🪨 + 3🪙', lore: 'A disc of honey-gold glass. Water beads on its rim even at noon.' },
+  { id: 'forest', name: 'Heartwood Knot', icon: '🌿', biome: 'Fernwood', lat: 20.5, lon: 164, color: 0x63d66f, tech: 'saw', guardianNpc: 'warden-elowen', guardianName: 'Elowen the Moss Warden', taskHint: 'bring Elowen 12🪵 + 3🟫', lore: 'The knot still smells of rain and resin. Cut wood seems to lean toward it.' },
+  { id: 'cove', name: 'Bellkeeper’s Pearl', icon: '🔔', biome: 'Shell Cove', lat: 10, lon: 292, color: 0x9fdcff, tech: 'boatbuilding', guardianNpc: 'warden-neri', guardianName: 'Neri the Tide Warden', taskHint: 'bring Neri 6🐟 + 3🐑', lore: 'Hold it to your ear and the tide answers in a voice that knows every harbour.' },
+  { id: 'volcano', name: 'Ember Heart', icon: '🔥', biome: 'Ember Heights', lat: 13, lon: 335, color: 0xff7a2a, tech: 'forge', guardianNpc: 'warden-brann', guardianName: 'Brann the Cinder Warden', taskHint: 'bring Brann 10🪨 + 4🪙', lore: 'A coal that never cools. Metal bends toward it like a dog to a fire.' },
+  { id: 'reef', name: 'Tideglass Pearl', icon: '🦪', biome: 'Tideglass Reef', lat: 3, lon: 231, color: 0x7ad9ff, tech: 'fishing-net', guardianName: 'the reef shark', guardianEntry: sharkArtifactGuardian, taskHint: 'defeat the reef shark', lore: 'A pearl with a current inside it. Nets thrown near it come back full.' },
+  { id: 'arctic', name: 'Aurora Shard', icon: '🌌', biome: 'Northlight', lat: 55, lon: 103, color: 0xd9b8ff, tech: 'heat-gear', guardianName: 'the polar bear', guardianBear: bears[0], taskHint: 'defeat the polar bear', lore: 'A splinter of frozen sky. It keeps a little of the aurora warm.' },
+  { id: 'savannah', name: 'Lion’s Mane Totem', icon: '🦁', biome: 'Golden Savannah', lat: -33.5, lon: 35.5, color: 0xffd97a, tech: 'bowyer', guardianName: 'the lion', guardianEntry: lionGuardian, taskHint: 'defeat the lion', lore: 'A carved mane around a sun-dark stone. The savannah grass bends away from it.' },
+  { id: 'river', name: 'Riverstone Idol', icon: '🐊', biome: 'The Great River', lat: -31, lon: 98, lift: 1.0, color: 0x6ac7a8, tech: 'fish-trap', guardianName: 'the crocodile', guardianEntry: crocGuardian, taskHint: 'defeat the crocodile', lore: 'Smooth green stone, worn by a thousand floods. Fish gather where it is set down.' },
+  { id: 'mangrove', name: 'Tiger’s Eye', icon: '🐅', biome: 'Mangrove Delta', lat: -34.5, lon: 128.5, color: 0xff9a8a, tech: 'thresher', guardianName: 'the tiger', guardianEntry: tigerGuardian, taskHint: 'defeat the tiger', lore: 'A banded amber bead. The delta’s roots seem to part for whoever carries it.' },
+];
+for (const def of ARTIFACT_DEFS) addArtifact(def);
+lionGuardian.artifactGuardian = 'savannah';
+crocGuardian.artifactGuardian = 'river';
+tigerGuardian.artifactGuardian = 'mangrove';
+sharkArtifactGuardian.artifactGuardian = 'reef';
+bears[0].artifactGuardian = 'arctic';
+tickers.push((t) => {
+  for (const a of ARTIFACTS) {
+    if (ArtifactState.claimed[a.id]) continue;
+    a.relic.rotation.y = t * 0.9 + a.phase;
+    a.relic.position.y = (a.relic.userData.baseY || 1.38) + Math.sin(t * 1.7 + a.phase) * 0.06;
+    a.ring.rotation.z = t * 0.45 + a.phase;
+    a.ring.scale.setScalar(1 + Math.sin(t * 2.1 + a.phase) * 0.06);
+    a.glow.material.opacity = 0.34 + Math.sin(t * 2.4 + a.phase) * 0.1;
+  }
+});
 
 // --- courtship, marriage, kids ---
 function renderCourtRow(n, box) {
@@ -12221,6 +13152,7 @@ onGainXp = (amount, pos) => {
   while (RPG.xp >= RPG.xpNext && RPG.level < 20) {
     RPG.xp -= RPG.xpNext;
     RPG.level++;
+    threatLevel = RPG.level;
     RPG.xpNext = Math.round(35 + (RPG.level - 1) * 28);
     leveled = true;
     const perk = RPG_PERKS[(RPG.level - 2) % RPG_PERKS.length];
@@ -12230,7 +13162,7 @@ onGainXp = (amount, pos) => {
     meters.energy = Math.min(100, meters.energy + 40);
     burst(player.position.clone(), 0xffd97a, 30, 3);
     chime(880); setTimeout(() => chime(1170), 150);
-    toast(`⭐ Level ${RPG.level}! Perk: ${perk.name} (${perk.desc})`);
+    toast(`⭐ Level ${RPG.level}! Perk: ${perk.name} (${perk.desc}) — the wilds grow bolder.`);
     if (player.position) spawnPopup(player.position.clone(), `LEVEL ${RPG.level}!`, '#ffd97a', true);
     try { renderStats(); } catch { /* noop */ }
     try { saveCheckpoint(); } catch { /* noop */ }
@@ -13091,6 +14023,13 @@ function openRobberDialog(r) {
     b.onclick = fn;
     box.appendChild(b);
   };
+  if (r.traveller) {
+    const t = r.traveller;
+    add('Welcome them', 'Share a meal and hear their story.', () => resolveTraveller(t, 'welcome'));
+    add('Ask what they carry', 'A cautious welcome.', () => resolveTraveller(t, 'ask'));
+    add('Send them on their way', 'No risks today.', () => resolveTraveller(t, 'leave'));
+    return;
+  }
   if (r.poacher) {
     add('Free the trapped hare', 'Recover the snare and let the hare go (+2🍎, +insight, +reputation).', () => {
       inv.food = (inv.food || 0) + 2;
@@ -13199,9 +14138,9 @@ Object.assign(window.__lp, {
   settingsDefs: SETTINGS_DEFS, autoRespawn: () => !settings.permadeath,
   pacing: { dayLen: DAY_LEN, daysPerSeason: DAYS_PER_SEASON, yearDays: DAYS_PER_SEASON * 4 },
   terrain: { height: (lat, lon) => heightFor(latLonToVec3(lat, lon, 0).normalize()), biome: (lat, lon) => biomeAt(latLonToVec3(lat, lon, 0).normalize()) },
-  life: Life, home: Home, research: Research, weather: Weather, threats: Threats,
+  life: Life, home: Home, research: Research, weather: Weather, threats: Threats, season: seasonNow,
   homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
-  rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult, apply: applyTech },
+  rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, level: techLevel, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult, apply: applyTech },
   tree: { zoom: treeZoom, reset: treeReset, view: () => treeView },
   weapons: { list: WEAPONS, loadout: Loadout, mode: () => WeaponState.mode, toggle: toggleWeapon, ammo: Ammo, mag: Mag, condition: Condition, cond: weaponCondition, wear: wearWeapon, repair: repairWeapon, magCap: magCapacity, unlocked: UnlockedWeapons, unlock: unlockWeapon, equip: equipWeapon, fire: fireAt, manual: manualFire, reload: startReload, reloading: () => reloadT },
   chapters: { list: CHAPTERS, current: chapterNow, advance: advanceChapter, chooseTrait, pending: () => pendingTrait, hero: applyHeroChapter, openTrait: openTraitChoice, showCard: showChapterCard, closeCard: closeChapterCard },
@@ -13235,13 +14174,18 @@ Object.assign(window.__lp, {
   telegraph: { set: setTelegraph, clear: clearTelegraph, get: () => Weather.telegraph },
   weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
   prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech, craftLeather, preyInfo: PREY_INFO,
+  wildlife: { prey: Prey, caps: PREY_CAP, overnight: overnightWildlife, farmOvernight: overnightAnimals, revive: reviveAmbient },
+  artifacts: { list: ARTIFACTS, claimed: ArtifactState.claimed, count: () => ArtifactState.count, claim: claimArtifact, refresh: refreshArtifactVisuals },
+  seaLife: SEA_LIFE,
+  travellers: Travellers, spawnTraveller, overnightTravellers, resolveTraveller,
+  threat: { scale: threatScale, level: () => threatLevel, gainXp: (n) => onGainXp(n, player.position.clone()) },
   ambient: { list: ambientWanderers, hunt: huntAmbient, kill: killAmbient },
   fog: { reveal: (la, lo) => fogReveal(la, lo, true), reset: fogClearMask, points: () => fogPoints.length, circles: fogSnapshot },
   fishing: { zones: FISH_ZONES, species: FISH_TYPES, zoneAt: (lat, lon) => fishZoneAt(latLonToVec3(lat, lon, 0).normalize()), book: () => Life.fishBook, cast: (id) => fishFrom('sea', id) },
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty, wanted: WANTED, claimWanted },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
-  sfx: { log: sfxLog, weather: weatherSound },
+  sfx: { log: sfxLog, weather: weatherSound, footstep: sfxFootstep, swim: sfxSwim, row: sfxRow, swing: sfxSwing, hit: sfxHit, hurt: sfxHurt, bird: sfxBird, roar: sfxRoar, croc: sfxCroc, bear: sfxBear, wolf: sfxWolfHowl, whale: sfxWhale, dolphin: sfxDolphin, shark: sfxShark, orca: sfxOrca, traveller: sfxTraveller },
   legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
   hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, character: () => activeHeroKey, setCharacter: (k) => { if (HERO_CHARACTERS[k]) { settings.hero = k; persistSettings(); applySettings(); } }, list: () => Object.keys(HERO_CHARACTERS), swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), hammerVisible: () => !!(player.userData.hammer && player.userData.hammer.visible), buildHold: () => heroBuildHold, heldTool: () => currentChopPose().tool, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
@@ -13901,6 +14845,7 @@ function updateBoatControl(dt) {
     updateBoatControl._wakeT = clock.elapsedTime;
     const wake = player.position.clone().addScaledVector(nn, -0.1);
     burst(wake, 0x9fdcff, 5, 1.3);
+    sfxRow();
   }
   return nn;
 }
@@ -14038,6 +14983,7 @@ function updatePlayer(dt) {
     updatePlayer._dustT = inWater ? 0.3 : 0.45;
     const feet = player.position.clone().addScaledVector(nn, inWater ? 0.1 : 0.05);
     burst(feet, inWater ? 0x9fdcff : 0xd9c9a8, inWater ? 6 : 3, inWater ? 1.2 : 0.6);
+    if (swimming) sfxSwim(); else sfxFootstep(inWater ? 'water' : biomeAt(nn));
   }
   coldTick(dt, nn); // warmth buffer + seasonal cold (life-sim)
   meterAlerts();

@@ -62,6 +62,16 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Chapter intro cards, almanac, loadout, bounty and journal overlays (`journeytest`); **detailed villagers/traders with faces, limbs and layered clothing** (`herotrest`: 41-part villager rig)
 - [x] Single-file build deployed to Firebase with live SHA256 verification; **pacing is 300 s days and 8 days/season (32-day year)** (`progtest`, `weapontest`)
 
+## Relics, wildlife & playtest
+- [x] Ten biome relics: five human wardens with resource trials, five beast guardians (lion, crocodile, tiger, polar bear, reef shark). Claiming one grants a technology and XP; the journal tracks all ten (`MCP playtest`, browser smoke).
+- [x] Relic technology shortcuts: seed drill, irrigation, saw, fishing net, boatbuilding, forge, heat gear, bowyer, fish trap, thresher.
+- [x] Predator/prey reproduction: wild prey repopulates to caps at dawn, dead apex predators return, polar bears may wander in, and well-fed livestock pairs can breed (`MCP playtest`).
+- [x] Procedural SFX: footsteps by surface, swim, row, swing, hit, hurt, birds, owls, crickets, surf, lion/tiger/bear/wolf/crocodile calls, whale/dolphin/shark/orca and traveller knock (`sfx` log + browser smoke).
+- [x] Late-game surprise travellers from day 6: peddler, pilgrim, refugee, scout, con artist and deserter, with good/bad outcomes (`MCP playtest`).
+- [x] Difficulty ramp: predator/wolf/robber damage and HP scale with level, wolf packs grow, outlaw chance rises, and higher tech eras require higher explorer levels (`MCP playtest`: ×1.66 at level 13).
+- [x] Sea life: two sharks, two dolphins, one whale and one orca, with shark/orca attacks on swimmers and whale/dolphin ambience (`MCP playtest`, browser screenshot).
+- [x] `mcp/little-planet-mcp.mjs`: dependency-free stdio MCP server driving Chrome through `browse`; tools for open/start/state/eval/teleport/press/screenshot/artifact hints/close (`MCP handshake + full play loop`).
+
 ## Known scope notes
 - Hazards are recoverable and telegraphed; guns remain loud late-game tools rather than a power fantasy.
 - The game stays a single-file deployable (`src/main.js` + panels), with regression suites exercising chapters, hazards, research, weapons, threats, saves, hero rig and UI.
