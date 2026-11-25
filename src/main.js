@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
@@ -696,67 +697,11 @@ const ocean = (() => {
 })();
 scene.add(ocean);
 
-// ---------- instanced ground clutter (lush meadow grass, wildflowers & pebbles in 3 draw calls) ----------
+// ---------- instanced ground clutter (natural pebbles & stones in 1 draw call) ----------
 {
   const dummy = new THREE.Object3D();
   const c = new THREE.Color();
-  // 1) 1,600 grass tuft clusters across farm, forest, and oasis rim
-  const grassGeo = new THREE.ConeGeometry(0.11, 0.46, 4);
-  grassGeo.translate(0, 0.22, 0);
-  const grassMat = mat(0xffffff, { roughness: 0.88 });
-  const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, 1200);
-  grassInst.receiveShadow = true;
-  let gi = 0;
-  for (let i = 0; i < 2000 && gi < 1200; i++) {
-    const la = rand(-22, 46), lo = rand(0, 360);
-    const n = latLonToVec3(la, lo, 0).normalize();
-    const b = biomeAt(n);
-    if (b !== 'farm' && b !== 'forest' && !(b === 'cove' && la > 16)) continue;
-    const h = heightFor(n);
-    if (h < 0.2) continue;
-    const p = n.clone().multiplyScalar(R + h + 0.02);
-    orientOnSphere(dummy, p, rand(Math.PI * 2));
-    dummy.scale.set(rand(0.8, 1.35), rand(0.75, 1.55), rand(0.8, 1.35));
-    dummy.updateMatrix();
-    grassInst.setMatrixAt(gi, dummy.matrix);
-    c.setHex(b === 'forest' ? (i % 2 ? 0x3f7d4c : 0x5a9660) : (i % 2 ? 0x8da762 : 0xa3b874));
-    c.offsetHSL(0, 0, rand(-0.03, 0.03));
-    grassInst.setColorAt(gi, c);
-    gi++;
-  }
-  grassInst.count = gi;
-  grassInst.instanceMatrix.needsUpdate = true;
-  if (grassInst.instanceColor) grassInst.instanceColor.needsUpdate = true;
-  scene.add(grassInst);
-
-  // 2) 420 wildflower blooms (buttercups, pink clover, azure bells, lavender)
-  const flowerGeo = new THREE.DodecahedronGeometry(0.11, 0);
-  flowerGeo.translate(0, 0.16, 0);
-  const flowerMat = mat(0xffffff, { roughness: 0.7 });
-  const flowerInst = new THREE.InstancedMesh(flowerGeo, flowerMat, 320);
-  const flowerPalette = [0xffd94a, 0xff8fb3, 0x74c8ff, 0xc792ff, 0xfff4d2];
-  let fi = 0;
-  for (let i = 0; i < 700 && fi < 320; i++) {
-    const la = rand(-18, 42), lo = rand(0, 210);
-    const n = latLonToVec3(la, lo, 0).normalize();
-    const b = biomeAt(n);
-    if (b !== 'farm' && b !== 'forest') continue;
-    const h = heightFor(n);
-    if (h < 0.24) continue;
-    orientOnSphere(dummy, n.clone().multiplyScalar(R + h + 0.03), rand(Math.PI * 2));
-    dummy.scale.setScalar(rand(0.8, 1.4));
-    dummy.updateMatrix();
-    flowerInst.setMatrixAt(fi, dummy.matrix);
-    c.setHex(flowerPalette[i % flowerPalette.length]);
-    flowerInst.setColorAt(fi, c);
-    fi++;
-  }
-  flowerInst.count = fi;
-  flowerInst.instanceMatrix.needsUpdate = true;
-  if (flowerInst.instanceColor) flowerInst.instanceColor.needsUpdate = true;
-  scene.add(flowerInst);
-
-  // 3) 360 natural pebbles & coastal/desert stones
+  // 360 natural pebbles & coastal/desert stones
   const pebGeo = new THREE.DodecahedronGeometry(0.16, 0);
   pebGeo.scale(1.2, 0.55, 1.0);
   const pebMat = mat(0xffffff, { roughness: 0.92 });
@@ -1283,46 +1228,50 @@ function makeSheep(scale = 1) {
   const g = new THREE.Group();
   const woolM = furM('wool', 0xf5f2ea, ['#e7e0d2', '#ffffff', '#efe8da'], { n: 160, rMin: 1.2, rMax: 3 });
   const skinM = mat(0x3a3330); // dark Suffolk-style face + legs
-  // fleece: one group so shearing can scale it (children sit at its centre)
+  // A long, level fleece instead of a round ball: real sheep are deeper than
+  // they are tall, with slim legs and a lifted head.
   const wool = new THREE.Group();
-  wool.position.set(0, 0.92, 0);
-  wool.scale.set(1.2, 0.9, 0.9);
+  wool.position.set(0, 0.67, 0);
+  wool.scale.set(0.72, 0.62, 1.05);
   g.add(wool);
-  wool.add(mesh(new THREE.IcosahedronGeometry(0.78, 2), woolM, 0, 0, 0));
-  wool.add(mesh(new THREE.IcosahedronGeometry(0.52, 2), woolM, 0, -0.12, 0.5, false)); // chest puff
-  wool.add(mesh(new THREE.IcosahedronGeometry(0.5, 2), woolM, 0, 0.06, -0.52, false)); // rump puff
-  wool.add(mesh(new THREE.IcosahedronGeometry(0.44, 2), woolM, 0, 0.34, -0.18, false)); // top tuft
-  // head: dark face, wool cap, droopy ears, dark muzzle
-  const head = new THREE.Group(); head.position.set(0, 1.04, 0.72); g.add(head);
-  head.add(mesh(new THREE.SphereGeometry(0.3, 10, 8), skinM, 0, 0, 0.05));
-  head.add(mesh(new THREE.SphereGeometry(0.25, 10, 8), woolM, 0, 0.13, -0.07, false));
-  head.add(mesh(new THREE.SphereGeometry(0.15, 8, 6), mat(0x2a2320), 0, -0.07, 0.26, false));
+  wool.add(mesh(new THREE.IcosahedronGeometry(0.5, 2), woolM, 0, 0, 0));
+  wool.add(mesh(new THREE.IcosahedronGeometry(0.32, 2), woolM, 0, 0.02, 0.56, false)); // chest
+  wool.add(mesh(new THREE.IcosahedronGeometry(0.31, 2), woolM, 0, 0.02, -0.55, false)); // rump
+  wool.add(mesh(new THREE.IcosahedronGeometry(0.18, 2), woolM, 0, 0.37, 0.05, false)); // top tuft
+  // neck + dark Suffolk head, wool cap, muzzle, ears
+  const neck = mesh(new THREE.CylinderGeometry(0.11, 0.14, 0.28, 7), woolM, 0, 0.76, 0.55);
+  neck.rotation.x = 0.5;
+  g.add(neck);
+  const head = new THREE.Group(); head.position.set(0, 0.88, 0.68); g.add(head);
+  head.add(mesh(new THREE.SphereGeometry(0.18, 10, 8), skinM, 0, 0, 0.03));
+  head.add(mesh(new THREE.SphereGeometry(0.16, 10, 8), woolM, 0, 0.09, -0.05, false));
+  head.add(mesh(new THREE.SphereGeometry(0.105, 8, 6), mat(0x2a2320), 0, -0.055, 0.16, false));
   const ears = [];
   for (const sx of [-1, 1]) {
-    const ear = mesh(new THREE.ConeGeometry(0.11, 0.3, 6), skinM, sx * 0.28, 0.02, 0.02, false);
-    ear.rotation.z = -sx * (Math.PI / 2 + 0.2); // flopped out and down
+    const ear = mesh(new THREE.ConeGeometry(0.065, 0.20, 6), skinM, sx * 0.19, 0.01, 0.02, false);
+    ear.rotation.z = -sx * (Math.PI / 2 + 0.25); // flopped out and down
     head.add(ear); ears.push(ear);
   }
   for (const sx of [-1, 1])
-    head.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), mat(0x14100e), sx * 0.15, 0.07, 0.25, false));
-  // legs + hooves (FL, FR, BL, BR)
+    head.add(mesh(new THREE.SphereGeometry(0.035, 6, 5), mat(0x14100e), sx * 0.09, 0.06, 0.15, false));
+  // slim legs + hooves (FL, FR, BL, BR)
   const legs = [];
-  for (const [lx, lz] of [[0.32, 0.42], [-0.32, 0.42], [0.32, -0.42], [-0.32, -0.42]]) {
+  for (const [lx, lz] of [[0.20, 0.34], [-0.20, 0.34], [0.20, -0.36], [-0.20, -0.36]]) {
     const hip = new THREE.Group();
-    hip.position.set(lx, 0.62, lz);
-    hip.add(mesh(new THREE.CylinderGeometry(0.085, 0.065, 0.62, 7), skinM, 0, -0.27, 0, false));
-    hip.add(mesh(new THREE.BoxGeometry(0.16, 0.12, 0.18), mat(0x1e1a18), 0, -0.56, 0.02, false));
+    hip.position.set(lx, 0.46, lz);
+    hip.add(mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.40, 6), skinM, 0, -0.19, 0, false));
+    hip.add(mesh(new THREE.BoxGeometry(0.11, 0.085, 0.13), mat(0x1e1a18), 0, -0.39, 0.02, false));
     g.add(hip); legs.push(hip);
   }
-  // woolly tail
-  const tail = new THREE.Group(); tail.position.set(0, 1.0, -0.84);
-  tail.add(mesh(new THREE.SphereGeometry(0.14, 8, 6), woolM, 0, 0, -0.06, false));
+  // short woolly tail
+  const tail = new THREE.Group(); tail.position.set(0, 0.70, -0.74);
+  tail.add(mesh(new THREE.SphereGeometry(0.09, 8, 6), woolM, 0, 0, -0.04, false));
   g.add(tail);
   g.scale.setScalar(scale);
   g.userData.wool = wool;
   g.userData.anim = {
     legs, head, tail, body: wool, ears, earBase: ears.map((e) => e.rotation.z),
-    bodyBob: 0.03, cadence: 6, amp: 0.5, graze: 0.85, grazeSpeed: 0.5, headDrop: 0.16, tailAmp: 0.5, tailSpeed: 3.4,
+    bodyBob: 0.022, cadence: 6.2, amp: 0.42, graze: 0.62, grazeSpeed: 0.5, headDrop: 0.10, tailAmp: 0.4, tailSpeed: 3.2,
   };
   return g;
 }
@@ -1728,9 +1677,10 @@ function makeBush() {
   return { g, berries };
 }
 
-// ---------- FARMSTEAD ----------
+// ---------- CLOVER FIELDS: open meadow (blank slate) ----------
+// The old pre-built farm is gone. The traveller starts with bare grass,
+// wandering sheep and wild trees, and raises every building themselves.
 const farmGroup = new THREE.Group(); scene.add(farmGroup);
-let cropSpots = [];
 {
   const latC = 12, lonC = 40;
   const put = (obj, la, lo, h = 0.1, yaw = 0) => {
@@ -1738,336 +1688,7 @@ let cropSpots = [];
     orientOnSphere(obj, latLonToVec3(la, lo, heightFor(base.normalize()) + h), yaw);
     farmGroup.add(obj); return obj;
   };
-  // barn — gambrel roof, timber trim, braced doors, lean-to, weather vane
-  const barn = new THREE.Group();
-  const barnRed = mat(0xc93a3a), barnTrim = mat(0xf3e9dc), roofM = mat(0x2f4f4a), darkM = mat(0x3a2a1c);
-  barn.add(mesh(new THREE.BoxGeometry(4.8, 0.5, 5.6), mat(0x8d8d94), 0, 0.25, 0)); // stone foundation
-  barn.add(mesh(new THREE.BoxGeometry(4.4, 2.6, 5.2), barnRed, 0, 1.8, 0)); // walls
-  for (const [cx, cz] of [[-2.2, -2.6], [2.2, -2.6], [-2.2, 2.6], [2.2, 2.6]])
-    barn.add(mesh(new THREE.BoxGeometry(0.28, 2.6, 0.28), barnTrim, cx, 1.8, cz, false)); // corner boards
-  barn.add(mesh(new THREE.BoxGeometry(4.6, 0.22, 5.4), mat(0x7a5230), 0, 3.15, 0, false)); // wall plate
-  // gambrel roof: steep lower pair + shallow upper pair, ridge along z
-  const panel = (x0, y0, x1, y1, side) => {
-    const len = Math.hypot(x1 - x0, y1 - y0);
-    const p = mesh(new THREE.BoxGeometry(len, 0.16, 5.9), roofM, (x0 + x1) / 2, (y0 + y1) / 2, 0);
-    p.rotation.z = side * Math.atan2(Math.abs(x1 - x0), Math.abs(y1 - y0));
-    barn.add(p);
-  };
-  panel(-2.55, 2.9, -1.35, 4.15, 1); panel(2.55, 2.9, 1.35, 4.15, -1);
-  panel(-1.35, 4.15, 0, 4.95, 1); panel(1.35, 4.15, 0, 4.95, -1);
-  barn.add(mesh(new THREE.BoxGeometry(0.3, 0.18, 6.0), mat(0x7a5230), 0, 5.0, 0, false)); // ridge cap
-  barn.add(mesh(new THREE.BoxGeometry(0.15, 1.8, 2.6), darkM, -2.2, 4.0, 0, false)); // shadowed gables
-  barn.add(mesh(new THREE.BoxGeometry(0.15, 1.8, 2.6), darkM, 2.2, 4.0, 0, false));
-  // round hayloft window above the doors
-  barn.add(mesh(new THREE.TorusGeometry(0.42, 0.09, 6, 12), barnTrim, 0, 4.1, 2.62, false));
-  barn.add(mesh(new THREE.CircleGeometry(0.4, 12), darkM, 0, 4.1, 2.6, false));
-  // double doors with X braces + stone step
-  barn.add(mesh(new THREE.BoxGeometry(1.7, 2.2, 0.12), mat(0x7a5230), 0, 1.5, 2.62, false));
-  for (const dx of [-0.42, 0.42]) {
-    barn.add(mesh(new THREE.BoxGeometry(0.8, 2.0, 0.08), mat(0x9a3a2e), dx, 1.45, 2.68, false));
-    for (const s of [0.45, -0.45]) {
-      const brace = mesh(new THREE.BoxGeometry(0.12, 2.0, 0.05), mat(0x7a5230), dx, 1.45, 2.73, false);
-      brace.rotation.z = s; barn.add(brace);
-    }
-  }
-  barn.add(mesh(new THREE.BoxGeometry(1.8, 0.25, 0.6), mat(0x8d8d94), 0, 0.35, 3.0, false));
-  // side lean-to with crates + barrel
-  for (const pz of [-1.5, 0, 1.5])
-    barn.add(mesh(new THREE.BoxGeometry(0.14, 1.8, 0.14), mat(0x7a5230), -3.3, 0.9, pz, false));
-  const lean = mesh(new THREE.BoxGeometry(1.7, 0.12, 4.4), roofM, -3.0, 2.6, 0, false);
-  lean.rotation.z = 0.35; barn.add(lean);
-  barn.add(mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), mat(0x9a6b42), -3.0, 0.55, -1.2, false));
-  barn.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat(0x9a6b42), -2.9, 0.5, -0.4, false));
-  barn.add(mesh(new THREE.CylinderGeometry(0.3, 0.26, 0.7, 9), mat(0x7a5230), -3.1, 0.6, 0.7, false));
-  // weather vane (spins gently)
-  barn.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.1, 6), mat(0x3a3330), 0, 5.5, 0, false));
-  const vane = new THREE.Group(); vane.position.set(0, 5.95, 0); barn.add(vane);
-  vane.add(mesh(new THREE.BoxGeometry(0.9, 0.05, 0.05), mat(0xe8c33d, { metalness: 0.5, roughness: 0.4 }), 0, 0, 0, false));
-  vane.add(mesh(new THREE.ConeGeometry(0.09, 0.25, 6).rotateZ(-Math.PI / 2), mat(0xe8c33d, { metalness: 0.5, roughness: 0.4 }), 0.55, 0, 0, false));
-  vane.add(mesh(new THREE.BoxGeometry(0.05, 0.3, 0.22), mat(0xe8c33d, { metalness: 0.5, roughness: 0.4 }), -0.42, 0, 0, false));
-  tickers.push((t) => { vane.rotation.y = Math.sin(t * 0.3) * 0.9 + t * 0.05; });
-  occluders.push(put(barn, latC + 9, lonC - 6, 0, 0.6));
-  // silo — banded tower, ladder, hatch, feed chute to the barn
-  const silo = new THREE.Group();
-  silo.add(mesh(new THREE.CylinderGeometry(1.3, 1.4, 0.4, 12), mat(0x8d8d94), 0, 0.2, 0));
-  silo.add(mesh(new THREE.CylinderGeometry(1.1, 1.1, 4.2, 12), mat(0xcfd8dc), 0, 2.1, 0));
-  for (const by of [1.2, 2.4, 3.6])
-    silo.add(mesh(new THREE.TorusGeometry(1.12, 0.05, 5, 14).rotateX(Math.PI / 2), mat(0x7d848c), 0, by, 0, false));
-  silo.add(mesh(new THREE.ConeGeometry(1.2, 1.2, 12), mat(0x90a4ae), 0, 4.8, 0));
-  silo.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.35, 8), mat(0x7d848c), 0, 5.5, 0, false)); // top hatch
-  silo.add(mesh(new THREE.BoxGeometry(0.7, 1.0, 0.14), mat(0x7a5230), 0, 0.9, 1.12, false)); // base door
-  for (const lx of [-0.2, 0.2]) // ladder rails
-    silo.add(mesh(new THREE.BoxGeometry(0.06, 3.6, 0.06), mat(0x7a5230), lx, 2.4, 1.14, false));
-  for (let k = 0; k < 6; k++)
-    silo.add(mesh(new THREE.BoxGeometry(0.46, 0.06, 0.06), mat(0x7a5230), 0, 0.9 + k * 0.6, 1.14, false)); // rungs
-  const chute = mesh(new THREE.CylinderGeometry(0.18, 0.18, 4.2, 8), mat(0x90a4ae), -1.4, 3.4, 0, false);
-  chute.rotation.z = 0.9; silo.add(chute); // feed chute leaning barn-ward
-  silo.add(mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.6, 6), mat(0x7a5230), -2.9, 1.3, 0, false)); // chute leg
-  occluders.push(put(silo, latC + 9, lonC + 2, 0, 0));
-  // windmill (animated Dutch-style mill)
-  const mill = new THREE.Group();
-  const stoneM = mat(0x9aa0a6), plasterM = mat(0xe8e2d4), timberM = mat(0x7a5230);
-  const trimM = mat(0xc9573a), canvasM = mat(0xf5efdd, { side: THREE.DoubleSide });
-  // stepped stone foundation + round stone base with arched door
-  mill.add(mesh(new THREE.CylinderGeometry(2.1, 2.3, 0.35, 12), stoneM, 0, 0.17, 0));
-  mill.add(mesh(new THREE.CylinderGeometry(1.5, 1.7, 1.3, 12), stoneM, 0, 0.95, 0));
-  mill.add(mesh(new THREE.BoxGeometry(0.85, 1.0, 0.18), timberM, 0, 0.85, 1.58));
-  mill.add(mesh(new THREE.CylinderGeometry(0.42, 0.42, 0.18, 10, 1, false, 0, Math.PI), timberM, 0, 1.35, 1.58, false));
-  // tapered plaster tower with timber bands
-  mill.add(mesh(new THREE.CylinderGeometry(0.85, 1.35, 5.2, 12), plasterM, 0, 4.1, 0));
-  for (const [ry, rr] of [[2.2, 1.28], [3.9, 1.08], [5.4, 0.9]]) {
-    const band = mesh(new THREE.TorusGeometry(rr, 0.06, 6, 14).rotateX(Math.PI / 2), timberM, 0, ry, 0, false);
-    mill.add(band);
-  }
-  // little windows with cross frames up the tower
-  for (const [wy, wr, wa] of [[3.0, 1.16, 0.5], [4.5, 0.99, 2.4], [5.8, 0.86, 4.2]]) {
-    const g = new THREE.Group();
-    g.add(mesh(new THREE.BoxGeometry(0.4, 0.55, 0.1), timberM, 0, 0, 0, false));
-    g.add(mesh(new THREE.BoxGeometry(0.28, 0.42, 0.12), mat(0x2a3a4a), 0, 0, 0.01, false));
-    g.add(mesh(new THREE.BoxGeometry(0.05, 0.42, 0.13), timberM, 0, 0, 0.02, false));
-    g.add(mesh(new THREE.BoxGeometry(0.28, 0.05, 0.13), timberM, 0, 0, 0.02, false));
-    g.position.set(Math.cos(wa) * wr, wy, Math.sin(wa) * wr);
-    g.rotation.y = -wa + Math.PI / 2;
-    mill.add(g);
-  }
-  // gallery deck with railing
-  mill.add(mesh(new THREE.CylinderGeometry(1.25, 1.25, 0.14, 12), timberM, 0, 6.0, 0));
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    mill.add(mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.55, 5), timberM, Math.cos(a) * 1.15, 6.32, Math.sin(a) * 1.15, false));
-  }
-  mill.add(mesh(new THREE.TorusGeometry(1.15, 0.045, 5, 14).rotateX(Math.PI / 2), timberM, 0, 6.6, 0, false));
-  // yawing cap group: dome cap + rotor + tail beam turn together
-  const capYaw = new THREE.Group(); capYaw.position.set(0, 6.75, 0); mill.add(capYaw);
-  const dome = mesh(new THREE.SphereGeometry(1.05, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2), trimM, 0, 0, 0);
-  dome.scale.set(1, 0.85, 1); capYaw.add(dome);
-  capYaw.add(mesh(new THREE.SphereGeometry(0.16, 7, 6), mat(0xe8c33d, { metalness: 0.5, roughness: 0.4 }), 0, 1.0, 0, false));
-  // rotor: hub + 4 lattice sails with pitched canvas
-  const rotor = new THREE.Group(); rotor.position.set(0, 0.25, 1.2); capYaw.add(rotor);
-  const hub = mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.5, 8).rotateX(Math.PI / 2), timberM, 0, 0, 0);
-  rotor.add(hub);
-  rotor.add(mesh(new THREE.ConeGeometry(0.28, 0.45, 8).rotateX(Math.PI / 2), trimM, 0, 0, 0.45, false));
-  for (let i = 0; i < 4; i++) {
-    const holder = new THREE.Group(); holder.rotation.z = (i / 4) * Math.PI * 2; rotor.add(holder);
-    holder.add(mesh(new THREE.BoxGeometry(0.16, 4.6, 0.16), timberM, 0, 2.1, 0)); // stock
-    const sail = new THREE.Group(); sail.position.set(0.62, 2.6, 0); sail.rotation.y = 0.28; holder.add(sail); // pitched twist
-    sail.add(mesh(new THREE.BoxGeometry(0.09, 3.1, 0.09), timberM, -0.55, 0, 0, false)); // outer frame bar
-    for (let k = -1; k <= 1; k++)
-      sail.add(mesh(new THREE.BoxGeometry(1.15, 0.09, 0.09), timberM, 0, k * 1.0, 0, false)); // lattice slats
-    sail.add(mesh(new THREE.PlaneGeometry(1.15, 3.0), canvasM, 0, 0, -0.03, false)); // canvas sheet
-  }
-  // tail beam + ladder down the back
-  const tail = mesh(new THREE.BoxGeometry(0.14, 0.14, 3.4), timberM, 0, -0.9, -2.2, false);
-  tail.rotation.x = 0.5; capYaw.add(tail);
-  // grain sacks + barrel by the door
-  for (const [sx, sz, s] of [[-1.5, 1.9, 1], [-2.0, 1.4, 0.8]]) {
-    const sack = mesh(new THREE.SphereGeometry(0.42, 7, 6), mat(0xe8c96a), sx, 0.32, sz, false);
-    sack.scale.set(s, s * 0.75, s); mill.add(sack);
-  }
-  const barrel = mesh(new THREE.CylinderGeometry(0.34, 0.3, 0.8, 9), timberM, 1.7, 0.4, 1.6);
-  mill.add(barrel);
-  mill.add(mesh(new THREE.TorusGeometry(0.33, 0.03, 5, 10).rotateX(Math.PI / 2), mat(0x3a3330), 1.7, 0.62, 1.6, false));
-  tickers.push((t, dt) => {
-    rotor.rotation.z += dt * 0.9;
-    capYaw.rotation.y = Math.sin(t * 0.12) * 0.35; // cap hunts the wind
-  });
-  occluders.push(put(mill, latC + 12, lonC + 9, 0, -0.5));
-  // farmhouse — porch, chimney, shuttered glowing windows, flower bed
-  const house = new THREE.Group();
-  const houseWall = mat(0xf3e4c8), houseTrim = mat(0xf3e9dc);
-  house.add(mesh(new THREE.BoxGeometry(3, 2.2, 3.4), houseWall, 0, 1.1, 0));
-  house.add(mesh(new THREE.ConeGeometry(2.7, 1.6, 4), mat(0x7a8b6f), 0, 3.0, 0));
-  house.add(mesh(new THREE.BoxGeometry(3.1, 0.18, 3.5), mat(0x8d8d94), 0, 0.09, 0, false)); // foundation skirt
-  // porch: slab + posts + awning
-  house.add(mesh(new THREE.BoxGeometry(3.2, 0.2, 1.2), mat(0x9a6b42), 0, 0.15, 2.2, false));
-  for (const px of [-1.4, 1.4])
-    house.add(mesh(new THREE.CylinderGeometry(0.09, 0.11, 2.1, 6), mat(0x7a5230), px, 1.2, 2.7, false));
-  const awn = mesh(new THREE.BoxGeometry(3.4, 0.12, 1.5), mat(0xc9573a), 0, 2.35, 2.3, false);
-  awn.rotation.x = -0.22; house.add(awn);
-  house.add(mesh(new THREE.BoxGeometry(1.2, 0.18, 0.7), mat(0x8d8d94), 0, 0.3, 2.2, false)); // step
-  // door + knob
-  house.add(mesh(new THREE.BoxGeometry(0.9, 1.6, 0.12), mat(0x7a5230), 0, 1.0, 1.72, false));
-  house.add(mesh(new THREE.SphereGeometry(0.06, 6, 5), mat(0xe8c33d, { metalness: 0.5, roughness: 0.4 }), 0.3, 1.0, 1.8, false));
-  // shuttered windows with warm panes
-  const paneM = mat(0xffe9a3, { emissive: 0xffb35a, emissiveIntensity: 0.85 });
-  for (const wx of [-1.0, 1.0]) {
-    house.add(mesh(new THREE.BoxGeometry(0.62, 0.72, 0.1), mat(0x7a5230), wx, 1.35, 1.71, false));
-    house.add(mesh(new THREE.BoxGeometry(0.5, 0.6, 0.12), paneM, wx, 1.35, 1.72, false));
-    house.add(mesh(new THREE.BoxGeometry(0.3, 0.7, 0.08), mat(0x2f9e5f), wx - 0.48, 1.35, 1.7, false));
-    house.add(mesh(new THREE.BoxGeometry(0.3, 0.7, 0.08), mat(0x2f9e5f), wx + 0.48, 1.35, 1.7, false));
-  }
-  // stone chimney + cap
-  house.add(mesh(new THREE.BoxGeometry(0.5, 1.9, 0.5), mat(0x8d8d94), 0.9, 3.3, -0.8));
-  house.add(mesh(new THREE.BoxGeometry(0.7, 0.15, 0.7), mat(0x6b7280), 0.9, 4.3, -0.8, false));
-  // flower bed with blooms
-  house.add(mesh(new THREE.BoxGeometry(2.0, 0.25, 0.6), mat(0x6b4423), 2.4, 0.15, 1.6, false));
-  const bloomCols = [0xff8fb3, 0xffd23d, 0xffffff];
-  for (let k = 0; k < 5; k++)
-    house.add(mesh(new THREE.IcosahedronGeometry(0.11, 0), mat(bloomCols[k % 3]), 1.7 + k * 0.35, 0.36, 1.6, false));
-  occluders.push(put(house, latC - 9, lonC - 12, 0, 2.2));
-  // tractor — hood, grille + headlights, exhaust, cab, fenders, hitch
-  const tractor = new THREE.Group();
-  const tractorGreen = mat(0x2fa05a), tractorDark = mat(0x26854a);
-  tractor.add(mesh(new THREE.BoxGeometry(2.2, 0.5, 1.1), tractorDark, 0, 0.72, 0)); // chassis
-  tractor.add(mesh(new THREE.BoxGeometry(0.9, 0.62, 0.9), tractorGreen, -0.65, 1.15, 0)); // hood
-  tractor.add(mesh(new THREE.BoxGeometry(0.12, 0.55, 0.85), mat(0x222222), -1.12, 1.1, 0, false)); // grille
-  const lampM = mat(0xfff2c4, { emissive: 0xffd97a, emissiveIntensity: 0.7 });
-  for (const lz of [-0.3, 0.3])
-    tractor.add(mesh(new THREE.SphereGeometry(0.09, 6, 5), lampM, -1.14, 1.32, lz, false)); // headlights
-  tractor.add(mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.9, 6), mat(0x3a3330), -0.5, 1.75, 0.25, false)); // exhaust
-  tractor.add(mesh(new THREE.ConeGeometry(0.09, 0.12, 6), mat(0x3a3330), -0.5, 2.22, 0.25, false)); // rain cap
-  const steer = mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.7, 5), mat(0x3a3330), 0.1, 1.6, 0, false);
-  steer.rotation.z = -0.5; tractor.add(steer); // steering column
-  const wheel = mesh(new THREE.TorusGeometry(0.2, 0.045, 5, 10), mat(0x3a3330), -0.08, 1.85, 0, false);
-  wheel.rotation.z = -0.5; wheel.rotation.y = Math.PI / 2; tractor.add(wheel);
-  tractor.add(mesh(new THREE.BoxGeometry(0.5, 0.14, 0.5), mat(0x4a3320), 0.55, 1.32, 0, false)); // seat
-  tractor.add(mesh(new THREE.BoxGeometry(0.14, 0.5, 0.5), mat(0x4a3320), 0.8, 1.55, 0, false)); // backrest
-  tractor.add(mesh(new THREE.BoxGeometry(1.1, 0.9, 1.05), tractorGreen, 0.55, 1.75, 0)); // cab shell
-  tractor.add(mesh(new THREE.BoxGeometry(0.9, 0.5, 1.07), mat(0x9fd4e8), 0.55, 1.95, 0, false)); // cab glass
-  for (const fz of [-0.75, 0.75]) { // rear fenders
-    const fender = mesh(new THREE.BoxGeometry(1.0, 0.1, 0.5), tractorDark, 0.8, 1.42, fz, false);
-    fender.rotation.z = 0.12; tractor.add(fender);
-  }
-  tractor.add(mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), mat(0x7a5230), 1.25, 0.6, 0, false)); // hitch bar
-  const wg = new THREE.CylinderGeometry(0.65, 0.65, 0.42, 12); wg.rotateX(Math.PI / 2);
-  const wm = mat(0x222222);
-  for (const wz of [-0.75, 0.75]) {
-    tractor.add(mesh(wg, wm, 0.8, 0.65, wz));
-    tractor.add(mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.44, 8).rotateX(Math.PI / 2), mat(0xe8c33d), 0.8, 0.65, wz, false)); // hubs
-  }
-  const wg2 = new THREE.CylinderGeometry(0.42, 0.42, 0.36, 10); wg2.rotateX(Math.PI / 2);
-  for (const wz of [-0.7, 0.7]) {
-    tractor.add(mesh(wg2, wm, -0.8, 0.42, wz));
-    tractor.add(mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.38, 8).rotateX(Math.PI / 2), mat(0xe8c33d), -0.8, 0.42, wz, false));
-  }
-  put(tractor, latC + 5, lonC + 5, 0.1, 1.2);
-  tickers.push((t) => { tractor.position.y += Math.sin(t * 20) * 0.0006; });
-  // hay bales + haystack + loaded hay cart
-  for (let i = 0; i < 4; i++) {
-    const hay = mesh(new THREE.CylinderGeometry(0.7, 0.7, 1.0, 9), mat(0xe8c96a));
-    hay.rotation.z = Math.PI / 2;
-    put(hay, latC + 6 + rand(-2, 2), lonC - 3 + rand(-2, 2), 0.7, rand(3));
-  }
-  {
-    const stack = mesh(new THREE.ConeGeometry(1.15, 1.9, 9), mat(0xd9b95e), 0, 0, 0);
-    put(stack, latC + 8, lonC - 5, 0.9, 0.4);
-    put(mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.4, 6), mat(0x7a5230), 0, 0, 0, false), latC + 8, lonC - 5, 1.1, 0.2);
-  }
-  {
-    // two-wheeled cart piled with hay
-    const cart = new THREE.Group();
-    const cartWood = mat(0x9a6b42);
-    cart.add(mesh(new THREE.BoxGeometry(2.4, 0.22, 1.3), cartWood, 0, 0.95, 0));
-    for (const [bx, bz] of [[-1.0, -0.55], [1.0, -0.55], [-1.0, 0.55], [1.0, 0.55]])
-      cart.add(mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), cartWood, bx, 1.3, bz, false));
-    for (const wz of [-0.78, 0.78]) {
-      cart.add(mesh(new THREE.TorusGeometry(0.68, 0.09, 6, 14), cartWood, 0, 0.68, wz, false)); // wheel discs face outward, axle along z
-      cart.add(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.12, 8).rotateX(Math.PI / 2), mat(0x7a5230), 0, 0.68, wz, false));
-      for (let s = 0; s < 3; s++) {
-        const spoke = mesh(new THREE.BoxGeometry(0.07, 1.24, 0.07), mat(0x7a5230), 0, 0.68, wz, false);
-        spoke.rotation.z = (s / 3) * Math.PI; cart.add(spoke);
-      }
-    }
-    for (const hz of [-0.4, 0.4]) {
-      const handle = mesh(new THREE.BoxGeometry(1.6, 0.09, 0.09), cartWood, -1.9, 0.7, hz, false);
-      handle.rotation.z = -0.25; cart.add(handle);
-    }
-    for (const [hx, hy] of [[-0.5, 1.35], [0.4, 1.5], [-0.1, 1.7]]) {
-      const blob = mesh(new THREE.IcosahedronGeometry(0.55, 0), mat(0xe8c96a), hx, hy, 0, false);
-      blob.scale.set(1.2, 0.7, 0.9); cart.add(blob);
-    }
-    put(cart, latC + 7, lonC - 5.5, 0, 2.0);
-  }
-  // fences: railed sheep pen rectangle with a swinging gate
-  const fenceM = mat(0xf1e8d5);
-  const penLA = latC - 2, penLO = lonC - 8;
-  {
-    const pen = new THREE.Group();
-    const HX = 2.5, HZ = 2.1; // half-extents in world units (~matches the old post layout)
-    const post = (x, z, h = 1.1) => pen.add(mesh(new THREE.BoxGeometry(0.18, h, 0.18), fenceM, x, h / 2, z));
-    const railX = (z, y) => pen.add(mesh(new THREE.BoxGeometry(HX * 2, 0.1, 0.08), fenceM, 0, y, z, false));
-    const railZ = (x, y) => pen.add(mesh(new THREE.BoxGeometry(0.08, 0.1, HZ * 2), fenceM, x, y, 0, false));
-    for (let x = -HX; x <= HX + 0.01; x += 1.0) { post(x, -HZ); post(x, HZ); }
-    for (let z = -HZ + 1.0; z <= HZ - 1.0 + 0.01; z += 1.0) { post(-HX, z); post(HX, z); }
-    for (const y of [0.45, 0.85]) { railX(-HZ, y); railX(HZ, y); railZ(-HX, y); railZ(HX, y); }
-    // gate: taller posts + an open door on the +z side
-    post(-0.7, HZ, 1.4); post(0.7, HZ, 1.4);
-    const gate = mesh(new THREE.BoxGeometry(1.3, 0.85, 0.08), fenceM, 0, 0, 0, false);
-    const gatePivot = new THREE.Group(); gatePivot.position.set(-0.7, 0, HZ);
-    gate.position.set(0.65, 0.55, 0); gatePivot.add(gate);
-    gatePivot.rotation.y = 0.7; pen.add(gatePivot);
-    put(pen, penLA, penLO, 0.05, 0.3);
-  }
-  // sheep (shearable wool node — step 2; befriending comes in step 3)
-  const sheepBodies = [];
-  const sheepAnchor = latLonToVec3(penLA, penLO, heightFor(latLonToVec3(penLA, penLO, 0).normalize()) + 0.1);
-  for (let i = 0; i < 4; i++) {
-    const s = makeSheep();
-    const p = sheepAnchor.clone().add(V3(rand(-2, 2), rand(0, 0.5), rand(-2, 2)));
-    // re-project onto sphere
-    const n = p.clone().normalize();
-    orientOnSphere(s, n.clone().multiplyScalar(R + heightFor(n) + 0.02), rand(6));
-    farmGroup.add(s);
-    sheepBodies.push(s.userData.wool); // fleece group; scaled down while shorn
-    const baseY = s.position.y;
-    tickers.push((t, dt) => { s.position.y = baseY + Math.sin(t * 3 + i * 2) * 0.02; animateAnimal(s, t, 0.05, dt); });
-  }
-  // crop rows (interactive wonder)
-  const cropGroup = new THREE.Group(); farmGroup.add(cropGroup);
-  const soilM = mat(0x6b4a2c), sproutM = mat(0x53c85c), pumpkinM = mat(0xe07b2a);
-  for (let r = 0; r < 4; r++) {
-    const soil = mesh(new THREE.BoxGeometry(1.6, 0.16, 7), mat(0x574029), 0, 0, 0);
-    for (const rx of [-0.5, 0, 0.5]) { // raised ridges the rows grow on
-      soil.add(mesh(new THREE.BoxGeometry(0.34, 0.14, 6.8), soilM, rx, 0.13, 0, false));
-      soil.add(mesh(new THREE.BoxGeometry(0.32, 0.1, 6.7), mat(0x4fae52), rx, 0.24, 0, false));
-    }
-    for (const ex of [-0.8, 0.8]) // thin bed edging
-      soil.add(mesh(new THREE.BoxGeometry(0.07, 0.2, 7), mat(0x4e3822), ex, 0.04, 0, false));
-    const la = latC - 4, lo = lonC + 6 + r * 2.2;
-    const base = latLonToVec3(la, lo, 0);
-    orientOnSphere(soil, latLonToVec3(la, lo, heightFor(base.normalize()) + 0.1), 0.1);
-    cropGroup.add(soil);
-    for (const rx of [-0.5, 0, 0.5]) {
-      for (let k = 0; k < 7; k++) {
-        const sprout = mesh(new THREE.IcosahedronGeometry(0.3, 0), sproutM, rx, 0.34, -2.7 + k * 0.9, false);
-        sprout.scale.setScalar(0.62);
-        soil.add(sprout);
-        cropSpots.push({ mesh: sprout, mats: { sproutM, pumpkinM }, baseScale: 1 });
-      }
-    }
-  }
-  window.__crops = cropSpots;
-  // scarecrow watching the rows (sways in the breeze)
-  {
-    const sc = new THREE.Group();
-    const strawM = mat(0xe8c96a), patchM = mat(0x2f9e5f);
-    sc.add(mesh(new THREE.CylinderGeometry(0.09, 0.11, 2.4, 6), mat(0x7a5230), 0, 1.2, 0));
-    sc.add(mesh(new THREE.BoxGeometry(1.6, 0.12, 0.12), mat(0x7a5230), 0, 1.75, 0, false));
-    sc.add(mesh(new THREE.BoxGeometry(0.7, 0.8, 0.4), patchM, 0, 1.35, 0, false));
-    sc.add(mesh(new THREE.BoxGeometry(0.72, 0.3, 0.42), mat(0xc9573a), 0, 1.15, 0, false)); // patch
-    sc.add(mesh(new THREE.SphereGeometry(0.3, 8, 7), mat(0xe8c98a), 0, 2.15, 0, false)); // burlap head
-    sc.add(mesh(new THREE.ConeGeometry(0.42, 0.35, 8), strawM, 0, 2.5, 0, false)); // straw hat
-    for (const hx of [-0.85, 0.85])
-      sc.add(mesh(new THREE.ConeGeometry(0.12, 0.35, 5), strawM, hx, 1.75, 0, false)); // straw hands
-    put(sc, latC - 5.5, lonC + 5, 0, 0.7);
-    tickers.push((t) => { sc.rotation.z = Math.sin(t * 1.3) * 0.05; });
-  }
-  // water trough by the pen
-  {
-    const tr = new THREE.Group();
-    tr.add(mesh(new THREE.BoxGeometry(1.8, 0.45, 0.7), mat(0x7a5230), 0, 0.45, 0));
-    for (const [lx, lz] of [[-0.8, -0.3], [0.8, -0.3], [-0.8, 0.3], [0.8, 0.3]])
-      tr.add(mesh(new THREE.BoxGeometry(0.12, 0.35, 0.12), mat(0x5a3d22), lx, 0.17, lz, false));
-    tr.add(mesh(new THREE.BoxGeometry(1.6, 0.08, 0.5), mat(0x4fc3d8, { roughness: 0.2 }), 0, 0.62, 0, false));
-    put(tr, penLA + 5.5, penLO + 2.5, 0, 0.4);
-  }
-  // shear node on the pen + a forage bush by the dirt belt
-  addNode({
-    type: 'wool', item: 'wool', name: 'Sheep', verb: 'Shear', icon: '🐑', color: 0xffffff, chime: 500,
-    lat: penLA, lon: penLO, kind: 'GATHER', tool: null, stock: 1, respawn: 90,
-    onDeplete: () => sheepBodies.forEach((b) => b.scale.set(0.9, 0.68, 0.68)),
-    onRegrow: () => sheepBodies.forEach((b) => b.scale.set(1.2, 0.9, 0.9)),
-  });
+  // a wild berry bush remains as a starting food source
   {
     const { g: bush, berries } = makeBush();
     put(bush, 5, 38, 0, 1);
@@ -2077,52 +1698,58 @@ let cropSpots = [];
       onDeplete: () => (berries.visible = false), onRegrow: () => (berries.visible = true),
     });
   }
-  steppingStones([[16, 32], [14, 36], [12, 40], [10, 44], [8, 48], [4, 46], [0, 44]], 0xf0d68a, 0.5);
-  // farmer NPC
-  const farmer = new THREE.Group();
-  farmer.add(mesh(new THREE.CapsuleGeometry(0.45, 0.8, 3, 8), mat(0xe8a33d), 0, 1.1, 0));
-  farmer.add(mesh(new THREE.SphereGeometry(0.4, 8, 7), mat(0xf2c49b), 0, 2.1, 0));
-  farmer.add(mesh(new THREE.ConeGeometry(0.55, 0.5, 8), mat(0xe8d27a), 0, 2.55, 0, false));
-  put(farmer, latC - 3, lonC + 10, 0, 1);
-  tickers.push((t) => { farmer.rotation.y += Math.sin(t) * 0.002; });
-  // painted farm sign by the path
-  {
-    const cv = document.createElement('canvas'); cv.width = 256; cv.height = 128;
-    const cx = cv.getContext('2d');
-    cx.fillStyle = '#8a6238'; cx.fillRect(0, 0, 256, 128);
-    cx.strokeStyle = '#5a3d22'; cx.lineWidth = 10; cx.strokeRect(6, 6, 244, 116);
-    cx.fillStyle = '#f3e9dc'; cx.font = 'bold 40px Georgia, serif';
-    cx.textAlign = 'center'; cx.textBaseline = 'middle';
-    cx.fillText('CLOVER', 128, 42); cx.fillText('FIELDS', 128, 86);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const sign = new THREE.Group();
-    for (const px of [-0.9, 0.9])
-      sign.add(mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.8, 6), mat(0x7a5230), px, 0.9, 0));
-    sign.add(mesh(new THREE.BoxGeometry(2.3, 1.15, 0.12), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9 }), 0, 2.0, 0, false));
-    sign.add(mesh(new THREE.ConeGeometry(1.35, 0.35, 4), mat(0x7a8b6f), 0, 2.75, 0, false));
-    put(sign, latC + 5, lonC - 10, 0, 0.9);
+  // Sheep roam the meadow freely — no pen, no farmer. One of them carries the
+  // shear interaction, which follows her as she grazes.
+  const sheepBodies = [];
+  const sheepMeshes = [];
+  for (const [la, lo] of [[8, 33], [10, 37], [7, 41], [11, 44]]) {
+    const s = makeSheep();
+    const home = latLonToVec3(la, lo, 0).normalize();
+    const east = V3(-home.z, 0, home.x);
+    if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+    east.normalize();
+    const north = new THREE.Vector3().crossVectors(home, east).normalize();
+    const radius = rand(1.4, 2.8), speed = rand(0.1, 0.18), phase = rand(Math.PI * 2);
+    s.position.copy(home).multiplyScalar(R + heightFor(home) + 0.02);
+    farmGroup.add(s);
+    sheepMeshes.push(s);
+    sheepBodies.push(s.userData.wool);
+    let prev = s.position.clone();
+    tickers.push((t, dt) => {
+      const a = t * speed + phase;
+      const n = home.clone()
+        .addScaledVector(east, Math.sin(a) * radius / R)
+        .addScaledVector(north, Math.sin(a * 0.7 + 1.3) * radius * 0.55 / R)
+        .normalize();
+      const p = n.clone().multiplyScalar(R + heightFor(n) + 0.02);
+      const step = p.clone().sub(prev);
+      if (step.lengthSq() > 1e-5) {
+        const dir = step.clone().addScaledVector(n, -step.dot(n));
+        if (dir.lengthSq() > 1e-6) {
+          const m = new THREE.Matrix4().lookAt(V3(0, 0, 0), dir.normalize().negate(), n);
+          s.quaternion.setFromRotationMatrix(m);
+        }
+      }
+      s.position.copy(p);
+      prev.copy(p);
+      animateAnimal(s, t, 0.4, dt);
+    });
   }
-  // porch-style lamp glowing over the farmyard at night
-  {
-    const lamp = new THREE.Group();
-    lamp.add(mesh(new THREE.CylinderGeometry(0.09, 0.12, 2.7, 6), mat(0x4a3320), 0, 1.35, 0));
-    lamp.add(mesh(new THREE.BoxGeometry(0.5, 0.1, 0.5), mat(0x4a3320), 0, 2.7, 0, false));
-    lamp.add(mesh(new THREE.BoxGeometry(0.34, 0.42, 0.34),
-      mat(0xffe9a3, { emissive: 0xffb35a, emissiveIntensity: 1.4 }), 0, 2.4, 0, false));
-    lamp.add(mesh(new THREE.ConeGeometry(0.32, 0.25, 6), mat(0x4a3320), 0, 2.72, 0, false));
-    const li = new THREE.PointLight(0xffc93d, 6, 13);
-    li.position.set(0, 2.4, 0); lamp.add(li);
-    nightLights.push({ l: li, base: 6 });
-    put(lamp, latC + 3.5, lonC - 7.5, 0, 0);
-  }
-  // little orchard south of the farmhouse
+  const woolNode = addNode({
+    type: 'wool', item: 'wool', name: 'Sheep', verb: 'Shear', icon: '🐑', color: 0xffffff, chime: 500,
+    lat: 8, lon: 33, kind: 'GATHER', tool: null, stock: 1, respawn: 90,
+    onDeplete: () => sheepBodies.forEach((b) => b.scale.set(0.64, 0.54, 0.96)),
+    onRegrow: () => sheepBodies.forEach((b) => b.scale.set(0.72, 0.62, 1.05)),
+  });
+  tickers.push(() => {
+    if (sheepMeshes[0]) woolNode.interact.pos.copy(sheepMeshes[0].position);
+  });
+  // Natural orchard trees and blossom trees stay; they are forage, not buildings.
   for (const [ola, olo] of [[-4, -13], [-2, -15], [-4, -14]]) {
     const tree = makeOrchardTree(0xe04a3a);
     const placed = put(tree, latC + ola, lonC + olo, 0, rand(3));
     addChoppableTree(placed, latC + ola, lonC + olo, 'Apple Tree');
   }
-  // pear and plum rows continue the orchard toward the south pasture
   for (const [ola, olo, fruit] of [
     [-6, -10, 0xe8c96a], [-7, -12, 0xe8c96a], [-2, -9, 0xd97a9a],
     [-3, -11, 0xd97a9a], [-8, -7, 0xe8c96a], [-6, -5, 0xd97a9a],
@@ -2131,13 +1758,11 @@ let cropSpots = [];
     const placed = put(tree, latC + ola, lonC + olo, 0, rand(3));
     addChoppableTree(placed, latC + ola, lonC + olo, fruit === 0xe8c96a ? 'Pear Tree' : 'Plum Tree');
   }
-  // pink blossom trees frame the homestead (signature anime-fantasy accent)
   for (const [bla, blo] of [[4, 15], [10, 17], [-1, 16]]) {
     const tree = put(makeOrchardTree(0xffe3ee, true), latC + bla, lonC + blo, 0, rand(3));
     addBlossomPetals(tree, 32);
   }
 }
-
 // ---------- WHISPERING FOREST ----------
 let fireLight, fireCone, bellGroup;
 {
@@ -3338,7 +2963,7 @@ const bridges = [];
     scene.add(g);
     bridges.push({ group: g, left, right, fixed: false, label });
   };
-  mkBridge(10, 62, 0.5, 'Clover–Oasis link');
+  mkBridge(14, 128, 0.8, 'Oasis–Fernwood link');
   mkBridge(16, 178, 1.2, 'Fernwood–Reef crossing');
   mkBridge(8, 298, -0.6, 'Cove–Ember trail');
 }
@@ -3442,28 +3067,148 @@ function scatterInstanced(geo, material, count, biomes, sMin, sMax, colors, opts
   scene.add(m);
   return m;
 }
-scatterInstanced(new THREE.ConeGeometry(0.16, 0.6, 5), mat(0xffffff, { roughness: 1 }), 380,
-  ['farm', 'forest', 'oasis', 'cove'], 0.7, 1.6, [0x4da855, 0x63bd63, 0x8fd06a, 0x2f9e5f]);
-scatterInstanced(new THREE.IcosahedronGeometry(0.12, 0), mat(0xffffff, { roughness: 0.7 }), 130,
-  ['farm', 'forest', 'cove'], 0.7, 1.3, [0xff8fb3, 0xffd23d, 0xffffff, 0xc49df0], { lift: 0.25 });
+// Grass and flowers grow in tight, bushy clumps (one merged geometry per
+// clump) instead of single stems sprinkled evenly over the whole planet.
+function makeGrassBushGeometry(blades = 9) {
+  const parts = [];
+  for (let i = 0; i < blades; i++) {
+    const h = rand(0.58, 1.12);
+    const blade = new THREE.ConeGeometry(rand(0.055, 0.095), h, 4);
+    blade.translate(0, h * 0.5, 0);
+    blade.rotateZ(rand(0.12, 0.46));
+    const a = (i / blades) * Math.PI * 2 + rand(-0.35, 0.35);
+    blade.rotateY(a);
+    const r = rand(0.05, 0.33);
+    blade.translate(Math.cos(a) * r, rand(-0.02, 0.02), Math.sin(a) * r);
+    parts.push(blade);
+  }
+  return mergeGeometries(parts, false);
+}
+function makeFlowerBushGeometry(blooms = 6) {
+  const parts = [];
+  for (let i = 0; i < blooms; i++) {
+    const head = new THREE.IcosahedronGeometry(rand(0.055, 0.095), 0);
+    head.translate(rand(-0.34, 0.34), rand(0.15, 0.42), rand(-0.34, 0.34));
+    parts.push(head);
+  }
+  return mergeGeometries(parts, false);
+}
+// Pick a random clump centre from a custom rule, then pack many clumps around
+// it so the result reads as a wild grass/flower patch rather than a lawn.
+function scatterBushClumps(geo, material, clusters, perMin, perMax, colors, pick, opts = {}) {
+  const capacity = clusters * perMax;
+  const m = new THREE.InstancedMesh(geo, material, capacity);
+  m.frustumCulled = false;
+  m.castShadow = !!opts.shadow;
+  m.receiveShadow = true;
+  const col = new THREE.Color();
+  let idx = 0;
+  for (let ci = 0; ci < clusters && idx < capacity; ci++) {
+    let spot = null;
+    for (let k = 0; k < 60 && !spot; k++) spot = pick();
+    if (!spot) continue;
+    const up = spot[2].clone().normalize();
+    const east = V3(-up.z, 0, up.x);
+    if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+    east.normalize();
+    const north = new THREE.Vector3().crossVectors(up, east).normalize();
+    const count = perMin + ((Math.random() * (perMax - perMin + 1)) | 0);
+    for (let j = 0; j < count && idx < capacity; j++) {
+      const a = rand(0, Math.PI * 2);
+      const rr = Math.sqrt(Math.random()) * (opts.spread || 2.2);
+      const p = up.clone().multiplyScalar(R)
+        .addScaledVector(east, Math.cos(a) * rr)
+        .addScaledVector(north, Math.sin(a) * rr)
+        .normalize();
+      const h = heightFor(p);
+      if (h < (opts.minHeight ?? 0.18)) continue;
+      if (opts.keepBiomes && !opts.keepBiomes.includes(biomeAt(p))) continue;
+      _dummy.position.copy(p).multiplyScalar(R + h + (opts.lift ?? 0.02));
+      _dummy.quaternion.setFromUnitVectors(UP, p);
+      _dummy.rotateY(rand(Math.PI * 2));
+      const s = rand(opts.sMin ?? 0.7, opts.sMax ?? 1.4);
+      _dummy.scale.set(s, s * rand(0.85, 1.22), s);
+      _dummy.updateMatrix();
+      m.setMatrixAt(idx, _dummy.matrix);
+      col.setHex(colors[(Math.random() * colors.length) | 0]).offsetHSL(0, rand(-0.03, 0.03), rand(-0.04, 0.04));
+      m.setColorAt(idx, col);
+      idx++;
+    }
+  }
+  m.count = idx;
+  m.instanceMatrix.needsUpdate = true;
+  if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  scene.add(m);
+  return m;
+}
+// Green land: Clover Fields, Fernwood and the grassy upper Shell Cove.
+function pickGreenBushSpot() {
+  for (let k = 0; k < 60; k++) {
+    const la = rand(-18, 46), lo = rand(0, 360);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    const b = biomeAt(n);
+    if (b !== 'farm' && b !== 'forest' && !(b === 'cove' && la > 20)) continue;
+    if (heightFor(n) > 0.2) return [la, lo, n];
+  }
+  return null;
+}
+// The Great River's grassy banks (it runs along lon 94–102).
+function pickRiverBankSpot() {
+  for (let k = 0; k < 80; k++) {
+    const lo = Math.random() < 0.5 ? rand(91.2, 94.3) : rand(101.7, 104.8);
+    const la = rand(-63, -25);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    if (biomeAt(n) === 'river') continue;
+    if (heightFor(n) > 0.09) return [la, lo, n];
+  }
+  return null;
+}
+function pickSavannahBushSpot() {
+  for (let k = 0; k < 70; k++) {
+    const la = rand(-68, -25), lo = rand(20, 92);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    if (biomeAt(n) === 'savannah' && heightFor(n) > 0.2) return [la, lo, n];
+  }
+  return null;
+}
+function pickMangroveBushSpot() {
+  for (let k = 0; k < 70; k++) {
+    const la = rand(-68, -25), lo = rand(104, 170);
+    const n = latLonToVec3(la, lo, 0).normalize();
+    if (biomeAt(n) === 'mangrove' && heightFor(n) > 0.1) return [la, lo, n];
+  }
+  return null;
+}
+const bushGrassMat = mat(0xffffff, { roughness: 1 });
+const bushFlowerMat = mat(0xffffff, { roughness: 0.68 });
+const grassBushGeo = makeGrassBushGeometry(9);
+const flowerBushGeo = makeFlowerBushGeometry(6);
+// Dense mixed grass patches through the green biomes.
+scatterBushClumps(grassBushGeo, bushGrassMat, 250, 5, 10,
+  [0x3f8a4a, 0x4da855, 0x5cb85a, 0x2f9e5f, 0x6b9a4a], pickGreenBushSpot, { spread: 2.4 });
+// Wildflower patches tucked into those same green meadows.
+scatterBushClumps(flowerBushGeo, bushFlowerMat, 130, 3, 7,
+  [0xffd94a, 0xff8fb3, 0x74c8ff, 0xc792ff, 0xfff4d2], pickGreenBushSpot, { spread: 2.8, lift: 0.03 });
+// Thick grass bushes and flowers along the Great River's banks.
+scatterBushClumps(grassBushGeo, bushGrassMat, 90, 4, 9,
+  [0x3f7a4a, 0x4f9a52, 0x5b8a4a, 0x7aa85c], pickRiverBankSpot, { spread: 1.9, sMin: 0.8, sMax: 1.5 });
+scatterBushClumps(flowerBushGeo, bushFlowerMat, 28, 2, 5,
+  [0xfff4d2, 0xffd94a, 0xff8fb3, 0xc792ff], pickRiverBankSpot, { spread: 2.0, lift: 0.03 });
+// The savannah keeps its dry golden grass, but in natural clustered tufts.
+scatterBushClumps(grassBushGeo, bushGrassMat, 85, 4, 8,
+  [0xb99b52, 0xc9ad63, 0xd9b25a, 0xa58548], pickSavannahBushSpot, { spread: 2.3, sMin: 0.55, sMax: 1.05 });
+scatterBushClumps(grassBushGeo, bushGrassMat, 62, 4, 9,
+  [0x3f7a4a, 0x557a4a, 0x6b8a5a, 0x4f8a54], pickMangroveBushSpot, { spread: 2.2, sMin: 0.7, sMax: 1.3 });
 scatterInstanced(new THREE.DodecahedronGeometry(0.42, 0), mat(0xffffff, { roughness: 1 }), 90,
   ['farm', 'oasis', 'forest', 'cove', 'volcano', 'arctic'], 0.5, 1.4, [0x9aa0a6, 0x7d848c, 0xb9c2c9, 0xdce9f2, 0x5d4a38], { shadow: true, lift: 0.1, clear: [[2, 50, 3.4]] });
-scatterInstanced(new THREE.ConeGeometry(0.14, 0.7, 5), mat(0xffffff, { roughness: 1 }), 90,
-  ['oasis', 'volcano'], 0.7, 1.4, [0xd9b166, 0xc9a05a, 0x8a7a6a]);
 scatterInstanced(new THREE.IcosahedronGeometry(0.7, 1), mat(0xffffff, { roughness: 1 }), 70,
   ['farm', 'forest'], 0.7, 1.5, [0x2f9e5f, 0x3fae4e, 0x26854a], { shadow: true, squash: 0.7, lift: 0.25, clear: [[2, 50, 3.4]] });
 scatterInstanced(new THREE.OctahedronGeometry(0.5, 0),
   new THREE.MeshStandardMaterial({ color: 0xffffff, flatShading: true, roughness: 0.2, emissive: 0x0b5f8a, emissiveIntensity: 0.45 }),
   46, ['arctic'], 0.6, 1.6, [0x9fe4ff, 0x5ecdf5, 0xd6f2ff], { lift: 0.35 });
-// southern continents: dry savannah grass, acacia scrub and mangrove reeds
-scatterInstanced(new THREE.ConeGeometry(0.1, 0.45, 4), mat(0xffffff, { roughness: 1 }), 900,
-  ['savannah'], 0.5, 1.1, [0xd9b25a, 0xe8c96a, 0xc9a24a, 0xb98f45], { latRange: [-70, -24], lift: 0.28 });
-scatterInstanced(new THREE.IcosahedronGeometry(0.12, 0), mat(0xffffff, { roughness: 0.7 }), 120,
-  ['savannah'], 0.7, 1.3, [0xffd23d, 0xfff0c4, 0xe8a33d], { latRange: [-70, -24], lift: 0.3 });
+// southern continents: acacia scrub and mangrove rocks
 scatterInstanced(new THREE.DodecahedronGeometry(0.42, 0), mat(0xffffff, { roughness: 1 }), 34,
   ['savannah'], 0.5, 1.2, [0x9a8a7a, 0x8a7a6a, 0xb9a28a], { latRange: [-70, -24], shadow: true, lift: 0.1 });
-scatterInstanced(new THREE.ConeGeometry(0.12, 0.85, 4), mat(0xffffff, { roughness: 1 }), 300,
-  ['mangrove'], 0.8, 1.5, [0x3f7a4a, 0x557a4a, 0x6b8a5a], { latRange: [-70, -24], minHeight: 0.1, lift: 0.2 });
 scatterInstanced(new THREE.DodecahedronGeometry(0.38, 0), mat(0xffffff, { roughness: 1 }), 26,
   ['mangrove'], 0.5, 1.2, [0x6b5a3f, 0x7a6a4f, 0x5a4a35], { latRange: [-70, -24], minHeight: 0.1, shadow: true, lift: 0.08 });
 
@@ -4306,7 +4051,7 @@ function updateHeroGlbAnimation(dt, moving, runF, sp = 0) {
 const HERO_CHARACTERS = {
   pip: {
     key: 'pip', name: 'Pip', title: 'Sprout Keeper', url: pipGlbUrl, scale: 0.95,
-    hint: 'Leaf hat and watering-can pack. Crops grow faster; builds and bridge repairs finish sooner.',
+    hint: 'Brown hat and watering-can pack. Crops grow faster; builds and bridge repairs finish sooner.',
   },
   nova: {
     key: 'nova', name: 'Nova', title: 'Starlight Explorer', url: novaGlbUrl, scale: 1.08,
@@ -4333,6 +4078,35 @@ function attachHeroProp(obj, bone) {
     obj.userData.heroLocal = obj.matrix.clone();
   }
   return true;
+}
+// Pip's old leaf hat is hidden on the GLB; this low-poly brown replacement
+// rides the head bone so it follows every idle, walk and tool animation.
+function makePipHat() {
+  const g = new THREE.Group();
+  const felt = mat(0x6b4423, { roughness: 0.94 });
+  const band = mat(0x4a2d18, { roughness: 0.96 });
+  g.add(mesh(new THREE.CylinderGeometry(0.50, 0.54, 0.06, 12), felt, 0, 0.03, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.28, 0.34, 0.20, 10), felt, 0, 0.16, 0));
+  g.add(mesh(new THREE.CylinderGeometry(0.315, 0.35, 0.055, 10), band, 0, 0.095, 0, false));
+  const dome = mesh(new THREE.SphereGeometry(0.28, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.5), felt, 0, 0.26, 0, false);
+  dome.scale.y = 0.35;
+  g.add(dome);
+  return g;
+}
+function addPipHat(root, bones) {
+  const hat = makePipHat();
+  hat.name = 'PipBrownHat';
+  hat.position.set(0, 2.02, 0.02);
+  hat.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = false;
+    o.frustumCulled = false;
+  });
+  root.add(hat);
+  player.updateMatrixWorld(true);
+  if (bones.head) bones.head.attach(hat);
+  return hat;
 }
 function heroBindGear(bones) {
   const gear = player.userData.gear || {};
@@ -4384,6 +4158,8 @@ function loadHeroCharacter(key) {
           o.frustumCulled = false; // skinned bounds are bind-pose only
           // plain outfit: hide any authored star decorations on the body
           if (/star/i.test(o.name || '')) o.visible = false;
+          // Pip's authored leaf hat is replaced by the brown hat below.
+          if (def.key === 'pip' && /^Pip (Leaf|Stem)/i.test(o.material?.name || '')) o.visible = false;
         }
       });
       g.bones = bones;
@@ -4393,6 +4169,7 @@ function loadHeroCharacter(key) {
       // current world pose so the GLB hand bones drive them from here on.
       player.updateMatrixWorld(true);
       heroBindGear(bones);
+      if (def.key === 'pip') g.hat = addPipHat(root, bones);
       // Keep the game's functional gear visible on the GLB: fishing rod and
       // rifle on the back, heat cloak/satchel/tool-tier props on the hips.
       const gear = player.userData.gear || {};
@@ -4562,7 +4339,7 @@ function workshopClatter() {
 // Seven worlds, seven small moments (mirrors the field journal).
 const WORLDS = [
   { n: '01', code: 'FOREST', name: 'Fernwood', moment: 'Tend the fire', where: 'where the pines grow thick' },
-  { n: '02', code: 'FARM', name: 'Clover Fields', moment: 'Water / harvest', where: 'where the red barn stands' },
+  { n: '02', code: 'FARM', name: 'Clover Fields', moment: 'Till and harvest', where: 'the fields you raise yourself' },
   { n: '03', code: 'DESERT', name: 'Sunstone Oasis', moment: 'Wake the oasis', where: 'the golden dunes past the farm' },
   { n: '04', code: 'BEACH', name: 'Shell Cove', moment: 'Ring the bell', where: 'the pale sands and the dune bell' },
   { n: '05', code: 'OCEAN', name: 'Tideglass Reef', moment: 'Light the lighthouse', where: 'the shallow turquoise water' },
@@ -4571,7 +4348,7 @@ const WORLDS = [
 ];
 const wonders = [
   { id: 'flame', icon: '🔥', name: 'Eternal Flame', world: 0, done: false, stage: 0, hint: ['Tend the fire', 'Feed the flame', 'Nurture the blaze'] },
-  { id: 'harvest', icon: '🌾', name: 'Bountiful Harvest', world: 1, done: false, stage: 0, hint: ['Plant the rows', 'Water the sprouts', 'Harvest!'] },
+  { id: 'harvest', icon: '🌾', name: 'Bountiful Harvest', world: 1, done: false, stage: 0, hint: ['Till a field plot', 'Sow and water', 'Harvest!'] },
   { id: 'oasis', icon: '☀️', name: 'Wake the Oasis', world: 2, done: false, stage: 0, hint: ['Brush the sand', 'Turn the sunstones', 'Wake the oasis!'] },
   { id: 'bell', icon: '🔔', name: 'Ring the Bell', world: 3, done: false },
   { id: 'light', icon: '💡', name: 'Light the Lighthouse', world: 4, done: false },
@@ -4701,7 +4478,7 @@ function renderJournal() {
   };
   if (journalTab === 'story') {
     addHeading('TRAVELERS');
-    addRow('Pip the Sprout Keeper — leaf hat, watering-can pack, quicker crops and repairs.', '🌱', activeHeroKey === 'pip');
+    addRow('Pip the Sprout Keeper — brown hat, watering-can pack, quicker crops and repairs.', '🌱', activeHeroKey === 'pip');
     addRow('Nova the Starlight Explorer — navy coat, glowing scarf and a lantern that wakes after dark.', '⭐', activeHeroKey === 'nova');
     const ch = chapterNow();
     addHeading(`CHAPTER ${Life.chapter + 1} · ${ch.name.toUpperCase()} · AGE ${Math.round(Life.age || ch.age)}`);
@@ -4834,6 +4611,7 @@ const meters = { energy: 100, cold: 0, health: 100, hunger: 100, warmth: 100, mo
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
 let lastDamageT = -99; // last time the player took a hit (for slow recovery)
+let lastDamageCause = null, lastDamageCauseAt = -99;
 const PACK_BASE = 16;
 let packBonus = 0;
 function packSize() { return inv.wood + inv.stone + inv.gold + inv.food + (inv.fish || 0) + (inv.meat || 0) + inv.wool + inv.remedy + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0); }
@@ -5025,7 +4803,6 @@ scanPos = anchor(8, 328);
 const byId = (id) => wonders.find((x) => x.id === id);
 const stageHint = (id) => { const w = byId(id); return w.done ? w.hint[w.hint.length - 1] + ' ✓' : w.hint[Math.min(w.stage, w.hint.length - 1)]; };
 addInteract({ id: 'flame', pos: anchor(12, 158), kind: 'A SMALL WONDER', label: () => stageHint('flame'), onUse });
-addInteract({ id: 'harvest', pos: anchor(8, 52), kind: 'CLOVER FIELDS', label: () => stageHint('harvest'), onUse });
 addInteract({ id: 'oasis', pos: anchor(4, 110), kind: 'A SMALL WONDER', label: () => stageHint('oasis'), onUse });
 addInteract({ id: 'bell', pos: anchor(14, 279), kind: 'A SMALL WONDER', label: () => 'Ring the Bell', onUse });
 addInteract({ id: 'light', pos: anchor(2, 230), kind: 'A SMALL WONDER', label: () => (byId('light').done ? 'The beacon burns' : 'Light the lighthouse'), onUse, radius: 5 });
@@ -5212,24 +4989,7 @@ addInteract({ id: 'lagoon', pos: latLonToVec3(-8, 288, 0.6), kind: 'SHELL COVE',
 
 function onUse(it) {
   const p = player.position.clone();
-  if (it.id === 'harvest') {
-    const w = byId('harvest');
-    if (w.done) return toast('The harvest glows. The barn is full.');
-    if (w.stage === 0) {
-      w.stage = 1;
-      cropSpots.forEach((c) => c.mesh.scale.setScalar(0.7));
-      burst(p, 0x7ddf6a, 16, 2); chime(520); toast('🌱 Planted! Now water the rows (E).');
-    } else if (w.stage === 1) {
-      w.stage = 2;
-      cropSpots.forEach((c) => { c.mesh.scale.setScalar(1.15); c.mesh.material = c.mats.pumpkinM; });
-      burst(p, 0x4fb8ff, 18, 2); chime(600); toast('💧 Watered! Return to harvest (E).');
-    } else {
-      startChop(null, 'pick');
-      for (let n = 0; n < 2; n++) flyPickup(p.clone().add(V3(rand(-0.4, 0.4), 0.8 + n * 0.2, rand(-0.4, 0.4))), 'crop', 0xe07b2a);
-      if (onPopup) onPopup(p.clone().add(V3(0, 1, 0)), '+2 🍎', '#ffe596');
-      addItem('food', 2); completeWonder('harvest'); toast('🌾 Bountiful Harvest complete! (+2 food)');
-    }
-  } else if (it.id === 'flame') {
+  if (it.id === 'flame') {
     const w = byId('flame');
     if (w.done) { burst(p, 0xff9a3d, 10, 2); return toast('The flame dances for you.'); }
     w.stage++;
@@ -5320,7 +5080,7 @@ function flashDamage() {
   f.classList.add('show');
   setTimeout(() => f.classList.remove('show'), 160);
 }
-function damagePlayer(amount, from) {
+function damagePlayer(amount, from, cause) {
   if (playerDead || meters.health <= 0) return;
   // dash i-frames: a well-timed roll avoids the hit entirely and empowers the riposte
   if (dashIFrames > 0) {
@@ -5329,6 +5089,7 @@ function damagePlayer(amount, from) {
     chime(990);
     return;
   }
+  if (cause) { lastDamageCause = cause; lastDamageCauseAt = combatNow; }
   meters.health = Math.max(0, meters.health - amount * (settings.difficulty === 'cozy' ? 0.5 : 1));
   lastDamageT = combatNow;
   flashDamage();
@@ -5420,6 +5181,12 @@ function killPlayer() {
   chime(110);
   const g = document.getElementById('gameover');
   if (g) g.classList.remove('hidden');
+  const title = document.getElementById('gameover-title');
+  if (title && lastDamageCause && combatNow - lastDamageCauseAt < 4) {
+    title.textContent = `Mauled by ${lastDamageCause}…`;
+    const eyebrow = document.querySelector('.gameover-eyebrow');
+    if (eyebrow) eyebrow.textContent = 'THE WILD CLAIMED YOU';
+  }
   const sub = document.getElementById('gameover-sub');
   if (settings.permadeath) {
     if (sub) sub.textContent = 'An iron life ends here. The chronicle remains.';
@@ -5620,7 +5387,7 @@ function updateBears(t, dt) {
 }
 tickers.push((t, dt) => updateBears(t, dt));
 
-// ---------- villagers: one friendly face per zone, each happy to trade ----------
+// ---------- villagers: friendly faces across the zones, each happy to trade ----------
 // Gold has no wild source — villagers are how it enters the traveler's pack.
 const ITEM_ICON = { wood: '🪵', stone: '🪨', gold: '🪙', food: '🍎', fish: '🐟', meat: '🍖', wool: '🐑', fur: '🟫', leather: '🟤', remedy: '🌿', egg: '🥚', milk: '🥛', meal: '🍲' };
 const fmtItems = (obj) => Object.entries(obj).map(([k, n]) => `${n} ${ITEM_ICON[k] || k}`).join(' + ') || '—';
@@ -5712,18 +5479,6 @@ function makeVillager({ coat = 0xe8a33d, hat = 'straw', hatColor = 0xe8d27a, ski
 }
 const NPCS = [
   {
-    id: 'maren', name: 'Maren', zone: 'CLOVER FIELDS', lat: 3.5, lon: 52,
-    look: { coat: 0x3f9a4c, hat: 'straw', hatColor: 0xe8d27a },
-    lines: [
-      'Mind the sheep, love — shear them gentle and I’ll make it worth your while.',
-      'Wool for winter coats, food for the table. That’s the whole economy, love.',
-    ],
-    trades: [
-      { id: 'wool-food', give: { wool: 1 }, get: { food: 2 }, blurb: 'Wool for winter coats' },
-      { id: 'food-gold', give: { food: 2 }, get: { gold: 1 }, blurb: 'Sell the harvest surplus' },
-    ],
-  },
-  {
     id: 'ash', name: 'Ash the Firekeeper', zone: 'FERNWOOD', lat: 15.5, lon: 158,
     look: { coat: 0xc9573a, hat: 'hood', hatColor: 0x7a2e1a },
     lines: [
@@ -5798,19 +5553,6 @@ const NPCS = [
     trades: [
       { id: 'food-remedy', give: { food: 1 }, get: { remedy: 1 }, blurb: 'Warming tea-herbs' },
       { id: 'wool-gold', give: { wool: 1 }, get: { gold: 2 }, blurb: 'Wool for a parka' },
-    ],
-  },
-  {
-    id: 'lena', name: 'Lena the Shepherdess', zone: 'CLOVER FIELDS', lat: 5.5, lon: 47,
-    look: { coat: 0xe8a33d, hat: 'straw', hatColor: 0xc9573a },
-    court: true,
-    lines: [
-      'My sheep, my hills, my whole heart. Well. Most of it.',
-      'Bring me an apple a day and we’ll see where this goes, traveler.',
-    ],
-    trades: [
-      { id: 'food-wool', give: { food: 2 }, get: { wool: 1 }, blurb: 'Fresh-shorn fleece' },
-      { id: 'gold-food', give: { gold: 2 }, get: { food: 3 }, blurb: 'Picnic basket' },
     ],
   },
 ];
@@ -6012,9 +5754,10 @@ const CHAPTERS = [
     id: 'arrival', icon: '🌱', name: 'Arrival', age: 20,
     blurb: 'A stranger on a small green world. Survive the first nights.',
     beat: 'You arrived with an axe and a stubborn heart. The planet is listening.',
-    tip: 'Click a tree or press E once — the hero walks over and does the whole job. Build a Mud Hut (H) before dark.',
+    tip: 'Click a tree or press E once — the hero walks over and does the whole job. Light a campfire and pitch a tent (H) before dark.',
     goals: [
-      { text: 'Build a Mud Hut', done: () => Home.house >= 1 },
+      { text: 'Light a campfire', done: () => !!Home.campfire },
+      { text: 'Pitch a tent', done: () => !!Home.tent },
       { text: 'Sleep one night', done: () => Life.nights >= 1 },
       { text: 'Stock 5 food', done: () => Life.stats.maxFood >= 5 },
       { text: 'Chop 3 wood', done: () => (Life.stats.woodChopped || 0) >= 3 },
@@ -6184,8 +5927,9 @@ const TECH = [
   { id: 'hand-tools', era: 0, name: 'Hand Tools', insight: 1, cost: { wood: 2 }, req: [], desc: 'Stone axe and pick: +10% work speed.' },
   { id: 'firecraft', era: 0, name: 'Firecraft', insight: 1, cost: { wood: 3 }, req: [], desc: 'Better fires: warmth drains slower.' },
   { id: 'foraging', era: 0, name: 'Foraging', insight: 1, cost: { food: 1 }, req: [], desc: 'Berry bushes and herbs yield +1.' },
+  { id: 'spearmaking', era: 0, name: 'Spearmaking', insight: 1, cost: { wood: 2, stone: 1 }, req: ['hand-tools'], desc: 'Unlock the stone javelin and a bundle of throwing spears — the first real weapon for apex predators.' },
   { id: 'copper-tools', era: 1, name: 'Copper Tools', insight: 2, cost: { wood: 4, stone: 2 }, req: ['hand-tools'], desc: 'Copper axe/pick: +30% work speed.' },
-  { id: 'bowyer', era: 1, name: 'Bowyer', insight: 2, cost: { wood: 4, stone: 1 }, req: ['hand-tools'], desc: 'Unlock the short bow and a bundle of hunting arrows.' },
+  { id: 'bowyer', era: 1, name: 'Bowyer', insight: 2, cost: { wood: 4, stone: 1 }, req: ['spearmaking'], desc: 'Unlock the short bow and a bundle of hunting arrows.' },
   { id: 'workshop', era: 1, name: 'Workshop', insight: 2, cost: { wood: 8, stone: 4 }, req: ['hand-tools'], desc: 'Build the workshop: research and craft.' },
   { id: 'irrigation', era: 1, name: 'Irrigation', insight: 2, cost: { wood: 4, stone: 3 }, req: ['workshop'], desc: 'Plots auto-water; drought hurts less.' },
   { id: 'cart', era: 1, name: 'Hand Cart', insight: 1, cost: { wood: 4 }, req: ['hand-tools'], desc: '+8 pack capacity.' },
@@ -6283,6 +6027,7 @@ function applyTech(id) {
   if (!t) return;
   switch (id) {
     case 'hand-tools': tools.axe = Math.max(tools.axe, 1.1); tools.pick = Math.max(tools.pick, 1.1); break;
+    case 'spearmaking': unlockWeapon('javelin'); Ammo.javelins = Math.max(Ammo.javelins || 0, 6); break;
     case 'bowyer': unlockWeapon('bow'); Ammo.arrows = Math.max(Ammo.arrows || 0, 8); break;
     case 'copper-tools': tools.axe = Math.max(tools.axe, 1.3); tools.pick = Math.max(tools.pick, 1.3); unlockWeapon('iron-axe'); break;
     case 'iron-tools': tools.axe = Math.max(tools.axe, 1.6); tools.pick = Math.max(tools.pick, 1.6); unlockWeapon('war-axe'); unlockWeapon('crossbow'); break;
@@ -6901,8 +6646,9 @@ const WEAPONS = {
   'iron-axe': { id: 'iron-axe', name: 'Iron Broadaxe', melee: true, dmg: 1.35, range: 2.3, rate: 0.55, tier: 1, desc: 'Heavier head, deeper bite.' },
   'war-axe': { id: 'war-axe', name: 'War Axe', melee: true, dmg: 1.7, range: 2.4, rate: 0.52, tier: 2, desc: 'A weapon first, a tool second.' },
   halberd: { id: 'halberd', name: 'Halberd', melee: true, dmg: 2.1, range: 3.0, rate: 0.78, tier: 3, desc: 'Reach and stagger.' },
-  sling: { id: 'sling', name: 'Sling', ranged: true, dmg: 0.55, range: 12, rate: 1.1, ammo: 'stones', tier: 0, desc: 'Cheap, quiet, stunning.' },
-  bow: { id: 'bow', name: 'Short Bow', ranged: true, dmg: 0.9, range: 18, rate: 1.3, ammo: 'arrows', tier: 1, desc: 'Silent hunting weapon.' },
+  sling: { id: 'sling', name: 'Sling', ranged: true, dmg: 0.55, range: 12, rate: 1.1, ammo: 'stones', tier: 0, desc: 'Cheap, quiet, stunning — useless against an armoured predator.' },
+  javelin: { id: 'javelin', name: 'Stone Javelin', ranged: true, dmg: 1.0, range: 16, rate: 1.5, ammo: 'javelins', tier: 1, desc: 'A thrown spear. The first weapon that can bring down apex predators.' },
+  bow: { id: 'bow', name: 'Short Bow', ranged: true, dmg: 0.9, range: 18, rate: 1.3, ammo: 'arrows', tier: 1, desc: 'Silent hunting weapon for dangerous game.' },
   crossbow: { id: 'crossbow', name: 'Crossbow', ranged: true, dmg: 1.5, range: 22, rate: 2.0, ammo: 'bolts', tier: 2, desc: 'Slow, punchy, accurate.' },
   musket: { id: 'musket', name: 'Musket', ranged: true, dmg: 2.4, range: 30, rate: 3.2, ammo: 'bullets', tier: 3, desc: 'One loud shot. Make it count.' },
   rifle: { id: 'rifle', name: 'Lever Rifle', ranged: true, dmg: 2.0, range: 45, rate: 1.1, ammo: 'bullets', tier: 4, desc: 'Fast, accurate, loud.' },
@@ -6911,7 +6657,7 @@ const WEAPONS = {
 const UnlockedWeapons = ['hatchet', 'sling'];
 const Loadout = { melee: 'hatchet', ranged: null };
 const WeaponState = { mode: 'melee' };
-const Ammo = { stones: 8, arrows: 0, bolts: 0, bullets: 0, shells: 0 };
+const Ammo = { stones: 8, javelins: 0, arrows: 0, bolts: 0, bullets: 0, shells: 0 };
 const Mag = {}; // rounds loaded per ranged weapon
 const Condition = {}; // 0..100 per weapon; gunsmith repairs wear
 let reloadT = 0, reloadWeaponId = null;
@@ -6973,7 +6719,7 @@ function magCapacity(w) {
   if (!w) return 0;
   if (w.id === 'shotgun') return 2;
   if (w.id === 'rifle') return 6;
-  if (w.id === 'musket' || w.id === 'crossbow' || w.id === 'bow' || w.id === 'sling') return 1;
+  if (w.id === 'musket' || w.id === 'crossbow' || w.id === 'bow' || w.id === 'sling' || w.id === 'javelin') return 1;
   return 1;
 }
 function ensureMag(w) {
@@ -7034,7 +6780,7 @@ function equipWeapon(id) {
   renderStats(); renderLoadout(); renderLoadout();
 }
 function buyAmmo(kind, n = 1) {
-  const cost = kind === 'shells' ? { gold: 2, stone: 2 } : kind === 'bullets' ? { gold: 1, stone: 1 } : kind === 'arrows' ? { wood: 1 } : kind === 'bolts' ? { wood: 1, stone: 1 } : { stone: 1 };
+  const cost = kind === 'shells' ? { gold: 2, stone: 2 } : kind === 'bullets' ? { gold: 1, stone: 1 } : kind === 'arrows' ? { wood: 1 } : kind === 'javelins' ? { wood: 1 } : kind === 'bolts' ? { wood: 1, stone: 1 } : { stone: 1 };
   for (const [k, v] of Object.entries(cost)) if ((inv[k] || 0) < v) { toast(`🔫 Need ${v} ${ITEM_ICON[k] || k} for ${n} ${kind}.`); return; }
   for (const [k, v] of Object.entries(cost)) inv[k] -= v;
   Ammo[kind] = (Ammo[kind] || 0) + n;
@@ -7099,6 +6845,13 @@ function fireAt(target) {
     for (let p = 0; p < pellets; p++) {
       const falloff = w.id === 'shotgun' ? Math.max(0.3, 1 - d / (w.range * 1.5)) : 1;
       let dmg = Math.round((24 * w.dmg / pellets) * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03) * falloff * conditionMult(w.id));
+      if (target.hunt?.apex) {
+        // Slings and other first-generation ranged tools barely scratch them.
+        dmg = w.tier < 1 ? Math.max(1, Math.round(dmg * 0.18)) : Math.round(dmg * (1 + Math.max(0, w.tier - 1) * 0.12));
+        target.fleeT = 0;
+        target.aggro = true;
+        target.aggroAnnounced = false;
+      }
       if (critBuff > 0 && p === 0) { dmg = Math.round(dmg * 1.8); critBuff--; toast('💥 Critical shot!'); }
       target.hp -= dmg;
       total += dmg;
@@ -7113,7 +6866,7 @@ function fireAt(target) {
       if (target.hp <= 0) killRobber(target);
     } else if (target.kindTag === 'prey') {
       if (target.hp <= 0) killPrey(target);
-    } else if (target.kindTag === 'ambient') {
+    } else if (target.kindTag === 'ambient' || target.kindTag === 'river') {
       if (target.hp <= 0) killAmbient(target);
     } else if (target.adult !== undefined) {
       if (target.hp <= 0) killBear(target);
@@ -7318,6 +7071,7 @@ tickers.push((t, dt) => {
 let sleeping = false;
 function sleepUntilMorning() {
   if (sleeping || playerDead) return;
+  if (!shelterBuilt()) return toast('⛺ Pitch a tent before sleeping (H).');
   sleeping = true;
   const f = document.getElementById('sleep-fade');
   f.classList.remove('hidden');
@@ -7395,7 +7149,7 @@ function saveLife() {
     legacy: Life.legacy ? { ...Life.legacy, traits: [...(Life.legacy.traits || [])] } : null,
     progression: saveProgression(),
     rpg: { level: RPG.level, xp: Math.round(RPG.xp), xpNext: RPG.xpNext, weapon: RPG.weapon, perkChop: RPG.perkChop, perkRun: RPG.perkRun, perkTame: RPG.perkTame },
-    home: { house: Home.house, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, dock: !!Home.dock, raft: !!Home.raft, boat: !!Home.boat, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
+    home: { house: Home.house, tent: !!Home.tent, campfire: !!Home.campfire, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, dock: !!Home.dock, raft: !!Home.raft, boat: !!Home.boat, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
   };
@@ -7433,7 +7187,8 @@ function restoreLife(s) {
   if (typeof s.stats?.fishCaught !== 'number') Life.stats.fishCaught = 0;
   Home.build = null;
   if (s.home) {
-    Home.house = s.home.house ?? 0; Home.well = !!s.home.well; Home.barn = s.home.barn ?? 0;
+    Home.house = s.home.house ?? 0; Home.tent = !!s.home.tent; Home.campfire = !!s.home.campfire;
+    Home.well = !!s.home.well; Home.barn = s.home.barn ?? 0;
     Home.fences = s.home.fences ?? 0; Home.cabin = !!s.home.cabin; Home.stall = !!s.home.stall;
     Home.lanterns = s.home.lanterns ?? 0; Home.dog = !!s.home.dog; Home.decor = s.home.decor ?? 0;
     Home.dock = !!s.home.dock; Home.raft = !!s.home.raft; Home.boat = !!s.home.boat;
@@ -7527,6 +7282,7 @@ function overnightNeeds(rested) {
 }
 function cookMeal() {
   if (playerDead) return;
+  if (!Home.campfire) return toast('🔥 Light a campfire before cooking (H).');
   const have = (inv.food || 0) + (inv.fish || 0) + (inv.meat || 0) + (inv.egg || 0) + (inv.milk || 0);
   if (have < 2) return toast('🍲 Need 2 produce (🍎/🐟/🍖/🥚/🥛) to cook a meal.');
   const used = [];
@@ -7564,7 +7320,7 @@ tickers.push((t, dt) => {
 // --- homestead: buildings, plots, well (fixed site south of Clover Fields) ---
 const HOME = { lat: -3, lon: 56 };
 const Home = {
-  house: 0, build: null, well: false, barn: 0, fences: 0, cabin: false, stall: false,
+  house: 0, tent: false, campfire: false, build: null, well: false, barn: 0, fences: 0, cabin: false, stall: false,
   lanterns: 0, dog: false, decor: 0, dmg: {},
   workshop: false, windmill: false, sawmill: false, mill: false, pump: false, forge: false,
   gunsmith: false, irrigation: false, stormShutters: false, weatherStation: false,
@@ -7599,9 +7355,7 @@ const SITE_DEFAULTS = {
 };
 const HOME_FIXED = [
   { lat: -3, lon: 58, r: 0.8, label: 'the cookpot', fixed: true },
-  { lat: -1, lon: 58.5, r: 0.8, label: 'the homestead board', fixed: true },
   { lat: 0, lon: 59.5, r: 0.8, label: 'the bounty board', fixed: true },
-  { lat: -4, lon: 57, r: 0.8, label: 'the trough', fixed: true },
 ];
 function siteFor(key) {
   const s = Home.sites && Home.sites[key];
@@ -7699,6 +7453,7 @@ function buildHouseMesh() {
   const t = Home.house, broken = Home.dmg.house;
   const hs = houseSite();
   if (t === 0) {
+    if (!Home.tent) return; // the first tent must be built from the objectives
     const tent = mesh(new THREE.ConeGeometry(1.5, 1.9, 6), mat(0xd9c9a8), 0, 0, 0);
     placeAt(tent, hs.lat, hs.lon, 0.9, 0.4);
     placeAt(mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.56, 8), mat(0xe8d9a8), 0, 0, 0, false), hs.lat + 1.2, hs.lon + 0.5, 0.2, 1);
@@ -8086,8 +7841,7 @@ function buildMiscMeshes() {
     placeAt(g, 4.2, 60.5, 0, 0.2);
     addOccluder(g);
   }
-  // fire pit (always) + trough + board
-  {
+  if (Home.campfire) {
     const g = new THREE.Group();
     for (let i = 0; i < 6; i++)
       g.add(mesh(new THREE.DodecahedronGeometry(0.2, 0), mat(0x8d8d94), Math.cos(i) * 0.8, 0.12, Math.sin(i) * 0.8));
@@ -8104,17 +7858,6 @@ function buildMiscMeshes() {
     tickers.push((t) => { const s = 1 + Math.sin(t * 9) * 0.12; fl.scale.set(s, 1 + Math.sin(t * 11) * 0.18, s); });
     placeAt(g, -3, 58, 0, 0);
     homeFirePos = homeSpot(-3, 58, 1);
-  }
-  {
-    const trough = mesh(new THREE.BoxGeometry(2.0, 0.5, 0.8), mat(0x7a5230), 0, 0, 0);
-    placeAt(trough, -4, 57, 0.25, 0.3);
-  }
-  {
-    const g = new THREE.Group();
-    g.add(mesh(new THREE.CylinderGeometry(0.1, 0.12, 2.4, 6), mat(0x7a5230), 0, 1.2, 0));
-    g.add(mesh(new THREE.BoxGeometry(1.8, 1.0, 0.12), mat(0xe8c33d), 0, 2.2, 0));
-    g.add(mesh(new THREE.BoxGeometry(1.5, 0.7, 0.14), mat(0x2a2000), 0, 2.2, 0.01, false));
-    placeAt(g, -1, 58.5, 0, -0.6);
   }
 }
 function dockSiteData() {
@@ -8276,7 +8019,6 @@ function rebuildHomestead() {
 // --- homestead interactions (registered once; meshes rebuild around them) ---
 function beds() { return [1, 2, 3, 4, 6][Home.house] ?? 1; }
 function residents() { return 1 + (Life.spouse ? 1 : 0) + Life.kids.length; }
-addInteract({ id: 'home-board', pos: homeSpot(-1, 58.5, 1), kind: '🏡 HOMESTEAD', label: () => 'Build & goals (H)', onUse: () => openBuild() });
 addInteract({
   id: 'home-workshop', pos: homeSpot(2.6, 55, 1), kind: '🔧 WORKSHOP',
   label: () => (Home.workshop ? 'Research & craft (K)' : 'Workshop — build it (H)'),
@@ -8287,13 +8029,22 @@ addInteract({
   label: () => `Bounties (B) · ${Threats.robbersDrivenOff} robbers driven off`,
   onUse: () => openBounty(),
 });
-addInteract({ id: 'home-bed', pos: homeSpot(-2, 56, 1.2), kind: '🛏️ REST', label: () => 'Sleep until dawn', onUse: () => sleepUntilMorning() });
-addInteract({ id: 'home-fire', pos: homeSpot(-3, 58, 1), kind: '🔥 COOKPOT', label: () => 'Cook a meal (2 produce)', onUse: () => cookMeal() });
-addInteract({ id: 'home-trough', pos: homeSpot(-4, 57, 1), kind: '🥣 TROUGH', label: () => troughLabel(), onUse: () => feedAnimals() });
+addInteract({
+  id: 'home-bed', pos: homeSpot(-2, 56, 1.2), kind: '🛏️ REST',
+  label: () => (shelterBuilt() ? 'Sleep until dawn' : 'Pitch a tent first (H)'),
+  onUse: () => (shelterBuilt() ? sleepUntilMorning() : openBuild()),
+});
+addInteract({
+  id: 'home-fire', pos: homeSpot(-3, 58, 1), kind: '🔥 CAMPFIRE',
+  label: () => (Home.campfire ? 'Cook a meal (2 produce)' : 'Light a campfire first (H)'),
+  onUse: () => (Home.campfire ? cookMeal() : openBuild()),
+});
+
 addInteract({
   id: 'home-well', pos: homeSpot(-1.5, 54, 1), kind: '🪣 WELL',
-  label: () => (Home.well ? 'Cool drink (+5⚡)' : 'Dig a well (see board)'),
+  label: () => (Home.well ? 'Cool drink (+5⚡)' : (wellUnlocked() ? 'Dig a well (see board)' : 'Water well — after your first night')),
   onUse: () => {
+    if (!wellUnlocked()) return toast('💧 Survive your first night, then the well can be dug.');
     if (!Home.well) return openBuild();
     if (Home.dmg.well) return toast('🪣 The well is choked with storm debris — repair it (H).');
     if (meters.energy > 95) return toast('💧 Not thirsty.');
@@ -8310,8 +8061,10 @@ for (let pi = 0; pi < 6; pi++) {
 }
 addInteract({
   id: 'home-barn', pos: homeSpot(-5, 55, 1.5), kind: '🐄 BARN',
-  label: () => (Home.barn ? `Herd: ${animals.length} animals` : 'Raise a barn (see board)'),
-  onUse: () => (Home.barn ? toast(`🐄 ${animals.length} animals. Keep the trough full!`) : openBuild()),
+  label: () => (Home.barn
+    ? `Herd: ${animals.length} animals — ${animals.filter((a) => a.fed).length}/${animals.length} fed · buy more (H)`
+    : 'Raise a barn (see board)'),
+  onUse: () => { if (!Home.barn || !animals.length) return openBuild(); feedAnimals(); },
 });
 addInteract({
   id: 'home-stall', pos: homeSpot(-2.5, 59.5, 1.2), kind: '🏪 STALL',
@@ -8332,11 +8085,6 @@ addInteract({
     openBuild();
   },
 });
-function troughLabel() {
-  if (!animals.length) return 'Empty trough — buy animals from Maren';
-  const fed = animals.filter((a) => a.fed).length;
-  return `Trough — ${fed}/${animals.length} fed`;
-}
 function syncHomeInteractPositions() {
   const move = (id, key, h) => {
     const it = interactables.find((x) => x.id === id);
@@ -8351,12 +8099,13 @@ function syncHomeInteractPositions() {
 }
 function feedAnimals() {
   if (playerDead) return;
-  if (!animals.length) return toast('🥣 Empty trough — buy hens, sheep or cows from Maren.');
+  if (!animals.length) return toast('🥣 Empty barn — buy hens, sheep or cows on the build board (H).');
   const need = Math.ceil(animals.length / 2);
   if ((inv.food || 0) < need) return toast(`🥣 Need ${need}🍎 scraps to feed ${animals.length} animals.`);
   inv.food -= need;
   for (const a of animals) { a.fed = true; a.sick = false; }
-  burst(homeSpot(-4, 57, 1), 0xe8c96a, 10, 1.4);
+  const bs = barnSite();
+  burst(homeSpot(bs.lat, bs.lon, 1), 0xe8c96a, 10, 1.4);
   chime(600); toast('🥣 Animals fed! Expect produce at dawn.');
   renderStats();
 }
@@ -8376,6 +8125,7 @@ function plotCycle(i) {
   if (p.crop && p.growth >= 3) {
     const yieldN = harvestYield();
     if (packSize() + yieldN > packCap()) return toast('🎒 Pack full — make room, then harvest!');
+    const firstHarvest = !byId('harvest').done;
     p.crop = false; p.growth = 0; p.water = false;
     for (let n = 0; n < yieldN; n++) addItem('food', 1);
     Life.stats.harvests++;
@@ -8388,6 +8138,7 @@ function plotCycle(i) {
     burst(plotPos, 0x8fd06a, 12, 1.6);
     chime(600); toast(`🌾 Harvest! (+${yieldN}🍎)${farmingTier() >= 2 ? ` · ${['hoe', 'plough', 'seed drill', 'thresher'][farmingTier()]}` : ''}`);
     if (onGainXp) onGainXp(12, plotPos);
+    if (firstHarvest) { byId('harvest').stage = 3; completeWonder('harvest'); }
   } else if (p.crop && !p.water) {
     const noWell = !Home.well || Home.dmg.well;
     if (noWell && meters.energy < 3) return toast('😮‍💨 Too tired to haul water from the pond.');
@@ -8458,8 +8209,12 @@ function houseReq(target, missingWhy) {
   if (Home.house === target - 1) return { ok: true };
   return { ok: false, why: missingWhy };
 }
+function wellUnlocked() { return !!Home.well || Life.nights >= 1; }
+function shelterBuilt() { return !!Home.tent || Home.house >= 1; }
 const BUILD_DEFS = [
-  { id: 'hut', name: 'Mud Hut', cost: { wood: 3 }, blurb: 'First real roof. Better sleep.', houseTier: 1, req: () => houseReq(1, '') },
+  { id: 'campfire', name: 'Campfire', cost: { wood: 1 }, blurb: 'Warmth and cooking for the first night.', req: () => (!Home.campfire ? { ok: true } : { ok: false, why: 'Lit ✓' }), apply: () => { Home.campfire = true; } },
+  { id: 'tent', name: 'Tent', cost: { wood: 2 }, blurb: 'A dry place to sleep through the first night.', req: () => (!Home.tent && Home.house === 0 ? { ok: true } : { ok: false, why: Home.house > 0 ? 'Replaced by your house' : 'Pitched ✓' }), apply: () => { Home.tent = true; } },
+  { id: 'hut', name: 'Mud Hut', cost: { wood: 3 }, blurb: 'First real roof. Better sleep.', houseTier: 1, req: () => (Home.house === 0 && !Home.tent ? { ok: false, why: 'Pitch a tent first' } : houseReq(1, '')) },
   { id: 'dock', name: 'Dock', cost: { wood: 8, stone: 3 }, blurb: 'A shore landing for a raft. Click a shoreline site.', shoreOnly: true, req: () => (!Home.dock ? { ok: true } : { ok: false, why: 'Built ✓' }), apply: () => { Home.dock = true; } },
   { id: 'raft', name: 'Raft', cost: { wood: 8 }, blurb: 'A simple raft moored at your dock. Fish the coastal grounds.', req: () => (!Home.dock ? { ok: false, why: 'Build a dock first' } : Home.raft || Home.boat ? { ok: false, why: 'Moored ✓' } : { ok: true }), apply: () => { Home.raft = true; } },
   { id: 'boat', name: 'Boat', cost: { wood: 10, wool: 2, gold: 4 }, blurb: 'Upgrade the raft to a swift boat with a sail.', req: () => (!Home.raft ? { ok: false, why: 'Build a raft first' } : Home.boat ? { ok: false, why: 'Upgraded ✓' } : !hasTech('boatbuilding') ? { ok: false, why: 'Research Boatbuilding first' } : { ok: true }), apply: () => { Home.boat = true; } },
@@ -8467,9 +8222,12 @@ const BUILD_DEFS = [
   { id: 'house2', name: 'Big Farmhouse + cellar', cost: { wood: 10, stone: 8, gold: 10 }, blurb: '4 beds. Cellar keeps food, shelters tornadoes.', houseTier: 3, req: () => houseReq(3, 'Needs farmhouse first') },
   { id: 'house3', name: 'Manor', cost: { wood: 12, stone: 10, gold: 25 }, blurb: '6 beds. The talk of the planet.', houseTier: 4, req: () => houseReq(4, 'Needs big farmhouse first') },
   { id: 'pack', name: 'Big Pack', cost: { wood: 4, wool: 2 }, blurb: 'Stitched pockets. +8 pack room.', req: () => (packBonus >= 8 ? { ok: false, why: 'Roomy ✓' } : { ok: true }), apply: () => { packBonus += 8; } },
-  { id: 'well', name: 'Stone Well', cost: { stone: 4 }, blurb: 'Free watering. Drought-proof crops.', req: () => (!Home.well ? { ok: true } : { ok: false, why: 'Dug ✓' }), apply: () => { Home.well = true; } },
+  { id: 'well', name: 'Stone Well', cost: { stone: 4 }, blurb: 'Free watering. Drought-proof crops.', req: () => (!Home.well ? (wellUnlocked() ? { ok: true } : { ok: false, why: 'Survive your first night first' }) : { ok: false, why: 'Dug ✓' }), apply: () => { Home.well = true; } },
   { id: 'barn1', name: 'Barn', cost: { wood: 8, stone: 4 }, blurb: 'Shelter for 4 animals.', req: () => (Home.barn === 0 ? { ok: true } : { ok: false, why: 'Built ✓' }), apply: () => { Home.barn = 1; } },
   { id: 'barn2', name: 'Big Barn', cost: { wood: 10, stone: 6, gold: 10 }, blurb: 'Room for 8 animals.', req: () => (Home.barn === 1 ? { ok: true } : { ok: false, why: Home.barn > 1 ? 'Built ✓' : 'Needs barn first' }), apply: () => { Home.barn = 2; } },
+  { id: 'buy-hen', name: 'Buy Hen', cost: { gold: 3 }, blurb: 'Lays eggs at dawn (if fed).', livestock: true, req: () => livestockReq(), apply: () => { buyAnimal('hen'); } },
+  { id: 'buy-sheep', name: 'Buy Sheep', cost: { gold: 5 }, blurb: 'Gives wool at dawn (if fed).', livestock: true, req: () => livestockReq(), apply: () => { buyAnimal('sheep'); } },
+  { id: 'buy-cow', name: 'Buy Cow', cost: { gold: 8 }, blurb: 'Gives milk at dawn (if fed).', livestock: true, req: () => livestockReq(), apply: () => { buyAnimal('cow'); } },
   { id: 'fence1', name: 'Wooden Fences', cost: { wood: 3 }, blurb: 'Wolves sometimes bounce off.', req: () => (Home.fences === 0 ? { ok: true } : { ok: false, why: 'Built ✓' }), apply: () => { Home.fences = 1; } },
   { id: 'fence2', name: 'Tall Fences', cost: { wood: 4, stone: 2 }, blurb: 'Wolves often bounce off.', req: () => (Home.fences === 1 ? { ok: true } : { ok: false, why: Home.fences > 1 ? 'Built ✓' : 'Needs fences first' }), apply: () => { Home.fences = 2; } },
   { id: 'fence3', name: 'Stone Walls', cost: { wood: 5, stone: 4, gold: 5 }, blurb: 'Wolves rarely get through.', req: () => (Home.fences === 2 ? { ok: true } : { ok: false, why: Home.fences > 2 ? 'Built ✓' : 'Needs tall fences first' }), apply: () => { Home.fences = 3; } },
@@ -8502,6 +8260,11 @@ BUILD_DEFS.push(
   { id: 'pump', name: 'Steam Pump', cost: { stone: 10, gold: 4 }, blurb: 'Floods drain; wells never choke.', req: () => (!hasTech('steam-pump') ? { ok: false, why: 'Research Steam Pump first' } : Home.pump ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.pump = true; } },
   { id: 'gunsmith', name: 'Gunsmith', cost: { wood: 8, stone: 6, gold: 8 }, blurb: 'Craft firearms, ammo and repairs.', req: () => (!hasTech('gunsmith') ? { ok: false, why: 'Research Gunsmith first' } : Home.gunsmith ? { ok: false, why: 'Built ✓' } : { ok: true }), apply: () => { Home.gunsmith = true; } },
 );
+function livestockReq() {
+  if (!Home.barn) return { ok: false, why: 'Build a barn first' };
+  if (animals.length >= animalCap()) return { ok: false, why: 'Barn full' };
+  return { ok: true };
+}
 function buildAfford(b) {
   const r = b.req();
   if (!r.ok) return r;
@@ -8519,6 +8282,7 @@ function doBuild(b) {
   if (!removeItems(b.cost)) { toast('🔨 Not enough materials.'); return false; }
   b.apply();
   rebuildHomestead();
+  if (b.livestock) { renderBuild(); saveCheckpoint(); renderStats(); return true; }
   const atDock = b.id === 'raft' || b.id === 'boat';
   const sp = atDock ? siteFor('dock') : { lat: HOME.lat, lon: HOME.lon };
   const p = homeSpot(sp.lat, sp.lon, 1.5);
@@ -8981,7 +8745,7 @@ function makeHen() {
   return g;
 }
 function makeFarmSheep() {
-  return makeSheep(0.6);
+  return makeSheep(0.9);
 }
 function makeCow() {
   const g = new THREE.Group();
@@ -10516,14 +10280,93 @@ function renderBounty() {
 
 function attachAmbientHunt(entry) {
   if (!entry || !entry.hunt) return;
+  const apex = !!entry.hunt.apex;
   const it = {
     id: 'ambienthunt' + (++ambientHuntSeq), pos: entry.mesh.position.clone(),
-    radius: 4.2, kind: '🐾 WILDLIFE', ambient: entry,
-    label: () => `${entry.hunt.icon || '🐾'} Hunt ${entry.hunt.name}`,
+    radius: 4.2, kind: apex ? '⚠️ APEX PREDATOR' : '🐾 WILDLIFE', ambient: entry,
+    label: () => `${entry.hunt.icon || '🐾'} ${apex ? 'APEX — ' : 'Hunt '}${entry.hunt.name}`,
     onUse: () => huntAmbient(entry),
   };
   addInteract(it);
   entry.interact = interactables[interactables.length - 1];
+}
+// Apex predators do not wait to be attacked: they pick up the traveler within
+// sight range, close the distance, and strike. With a first-generation axe the
+// best option is to run; javelins, bows and firearms are the real answer.
+function updateApexPredator(entry, t, dt, river = false) {
+  const h = entry?.hunt;
+  if (!h || !h.apex || entry.dead) return false;
+  const mesh = entry.mesh;
+  const n = mesh.position.clone().normalize();
+  entry.attackCd = Math.max(0, (entry.attackCd || 0) - dt);
+  const sight = h.sight || 12;
+  const dPlayer = mesh.position.distanceTo(player.position);
+  if (!playerDead && (dPlayer < sight || entry.aggro)) {
+    if (entry.aggro && dPlayer > sight * 2.4) {
+      // The traveler got away; go home instead of snapping back to the path.
+      entry.aggro = false;
+      entry.aggroAnnounced = false;
+      entry.hitAnnounced = false;
+      entry.returning = true;
+    } else {
+      entry.aggro = true;
+      entry.returning = false;
+      if (!entry.aggroAnnounced) {
+        entry.aggroAnnounced = true;
+        toast(h.warning || `${h.icon || '⚠️'} The ${h.name} has caught your scent — run!`);
+        chime(160);
+      }
+      const toP = player.position.clone().sub(mesh.position);
+      const flat = toP.clone();
+      flat.addScaledVector(n, -flat.dot(n));
+      if (mesh.position.distanceTo(player.position) > (h.attackRange || 2.6)) {
+        if (flat.lengthSq() > 1e-6) {
+          const dir = flat.normalize();
+          const step = Math.min(dPlayer, (h.speed || 3.5) * dt);
+          const ax = new THREE.Vector3().crossVectors(n, dir).normalize();
+          mesh.position.applyAxisAngle(ax, step / R);
+          const nn = mesh.position.clone().normalize();
+          const ground = river ? Math.max(0.12, heightFor(nn)) : heightFor(nn);
+          mesh.position.copy(nn).multiplyScalar(R + ground + 0.05);
+          faceAlong(mesh, mesh.position, dir);
+        }
+      } else if (entry.attackCd <= 0) {
+        entry.attackCd = h.attackCd || 1.4;
+        damagePlayer(h.damage || 18, mesh.position.clone(), `the ${h.name}`);
+        burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 0.9), 0xe03131, 10, 1.8);
+        chime(150);
+        if (!entry.hitAnnounced) {
+          entry.hitAnnounced = true;
+          toast(`${h.icon || '⚠️'} The ${h.name} strikes! Run or get to range!`);
+        }
+      }
+      if (entry.interact) entry.interact.pos.copy(mesh.position);
+      animateAnimal(mesh, t, 1, dt);
+      return true;
+    }
+  }
+  if (entry.returning) {
+    const homePos = entry.home.clone().multiplyScalar(R + (river ? 0.14 : heightFor(entry.home) + 0.05));
+    if (mesh.position.distanceTo(homePos) > 0.9) {
+      const toHome = homePos.clone().sub(mesh.position);
+      const flat = toHome.clone();
+      flat.addScaledVector(n, -flat.dot(n));
+      if (flat.lengthSq() > 1e-6) {
+        const dir = flat.normalize();
+        const ax = new THREE.Vector3().crossVectors(n, dir).normalize();
+        mesh.position.applyAxisAngle(ax, Math.min(mesh.position.distanceTo(homePos), 1.8 * dt) / R);
+        const nn = mesh.position.clone().normalize();
+        const ground = river ? Math.max(0.12, heightFor(nn)) : heightFor(nn);
+        mesh.position.copy(nn.clone().multiplyScalar(R + ground + 0.05));
+        faceAlong(mesh, mesh.position, dir);
+        if (entry.interact) entry.interact.pos.copy(mesh.position);
+        animateAnimal(mesh, t, 0.7, dt);
+        return true;
+      }
+    }
+    entry.returning = false;
+  }
+  return false;
 }
 function huntAmbient(entry) {
   if (!entry || entry.dead || playerDead) return;
@@ -10535,7 +10378,9 @@ function huntAmbient(entry) {
   setTimeout(() => {
     if (!entry || entry.dead || playerDead) return;
     if (player.position.distanceTo(entry.mesh.position) > 5.4) return;
+    const h = entry.hunt || {};
     let dmg = Math.round(18 * meleeMult());
+    if (h.apex) dmg = Math.max(1, Math.round(dmg * 0.22)); // hide and muscle absorb an axe blow
     if (critBuff > 0) { dmg = Math.round(dmg * 1.8); critBuff--; }
     entry.hp -= dmg;
     entry.hitFlash = 1;
@@ -10543,9 +10388,16 @@ function huntAmbient(entry) {
     spawnPopup(entry.mesh.position.clone(), `-${dmg}`, '#ffd97a');
     chime(300);
     if (entry.hp <= 0) killAmbient(entry);
-    else {
+    else if (h.apex) {
+      entry.fleeT = 0;
+      entry.aggro = true;
+      entry.returning = false;
+      entry.aggroAnnounced = true;
+      entry.attackCd = Math.min(entry.attackCd || 0.4, 0.45);
+      toast(`🪓 Your axe barely bites the ${h.name} — it turns on you! Run!`);
+    } else {
       entry.fleeT = 6;
-      toast(`🩸 The ${entry.hunt.name} bolts — follow and finish the hunt.`);
+      toast(`🩸 The ${h.name} bolts — follow and finish the hunt.`);
     }
     renderStats();
   }, 180);
@@ -10570,8 +10422,8 @@ function killAmbient(entry) {
   burst(entry.mesh.position.clone(), 0xe8c96a, 18, 2.2);
   chime(620);
   toast(`🍖 ${h.icon || '🐾'} ${h.name || 'Game'} hunted! (+${meatN}🍖${h.fur ? `, +${h.fur} fur` : ''}${h.pelt ? `, +${h.pelt} wool` : ''})`);
-  if (onGainXp) onGainXp(16, entry.mesh.position.clone());
-  grantInsight(1, `Hunted a ${h.name || 'creature'}`);
+  if (onGainXp) onGainXp(h.apex ? 35 : 16, entry.mesh.position.clone());
+  grantInsight(h.apex ? 3 : 1, `Hunted a ${h.name || 'creature'}`);
   saveCheckpoint();
   renderStats();
   setTimeout(() => {
@@ -10579,6 +10431,11 @@ function killAmbient(entry) {
     entry.dead = false;
     entry.hp = entry.maxHp || entry.hp;
     entry.fleeT = 0;
+    entry.aggro = false;
+    entry.returning = false;
+    entry.aggroAnnounced = false;
+    entry.hitAnnounced = false;
+    entry.attackCd = 0;
     (entry.parent || scene).add(entry.mesh);
     attachAmbientHunt(entry);
   }, 75000);
@@ -10598,6 +10455,7 @@ function addAmbientWanderer(meshObj, lat, lon, radius = 2.4, speed = 0.22, phase
   let prev = start.clone();
   tickers.push((t, dt) => {
     if (entry.dead) return;
+    if (updateApexPredator(entry, t, dt, false)) return;
     const a = t * speed + phase;
     const n = home.clone()
       .addScaledVector(east, Math.sin(a) * radius / R)
@@ -10705,6 +10563,7 @@ function addRiverWanderer(meshObj, lat, lon, radius = 2.2, speed = 0.14, phase =
   let prev = meshObj.position.clone();
   tickers.push((t, dt) => {
     if (entry.dead) return;
+    if (updateApexPredator(entry, t, dt, true)) return;
     const a = t * speed + phase;
     const n = home.clone()
       .addScaledVector(east, Math.sin(a) * radius / R)
@@ -10750,19 +10609,19 @@ function addRiverFish(lat, lon, color, phase) {
 }
 const riverFishCols = [0x7ad9ff, 0x9fe4ff, 0x6ac7a8, 0xffd97a, 0xff9a8a];
 for (let i = 0; i < 9; i++) addRiverFish(rand(-56, -28), rand(96.2, 100.8), riverFishCols[i % riverFishCols.length], rand(Math.PI * 2));
-addRiverWanderer(makeCrocodile(1.0), -32, 97.2, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 85, meat: 3, pelt: 1 });
-addRiverWanderer(makeCrocodile(0.85), -54, 99.5, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 70, meat: 2, pelt: 1 });
-addRiverWanderer(makeHippo(1.0), -42, 98.2, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 150, meat: 6 });
-addRiverWanderer(makeHippo(0.9), -48, 99.6, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 130, meat: 5 });
+addRiverWanderer(makeCrocodile(1.0), -32, 97.2, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 120, meat: 4, pelt: 1, apex: true, sight: 11, speed: 6.8, damage: 20, attackRange: 2.8, attackCd: 1.35, warning: '🐊 A crocodile surges out of the shallows — run!' });
+addRiverWanderer(makeCrocodile(0.85), -54, 99.5, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 100, meat: 3, pelt: 1, apex: true, sight: 10, speed: 6.6, damage: 18, attackRange: 2.6, attackCd: 1.4, warning: '🐊 The crocodile has you in its sight — run!' });
+addRiverWanderer(makeHippo(1.0), -42, 98.2, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 220, meat: 6, apex: true, sight: 12, speed: 6.5, damage: 28, attackRange: 3.1, attackCd: 1.6, warning: '🦛 The hippo charges — get out of the water!' });
+addRiverWanderer(makeHippo(0.9), -48, 99.6, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 190, meat: 5, apex: true, sight: 11, speed: 6.3, damage: 25, attackRange: 3.0, attackCd: 1.7, warning: '🦛 A hippo is coming for you — run!' });
 // Savannah and mangrove wildlife
 const southHunts = {
-  lion: { name: 'Lion', icon: '🦁', hp: 120, meat: 5, fur: 1 },
+  lion: { name: 'Lion', icon: '🦁', hp: 140, meat: 5, fur: 1, apex: true, sight: 15, speed: 7.0, damage: 23, attackRange: 2.9, attackCd: 1.3, warning: '🦁 The lion has caught your scent — run!' },
   impala: { name: 'Impala', icon: '🦌', hp: 40, meat: 2, pelt: 1 },
   wildebeest: { name: 'Wildebeest', icon: '🐃', hp: 75, meat: 4, pelt: 1 },
   giraffe: { name: 'Giraffe', icon: '🦒', hp: 90, meat: 5 },
   rhino: { name: 'Rhino', icon: '🦏', hp: 150, meat: 6 },
   elephant: { name: 'Elephant', icon: '🐘', hp: 180, meat: 7 },
-  tiger: { name: 'Tiger', icon: '🐅', hp: 130, meat: 5, fur: 1 },
+  tiger: { name: 'Tiger', icon: '🐅', hp: 150, meat: 5, fur: 1, apex: true, sight: 14, speed: 7.2, damage: 25, attackRange: 2.7, attackCd: 1.2, warning: '🐅 The tiger is stalking you — run!' },
   deer: { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 },
   monkey: { name: 'Monkey', icon: '🐒', hp: 30, meat: 1 },
 };
@@ -10853,16 +10712,6 @@ addFishSchool(-28, 302, 5, 2.1, 2.5);
 addFishSchool(-2, 216, 5, 1.9, 1.3);
 addFishSchool(5, 245, 6, 2.3, 3.8);
 addFishSchool(-9, 235, 4, 1.7, 5.4);
-
-// Maren sells livestock (cap enforced, refund on overflow)
-{
-  const maren = NPCS.find((n) => n.id === 'maren');
-  if (maren) maren.trades.push(
-    { id: 'buy-hen', give: { gold: 3 }, get: {}, resultText: '🐔 a hen', blurb: 'Lays 🥚 at dawn (if fed)', effect: () => buyAnimal('hen') },
-    { id: 'buy-sheep', give: { gold: 5 }, get: {}, resultText: '🐑 a sheep', blurb: 'Gives wool at dawn (if fed)', effect: () => buyAnimal('sheep') },
-    { id: 'buy-cow', give: { gold: 8 }, get: {}, resultText: '🐄 a cow', blurb: 'Gives 🥛 at dawn (if fed)', effect: () => buyAnimal('cow') },
-  );
-}
 
 // --- courtship, marriage, kids ---
 function renderCourtRow(n, box) {
@@ -11052,7 +10901,7 @@ function spawnWorkers() {
 }
 tickers.push((t, dt) => { // hands amble between cabin, plots and barn
   if (playerDead) return;
-  const stops = [homeSpot(siteFor('cabin').lat, siteFor('cabin').lon, 0), houseOffset(-2.5, 0, 0), homeSpot(barnSite().lat, barnSite().lon, 0), homeSpot(-1, 58.5, 0)];
+  const stops = [homeSpot(siteFor('cabin').lat, siteFor('cabin').lon, 0), houseOffset(-2.5, 0, 0), homeSpot(barnSite().lat, barnSite().lon, 0), homeSpot(-3, 58, 0)];
   for (const k of workerMeshes) {
     k.wt -= dt;
     if (k.wt <= 0) { k.wt = rand(3, 7); k.tgt = stops[(Math.random() * stops.length) | 0].clone(); }
@@ -11164,7 +11013,8 @@ function hearthEra() {
       goals: [
         { text: () => `Sleep ${Math.min(3, Life.nights)}/3 nights`, done: () => Life.nights >= 3 },
         { text: () => `Stockpile ${Math.min(10, s.maxFood)}/10 food at once`, done: () => s.maxFood >= 10 },
-        { text: () => 'Build a Mud Hut (below)', done: () => Home.house >= 1 },
+        { text: () => 'Light a campfire (below)', done: () => !!Home.campfire },
+        { text: () => 'Pitch a tent (below)', done: () => !!Home.tent },
         { text: () => 'Sew a Tunic (below, 3🐑)', done: () => Life.clothes >= 1 },
       ],
     };
@@ -11270,25 +11120,26 @@ const qGold = (n) => () => `Earn ${Math.min(n, Life.stats.goldEarned || 0)}/${n}
 const QUESTS = [
   {
     id: 'camp', title: 'Make Camp',
-    hint: 'Clover Fields · your axe appears when you chop. Chop any tree for 3 wood, then press H.',
+    hint: 'Clover Fields · your axe appears when you chop. Gather 3 wood, then light a campfire and pitch a tent (H).',
     subs: [
       { id: 'camp-wood', text: 'Gather 3 wood', done: () => inv.wood >= 3 },
-      { id: 'camp-hut', text: 'Build a Mud Hut (H)', done: () => Home.house >= 1 },
+      { id: 'camp-fire', text: 'Light a campfire (H)', done: () => !!Home.campfire },
+      { id: 'camp-tent', text: 'Pitch a tent (H)', done: () => !!Home.tent },
     ],
-    auto: () => Home.house >= 1,
+    auto: () => !!Home.campfire && !!Home.tent,
   },
   {
     id: 'night', title: 'First Night',
-    hint: 'Home · sleep in your bed, then cook and eat a meal.',
+    hint: 'Camp · sleep in your tent, then cook and eat a meal at the campfire.',
     subs: [
-      { id: 'night-sleep', text: 'Sleep until dawn', done: () => Life.nights >= 1 },
+      { id: 'night-sleep', text: 'Sleep in your tent until dawn', done: () => Life.nights >= 1 },
       { id: 'night-meal', text: 'Cook & eat a hearty meal', done: () => (Life.stats.meals || 0) >= 1 },
     ],
     auto: () => Life.nights >= 1 && (Life.stats.meals || 0) >= 1,
   },
   {
     id: 'roots', title: 'Put Down Roots',
-    hint: 'Homestead board (H) · a farmhouse, a well, and your first harvest.',
+    hint: 'Homestead board (H) · a farmhouse, then a stone well and your first harvest.',
     subs: [
       { id: 'roots-house', text: 'Build a Farmhouse', done: () => Home.house >= 2 },
       { id: 'roots-well', text: 'Dig a Stone Well', done: () => !!Home.well },
@@ -11309,11 +11160,11 @@ const QUESTS = [
   },
   {
     id: 'harvest', title: 'Bountiful Harvest',
-    hint: 'Clover Fields · the three rows beside the red barn.',
+    hint: 'Clover Fields · till a plot at the homestead (H), then plant, water and harvest.',
     subs: [
-      { id: 'harvest-reach', text: 'Reach Clover Fields', done: () => qInZone('farm') || qStage('harvest') > 0 },
-      { id: 'harvest-1', text: 'Plant the rows', done: () => qStage('harvest') >= 1 },
-      { id: 'harvest-2', text: 'Water the sprouts', done: () => qStage('harvest') >= 2 },
+      { id: 'harvest-reach', text: 'Reach Clover Fields', done: () => qInZone('farm') || Home.plots.some((p) => p.bought) },
+      { id: 'harvest-1', text: 'Till a field plot', done: () => Home.plots.some((p) => p.bought) },
+      { id: 'harvest-2', text: 'Sow and water a crop', done: () => Home.plots.some((p) => p.crop && p.water) },
       { id: 'harvest-3', text: 'Bring in the harvest', done: () => qWonder('harvest') },
     ],
     auto: () => qWonder('harvest'),
@@ -11377,7 +11228,7 @@ const QUESTS = [
   },
   {
     id: 'family', title: 'A Full Hearth',
-    hint: 'Lena or Marina · gifts, a ring, marriage, then a child.',
+    hint: 'Marina of Tideglass Reef · gifts, a ring, marriage, then a child.',
     subs: [
       { id: 'family-marry', text: 'Marry your sweetheart', done: () => !!Life.spouse },
       { id: 'family-child', text: 'Welcome a child', done: () => Life.kids.length >= 1 },
@@ -11618,8 +11469,10 @@ function questTick() {
 }
 tickers.push(questTick);
 // --- trail beacon: a golden marker + distance readout so you never feel lost ---
+// Clover Fields is left deliberately beacon-free: the meadow starts as a blank
+// slate, so the player discovers and builds it without a floating gold arrow.
 const QUEST_SPOTS = {
-  camp: [2, 50], night: [-2, 56], roots: [8, 52], flame: [12, 158], harvest: [8, 52],
+  camp: [2, 50], night: [-2, 56], roots: [-4.5, 54], flame: [12, 158], harvest: [-4.5, 53.5],
   oasis: [4, 110], bell: [14, 279], light: [2, 230], scan: [8, 328], aurora: [60, 140],
   prosper: [-2, 56], family: [5.5, 47], legacy: [-2, 56], retire: [-2, 56],
 };
@@ -11646,21 +11499,165 @@ tickers.push((t) => {
   const [la, lo] = QUEST_SPOTS[q.id];
   const target = anchor(la, lo, 2.2);
   const d = player.position.distanceTo(target);
+  const cloverField = biomeAt(target.clone().normalize()) === 'farm';
   // Standing on the marker? Hide the tall beam so it doesn't fill the camera.
-  questBeacon.visible = d > 4;
+  questBeacon.visible = d > 4 && !cloverField;
   questBeacon.position.copy(target);
   questBeacon.position.addScaledVector(target.clone().normalize(), Math.sin(t * 2.4) * 0.3);
   const core = questBeacon.getObjectByName('beacon-core');
   if (core) { core.rotation.y = t * 1.8; core.position.y = Math.sin(t * 2.4) * 0.3; }
-  if (questDistEl) questDistEl.textContent = d < 4 ? '✨ You are here — press E!' : `➤ ${Math.round(d)}m ${d > 20 ? '— follow the gold light' : '— almost there'}`;
+  if (questDistEl) questDistEl.textContent = cloverField ? '' : (d < 4 ? '✨ You are here — press E!' : `➤ ${Math.round(d)}m ${d > 20 ? '— follow the gold light' : '— almost there'}`);
 });
 
 // ==================== GRAPHICS 3x pass ====================
-// --- denser ground detail: tall grass + meadow flowers ---
-scatterInstanced(new THREE.ConeGeometry(0.05, 0.9, 4), mat(0xffffff, { roughness: 1 }), 600,
-  ['farm', 'forest', 'cove'], 0.8, 1.8, [0x5cc46a, 0x7ddf6a, 0x3fae4e, 0x9df0a8], { lift: 0.3 });
-scatterInstanced(new THREE.IcosahedronGeometry(0.09, 0), mat(0xffffff, { roughness: 0.6 }), 220,
-  ['farm', 'forest', 'cove', 'oasis'], 0.8, 1.4, [0xff6b9d, 0xffd23d, 0xffffff, 0xff8c5a, 0xc49df0], { lift: 0.42 });
+// ---------- fog of war: unexplored planet stays under a dark shroud ----------
+// A slightly larger sphere samples an equirectangular reveal mask. The mask
+// starts black; walking the planet paints soft holes into it, and those holes
+// are saved with the slot so explored ground stays visible forever.
+const FOG_R = R + 0.95; // ground level: shadow the map, not the sky
+const FOG_MASK_W = 512, FOG_MASK_H = 256;
+const FOG_REVEAL_DEG = 15;
+const fogCanvas = document.createElement('canvas');
+fogCanvas.width = FOG_MASK_W; fogCanvas.height = FOG_MASK_H;
+const fogCtx = fogCanvas.getContext('2d');
+fogCtx.fillStyle = '#000';
+fogCtx.fillRect(0, 0, FOG_MASK_W, FOG_MASK_H);
+const fogTexture = new THREE.CanvasTexture(fogCanvas);
+fogTexture.flipY = false; // the shader computes UVs from latitude directly
+fogTexture.wrapS = THREE.RepeatWrapping;
+fogTexture.wrapT = THREE.ClampToEdgeWrapping;
+fogTexture.minFilter = THREE.LinearFilter;
+fogTexture.magFilter = THREE.LinearFilter;
+fogTexture.generateMipmaps = false;
+const fogPoints = [];
+const fogKeys = new Set();
+let fogLast = null;
+function fogKey(lat, lon) {
+  const wrapped = ((lon + 180) % 360 + 360) % 360 - 180;
+  return `${Math.round(lat)}:${Math.round(wrapped)}`;
+}
+function fogPaint(lat, lon) {
+  const cx = ((lon + 180) / 360) * FOG_MASK_W;
+  const cy = ((90 - lat) / 180) * FOG_MASK_H;
+  const rad = FOG_REVEAL_DEG * (FOG_MASK_W / 360);
+  const g = fogCtx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.6, 'rgba(255,255,255,1)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  fogCtx.save();
+  fogCtx.globalCompositeOperation = 'lighter';
+  fogCtx.fillStyle = g;
+  for (const dx of [-FOG_MASK_W, 0, FOG_MASK_W]) {
+    const x = cx + dx;
+    if (x + rad < 0 || x - rad > FOG_MASK_W) continue;
+    fogCtx.beginPath();
+    fogCtx.arc(x, cy, rad, 0, Math.PI * 2);
+    fogCtx.fill();
+  }
+  fogCtx.restore();
+  fogTexture.needsUpdate = true;
+}
+function fogReveal(lat, lon, force = false) {
+  const wrapped = ((lon + 180) % 360 + 360) % 360 - 180;
+  const key = fogKey(lat, wrapped);
+  if (!force && fogKeys.has(key)) return;
+  fogKeys.add(key);
+  fogPoints.push([Number(lat.toFixed(2)), Number(wrapped.toFixed(2))]);
+  fogPaint(lat, wrapped);
+  fogLast = { lat, lon: wrapped };
+}
+function fogPlayerLatLon() {
+  const n = playerPos.clone().normalize();
+  return [Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG, (Math.atan2(n.z, n.x) / DEG + 540) % 360 - 180];
+}
+function fogRevealAtPlayer(force = false) {
+  const [la, lo] = fogPlayerLatLon();
+  fogReveal(la, lo, force);
+}
+function fogClearMask() {
+  fogCtx.globalCompositeOperation = 'source-over';
+  fogCtx.fillStyle = '#000';
+  fogCtx.fillRect(0, 0, FOG_MASK_W, FOG_MASK_H);
+  fogTexture.needsUpdate = true;
+  fogPoints.length = 0;
+  fogKeys.clear();
+  fogLast = null;
+}
+function fogSnapshot() {
+  return { circles: fogPoints.map((p) => [p[0], p[1]]) };
+}
+function fogRestoreFromSave(data, additive = false) {
+  if (!additive) fogClearMask();
+  const circles = Array.isArray(data?.circles) ? data.circles : [];
+  for (const c of circles) {
+    if (!Array.isArray(c) || !Number.isFinite(Number(c[0])) || !Number.isFinite(Number(c[1]))) continue;
+    const la = THREE.MathUtils.clamp(Number(c[0]), -90, 90);
+    const lo = Number(c[1]);
+    if (!additive || !fogKeys.has(fogKey(la, lo))) fogReveal(la, lo);
+  }
+  if (!additive) fogRevealAtPlayer();
+}
+const fogShroud = new THREE.Mesh(
+  new THREE.SphereGeometry(FOG_R, 96, 64),
+  new THREE.ShaderMaterial({
+    uniforms: {
+      uMask: { value: fogTexture },
+      uColor: { value: new THREE.Color(0x090c0f) },
+      uTime: { value: 0 },
+    },
+    vertexShader: `
+      varying vec3 vFogPos;
+      void main() {
+        vFogPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uMask;
+      uniform vec3 uColor;
+      uniform float uTime;
+      varying vec3 vFogPos;
+      float fogHash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+      void main() {
+        vec3 n = normalize(vFogPos);
+        float lon = atan(n.z, n.x);
+        float lat = asin(clamp(n.y, -1.0, 1.0));
+        vec2 uv = vec2(lon * 0.15915494 + 0.5, 0.5 - lat * 0.31830989);
+        float revealed = texture2D(uMask, uv).r;
+        float alpha = (1.0 - revealed) * 0.55;
+        if (alpha < 0.012) discard;
+        float grain = fogHash(floor(uv * vec2(340.0, 170.0)) + floor(uTime * 0.05));
+        vec3 col = uColor + vec3(grain * 0.012);
+        gl_FragColor = vec4(col, alpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+    transparent: true,
+    side: THREE.FrontSide,
+    depthTest: false,
+    depthWrite: false,
+    fog: false,
+  })
+);
+fogShroud.name = 'fog-of-war';
+fogShroud.frustumCulled = false;
+fogShroud.renderOrder = 20;
+fogShroud.visible = false; // title/menu vista stays unobscured
+scene.add(fogShroud);
+// Reveal the starting patch immediately, then keep painting as the hero walks.
+fogRevealAtPlayer(true);
+tickers.push((t, dt) => {
+  try { fogShroud.material.uniforms.uTime.value = t; } catch { /* headless */ }
+  if (!started || paused || playerDead) return;
+  const [la, lo] = fogPlayerLatLon();
+  if (!fogLast) { fogReveal(la, lo); return; }
+  let dLon = Math.abs(lo - fogLast.lon);
+  if (dLon > 180) dLon = 360 - dLon;
+  if (Math.hypot(la - fogLast.lat, dLon) > 1.25) fogReveal(la, lo);
+});
 // --- sun + moon glow sprites that track the sky ---
 function glowTexture(inner, outer) {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128;
@@ -12057,6 +12054,7 @@ function snapshot() {
     bears: bears.map((b) => ({ hp: b.hp, dead: b.dead, pos: b.pos.toArray() })),
     fishStage,
     fishSource,
+    fog: fogSnapshot(),
     boat: { pos: (inBoat ? boatN : skiffParkN).toArray(), heading: (inBoat ? boatHeading : skiffParkHeading).toArray(), inBoat, fishSource, craft: inBoat ? craftMode : 'skiff' },
     quest: questSnapshot(),
     meta: {
@@ -12136,8 +12134,6 @@ function applySave(s, respawn) {
   // re-apply wonder visuals so a restored save looks right
   if (byId('light').done) { reefLampM.emissiveIntensity = 2.4; reefBeamM.opacity = 0.4; reefLight.intensity = 40; }
   if (byId('aurora').done) aurora.target = 1;
-  if (byId('harvest').stage >= 1) window.__crops?.forEach((c) => c.mesh.scale.setScalar(0.7));
-  if (byId('harvest').stage >= 2) window.__crops?.forEach((c) => { c.mesh.scale.setScalar(1.15); c.mesh.material = c.mats.pumpkinM; });
   (s.bridges || []).forEach((f, i) => { if (f && bridges[i]) bridges[i].fixed = true; });
   (s.bears || []).forEach((sb, i) => {
     const b = bears[i];
@@ -12154,6 +12150,7 @@ function applySave(s, respawn) {
     const n0 = playerPos.clone().normalize();
     playerPos.copy(n0).multiplyScalar(R + heightFor(n0) + 0.1);
   }
+  if (typeof fogRestoreFromSave === 'function') fogRestoreFromSave(s.fog, respawn);
   if (Array.isArray(s.facing)) facing.fromArray(s.facing);
   if (Array.isArray(s.heading)) moveDirSmooth.fromArray(s.heading);
   restoreBoatState(s.boat || null);
@@ -12248,7 +12245,7 @@ const targetRing = new THREE.Mesh(
 targetRing.visible = false;
 scene.add(targetRing);
 function taskColor(kind) {
-  if (kind === 'BEAR' || kind === 'WOLF' || (kind || '').includes('BEAR') || (kind || '').includes('WOLF')) return 0xff6b6b;
+  if (kind === 'BEAR' || kind === 'WOLF' || (kind || '').includes('BEAR') || (kind || '').includes('WOLF') || (kind || '').includes('APEX')) return 0xff6b6b;
   if ((kind || '').includes('WONDER') || (kind || '').includes('HOMESTEAD') || (kind || '').includes('BUILD')) return 0xffd97a;
   return 0x7dff9a;
 }
@@ -12437,7 +12434,7 @@ function fmtPlaytime(sec) {
   const m = Math.floor((sec || 0) / 60), h = Math.floor(m / 60);
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
 }
-function houseName(t) { return t >= 2 ? `Farmhouse T${t - 1}` : (t === 1 ? 'Hut' : 'Tent'); }
+function houseName(t, tent = false) { return t >= 2 ? `Farmhouse T${t - 1}` : (t === 1 ? 'Hut' : (tent ? 'Tent' : 'Camp')); }
 function slotSummary(i) {
   const s = readSlot(i);
   if (!s) return { empty: true, name: `Slot ${i + 1}`, meta: 'Empty — a fresh start' };
@@ -12445,7 +12442,7 @@ function slotSummary(i) {
   const day = s.life?.day ?? m.day ?? 1;
   const season = m.season || SEASONS[seasonOf(day)];
   const gen = s.life?.gen ?? m.gen ?? 1;
-  const house = houseName(s.life?.home?.build?.target ?? s.life?.home?.house ?? m.house ?? 0);
+  const house = houseName(s.life?.home?.build?.target ?? s.life?.home?.house ?? m.house ?? 0, !!s.life?.home?.tent);
   return { empty: false, name: `Slot ${i + 1}`, meta: `Day ${day} · ${season} · Gen ${gen} · ${house} · ${fmtPlaytime(m.playtime)}` };
 }
 function startGame(fresh) {
@@ -12456,6 +12453,7 @@ function startGame(fresh) {
   document.getElementById('controls-overlay').classList.add('hidden');
   document.getElementById('help-overlay').classList.add('hidden');
   started = true; paused = false;
+  fogShroud.visible = true;
   orbitYaw = 0; // title-vista drift must not lean the first walk into a curve
   renderStats();
   applyHeroChapter(Life.chapter || 0);
@@ -12471,6 +12469,7 @@ function startGame(fresh) {
 }
 function showTitle() {
   started = false; paused = true;
+  try { fogShroud.visible = false; } catch { /* early boot */ }
   questHide();
   closeTrade(); closeBuild(); toggleJournal(false);
   closeWorkshop(); closeAlmanac(); closeLoadout(); closeTraitChoice(); closeRobber(); closeBounty();
@@ -12870,6 +12869,7 @@ function renderWorkshop() {
       ['bullets', 'Cartridges', '1🪙 + 1🪨 → 2'],
       ['shells', 'Shotgun shells', '2🪙 + 2🪨 → 2'],
       ['arrows', 'Arrows', '1🪵 → 4'],
+      ['javelins', 'Javelins', '1🪵 → 2'],
       ['bolts', 'Crossbow bolts', '1🪵 + 1🪨 → 4'],
       ['stones', 'Sling stones', '1🪨 → 4'],
     ]) {
@@ -13035,7 +13035,7 @@ function renderLoadout() {
     box.appendChild(row);
   }
   addGroup('AMMUNITION');
-  for (const [kind, label] of [['bullets', 'Cartridges 🔫'], ['shells', 'Shells 💥'], ['arrows', 'Arrows 🏹'], ['bolts', 'Bolts ⚡'], ['stones', 'Sling stones 🪨']]) {
+  for (const [kind, label] of [['bullets', 'Cartridges 🔫'], ['shells', 'Shells 💥'], ['arrows', 'Arrows 🏹'], ['javelins', 'Javelins 🪃'], ['bolts', 'Bolts ⚡'], ['stones', 'Sling stones 🪨']]) {
     const row = document.createElement('div');
     row.className = 'almanac-row';
     row.innerHTML = `<span class="when">${Ammo[kind] || 0}</span><span class="what">${label}</span><span class="ok">craft at the workshop (K)</span>`;
@@ -13236,6 +13236,7 @@ Object.assign(window.__lp, {
   weatherSeed: { forecast: seededForecast, daySeed, roll: rollForecast, seed: () => Life.seed },
   prey: Prey, spawnPrey, huntPrey, killPrey, attackPrey, overnightTech, craftLeather, preyInfo: PREY_INFO,
   ambient: { list: ambientWanderers, hunt: huntAmbient, kill: killAmbient },
+  fog: { reveal: (la, lo) => fogReveal(la, lo, true), reset: fogClearMask, points: () => fogPoints.length, circles: fogSnapshot },
   fishing: { zones: FISH_ZONES, species: FISH_TYPES, zoneAt: (lat, lon) => fishZoneAt(latLonToVec3(lat, lon, 0).normalize()), book: () => Life.fishBook, cast: (id) => fishFrom('sea', id) },
   bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty, wanted: WANTED, claimWanted },
   retire: { ready: hearthRetireReady, go: retireToHeir },
@@ -13381,6 +13382,7 @@ const CURSOR_COLORS = {
 function cursorIconFor(it) {
   if (!it) return null;
   if (it.bear) return it.bear.cub ? 'paw' : 'sword';
+  if (it.ambient?.hunt?.apex) return 'sword';
   if (it.prey || it.ambient) return 'paw';
   if (it.wolf || it.robber) return 'sword';
   if (it.npc) return 'talk';
@@ -13404,8 +13406,8 @@ function cursorIconFor(it) {
   if (id === 'home-bed') return 'moon';
   if (id === 'home-fire') return 'pot';
   if (id === 'home-well') return 'water';
-  if (id === 'home-trough' || id === 'home-barn') return 'basket';
-  if (id === 'home-board' || id === 'home-door' || id === 'home-stall' || id === 'home-workshop') return 'hammer';
+  if (id === 'home-barn') return 'basket';
+  if (id === 'home-door' || id === 'home-stall' || id === 'home-workshop') return 'hammer';
   if (id === 'skiff' || id === 'home-dock') return 'oar';
   if (id === 'fish' || id.startsWith('fishzone-')) return 'rod';
   if (id.startsWith('shell')) return 'shell';
@@ -13419,6 +13421,7 @@ function cursorLabelFor(it) {
   if (it.node) return `${it.node.verb} ${it.node.name}`;
   if (it.bear) return it.bear.cub ? 'Shoo cub' : 'Fight bear';
   if (it.prey) return `Hunt ${it.prey.name}`;
+  if (it.ambient?.hunt?.apex) return `Apex — keep distance (${it.ambient.hunt.name})`;
   if (it.ambient) return `Hunt ${it.ambient.hunt?.name || 'wildlife'}`;
   if (it.wolf) return 'Fight wolf';
   if (it.robber) return 'Confront robber';
@@ -13431,8 +13434,8 @@ function cursorLabelFor(it) {
     flame: 'Tend flame', harvest: 'Tend harvest', oasis: 'Wake oasis', bell: 'Ring bell',
     light: 'Light beacon', scan: 'Scan volcano', aurora: 'Wake aurora', plant: 'Nurture sprout',
     fish: 'Fish here', skiff: 'Board skiff', lagoon: 'Wade in',
-    'home-bed': 'Sleep', 'home-fire': 'Cook', 'home-well': 'Draw water', 'home-trough': 'Feed herd',
-    'home-board': 'Build & goals', 'home-door': 'Home', 'home-barn': 'Barn', 'home-stall': 'Market',
+    'home-bed': 'Sleep', 'home-fire': 'Cook', 'home-well': 'Draw water',
+    'home-door': 'Home', 'home-barn': 'Barn · feed herd', 'home-stall': 'Market',
     'home-workshop': 'Research & craft',
   };
   if (names[it.id]) return names[it.id];

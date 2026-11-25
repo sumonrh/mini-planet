@@ -24,18 +24,18 @@ Firebase serves `dist/` (`firebase.json`), which is the single self-contained `i
 
 - `W A S D` walk · `Shift` run · `Q` dash · `Space` hop · `E` interact · `M` globe view · `C` camera · `3` lamp
 - Drag mouse to orbit the camera slightly.
-- **Characters:** you start as **Pip the Sprout Keeper** — leaf hat, watering-can backpack, quicker planting and bridge repairs. Switch to **Nova the Starlight Explorer** in Settings → Traveler. Both travel empty-handed; the axe appears only while chopping, the hammer while building, and the hunting tool while a ranged weapon is drawn. Press `3` to carry the star lantern in daylight; after dark it wakes, lights nearby dark wonders, and reveals hidden starlight sparkles. The playable heroes are Blender-authored GLBs (`src/assets/pip.glb`, `src/assets/nova.glb`, 19-bone rig, `Idle`/`Walk`/`Run`/`Chop`) loaded with `GLTFLoader` + `AnimationMixer`; the hand-built rig remains the automatic fallback if a GLB cannot load.
+- **Characters:** you start as **Pip the Sprout Keeper** — brown hat, watering-can backpack, quicker planting and bridge repairs. Switch to **Nova the Starlight Explorer** in Settings → Traveler. Both travel empty-handed; the axe appears only while chopping, the hammer while building, and the hunting tool while a ranged weapon is drawn. Press `3` to carry the star lantern in daylight; after dark it wakes, lights nearby dark wonders, and reveals hidden starlight sparkles. The playable heroes are Blender-authored GLBs (`src/assets/pip.glb`, `src/assets/nova.glb`, 19-bone rig, `Idle`/`Walk`/`Run`/`Chop`) loaded with `GLTFLoader` + `AnimationMixer`; the hand-built rig remains the automatic fallback if a GLB cannot load.
 - **Sea skiff:** follow the gold beacon south from Shell Cove, press `E` to board, sail with `W A S D` (`Q` trims the sail), and press `E` in open water to cast and again to reel in a 🐟. Different fish bite day/night/reef/deep — first catches are fast. Near shore, `E` steps back onto land. Sea fish can be eaten with `F` or cooked into meals. Check your Fish Book in the journal.
 - **Trail beacon:** the current objective shows a gold light in the world + distance (`➤ 12m`). Walk toward it — `✨ You are here` means press `E`.
-- **Homestead:** press `H` — Mud Hut now costs 3 wood, Big Pack (+8 slots) is buildable, cooking the same mix twice discovers recipes.
-- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless. The southern continent adds lions, impala, wildebeest, giraffes, rhinos and elephants to the Golden Savannah; tigers, deer and monkeys to the Mangrove Delta; and the Great River is home to fish, crocodiles and hippos.
+- **Homestead:** press `H` — light a campfire (1 wood), pitch a tent (2 wood), then raise a Mud Hut (3 wood). Big Pack (+8 slots) is buildable, and cooking the same mix twice discovers recipes.
+- **Wildlife:** deer, hares, fennecs, ember lizards, sea turtles, and surface fish schools are ambient and harmless. The southern continent adds lions, impala, wildebeest, giraffes, rhinos and elephants to the Golden Savannah; tigers, deer and monkeys to the Mangrove Delta; and the Great River is home to fish, crocodiles and hippos. **Apex predators** — lions, tigers, crocodiles and hippos — hunt on sight and shrug off an axe. Research **Spearmaking** for the javelin, then **Bowyer** for the bow, before hunting them; run until then.
 
 ## The Worlds & Small Wonders
 
 | # | World | Moment | How |
 |---|-------|--------|-----|
 | 1 | Fernwood | 🔥 Eternal Flame | Campfire `E` ×3 to tend |
-| 2 | Clover Fields | 🌾 Bountiful Harvest | Crop rows `E` ×3: plant → water → harvest |
+| 2 | Clover Fields | 🌾 Bountiful Harvest | Till a plot at the homestead (`H`), then plant → water → harvest |
 | 3 | Sunstone Oasis | ☀️ Wake the Oasis | Spring `E` ×3: brush sand → turn stones → wake |
 | 4 | Shell Cove | 🔔 Ring the Bell | Dune bell `E` to ring |
 | 5 | Tideglass Reef | 💡 Light the Lighthouse | Rock lighthouse `E` to light (swimmable shallows) |
