@@ -424,10 +424,21 @@ function riverCenterLon(lat) {
     + 1.1 * Math.sin(lat * 0.27 - 1.05)
     + 0.38 * Math.cos(lat * 0.51 + 0.35);
 }
+// The river runs from a spring in the far south to the northern sea. Keep its
+// physical width nearly constant, then open into an estuary at the coast.
+const RIVER_SOURCE_LAT = -70;
 function riverHalfWidth(lat) {
-  const mouth = THREE.MathUtils.smoothstep(-lat, 31, 21) * 2.1;
-  const undulate = 0.42 * Math.sin(lat * 0.19 + 0.7) + 0.2 * Math.cos(lat * 0.44);
-  return 3.35 + mouth + undulate;
+  const source = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 5.5);
+  if (source <= 0) return 0;
+  const latR = lat * DEG;
+  // One degree of longitude shrinks with cos(latitude); convert a fixed world
+  // width back into degrees so the channel does not pinch toward the pole.
+  const degPerUnit = 57.2957795 / (R * Math.max(0.28, Math.cos(latR)));
+  const base = 2.75 * degPerUnit;
+  const coast = southNorthCoast(riverCenterLon(lat));
+  const mouth = 2.1 * THREE.MathUtils.smoothstep(lat, coast - 7, coast);
+  const undulate = (0.1 * Math.sin(lat * 0.19 + 0.7) + 0.05 * Math.cos(lat * 0.44)) * degPerUnit;
+  return Math.max(0, (base + mouth + undulate) * source);
 }
 function southNorthCoast(lon) {
   return -23.0 + 2.2 * Math.sin(lon * 0.21 + 0.4) + 1.4 * Math.sin(lon * 0.63 + 1.7);
@@ -507,8 +518,10 @@ function biomeWeights(n) {
   if (southMask > 1e-4) {
     const rc = riverCenterLon(lat), rw = riverHalfWidth(lat);
     const dRiver = Math.abs(lon - rc);
-    // Smooth channel mask: 1 in river center, tapers smoothly across a ~4.4° curved bank
-    const riverFrac = 1 - THREE.MathUtils.smoothstep(dRiver, rw - 1.5, rw + 2.9);
+    // Smooth channel mask: 1 in river center, tapers smoothly across a ~4.4° curved bank.
+    // The source taper lets the river begin as a spring instead of pinching at the pole.
+    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 5.5);
+    const riverFrac = (1 - THREE.MathUtils.smoothstep(dRiver, rw - 1.5, rw + 2.9)) * riverSource;
     const landFrac = 1 - riverFrac;
     const mangFrac = THREE.MathUtils.smoothstep(lon - rc, -2.5, 2.5);
     addW('river', southMask * riverFrac);
@@ -791,7 +804,7 @@ function groundColor(n, out) {
   if (lat < southNorthCoast(lon) + 2.5) {
     const dRiver = Math.abs(lon - riverCenterLon(lat));
     const rw = riverHalfWidth(lat);
-    if (dRiver > rw - 1.6 && dRiver < rw + 4.8) {
+    if (rw > 0.5 && dRiver > rw - 1.6 && dRiver < rw + 4.8) {
       const wetEdge = THREE.MathUtils.smoothstep(h, -0.35, 0.14) * (1 - THREE.MathUtils.smoothstep(h, 0.14, 0.34));
       out.lerp(_riverMud, wetEdge * 0.62);
       const verge = THREE.MathUtils.smoothstep(h, 0.14, 0.28) * (1 - THREE.MathUtils.smoothstep(dRiver, rw + 1.4, rw + 4.6));
@@ -862,8 +875,10 @@ const ocean = (() => {
     shoreAttr[i] = heightFor(vn) - 0.12; // < 0 in water, ~0 right at beach/riverbank
     const lat = Math.asin(THREE.MathUtils.clamp(vn.y, -1, 1)) / DEG;
     let lon = Math.atan2(vn.z, vn.x) / DEG; if (lon < 0) lon += 360;
-    const isRiv = (lat < southNorthCoast(lon) + 2.0)
-      ? (1 - THREE.MathUtils.smoothstep(Math.abs(lon - riverCenterLon(lat)), riverHalfWidth(lat) - 0.5, riverHalfWidth(lat) + 2.5))
+    const rw = riverHalfWidth(lat);
+    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 5.5);
+    const isRiv = (lat < southNorthCoast(lon) + 2.0 && rw > 0.1)
+      ? (1 - THREE.MathUtils.smoothstep(Math.abs(lon - riverCenterLon(lat)), rw - 0.5, rw + 2.5)) * riverSource
       : 0;
     riverAttr[i] = isRiv;
   }
@@ -3644,6 +3659,7 @@ function pickRiverBankSpot() {
   for (let k = 0; k < 80; k++) {
     const la = rand(-63, -25);
     const rc = riverCenterLon(la), rw = riverHalfWidth(la);
+    if (rw < 0.5) continue;
     const side = Math.random() < 0.5 ? -1 : 1;
     const lo = rc + side * (rw + rand(1.1, 3.6));
     const n = latLonToVec3(la, lo, 0).normalize();
