@@ -418,27 +418,37 @@ function makeBirdMesh(s, bodyCol, wingCol, tones) {
 // keeping every landmark firmly inside its home biome.
 // The southern ocean holds Golden Savannah (west) and Mangrove Delta (east),
 // separated by the naturally meandering Great River.
+// Two long, gentle bends only: both banks are offsets of the same centre line,
+// so they always curve together instead of wiggling apart.
 function riverCenterLon(lat) {
   return 98.0
-    + 2.35 * Math.sin(lat * 0.125 + 0.55)
-    + 1.1 * Math.sin(lat * 0.27 - 1.05)
-    + 0.38 * Math.cos(lat * 0.51 + 0.35);
+    + 2.6 * Math.sin(lat * 0.105 + 0.55)
+    + 0.9 * Math.sin(lat * 0.215 - 1.05);
+}
+// Local east-west slope of the centre line. A slanted reach must be widened in
+// longitude terms so its *perpendicular* width stays the same as a straight one.
+function riverCenterSlope(lat) {
+  const e = 0.25;
+  return (riverCenterLon(lat + e) - riverCenterLon(lat - e)) / (2 * e);
 }
 // The river runs from a spring in the far south to the northern sea. Keep its
-// physical width nearly constant, then open into an estuary at the coast.
-const RIVER_SOURCE_LAT = -70;
+// physical width nearly constant, then open into a shallow estuary at the coast.
+const RIVER_SOURCE_LAT = -72;
+const RIVER_HALF_WIDTH = 2.75; // world units, measured across the channel
 function riverHalfWidth(lat) {
-  const source = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 5.5);
+  const source = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 6);
   if (source <= 0) return 0;
   const latR = lat * DEG;
+  const cosLat = Math.max(0.26, Math.cos(latR));
   // One degree of longitude shrinks with cos(latitude); convert a fixed world
   // width back into degrees so the channel does not pinch toward the pole.
-  const degPerUnit = 57.2957795 / (R * Math.max(0.28, Math.cos(latR)));
-  const base = 2.75 * degPerUnit;
+  const degPerUnit = 57.2957795 / (R * cosLat);
+  const slope = riverCenterSlope(lat);
+  const bankScale = Math.sqrt(1 + Math.pow(slope * cosLat, 2));
+  const base = RIVER_HALF_WIDTH * degPerUnit * bankScale;
   const coast = southNorthCoast(riverCenterLon(lat));
-  const mouth = 2.1 * THREE.MathUtils.smoothstep(lat, coast - 7, coast);
-  const undulate = (0.1 * Math.sin(lat * 0.19 + 0.7) + 0.05 * Math.cos(lat * 0.44)) * degPerUnit;
-  return Math.max(0, (base + mouth + undulate) * source);
+  const mouth = 0.55 * THREE.MathUtils.smoothstep(lat, coast - 5.5, coast);
+  return Math.max(0, (base + mouth) * source);
 }
 function southNorthCoast(lon) {
   return -23.0 + 2.2 * Math.sin(lon * 0.21 + 0.4) + 1.4 * Math.sin(lon * 0.63 + 1.7);
@@ -518,10 +528,12 @@ function biomeWeights(n) {
   if (southMask > 1e-4) {
     const rc = riverCenterLon(lat), rw = riverHalfWidth(lat);
     const dRiver = Math.abs(lon - rc);
-    // Smooth channel mask: 1 in river center, tapers smoothly across a ~4.4° curved bank.
-    // The source taper lets the river begin as a spring instead of pinching at the pole.
-    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 5.5);
-    const riverFrac = (1 - THREE.MathUtils.smoothstep(dRiver, rw - 1.5, rw + 2.9)) * riverSource;
+    // Smooth bank mask: full water inside the channel, then a short shared
+    // soft edge. The softness scales with width so narrow reaches are not
+    // swallowed by a fixed, oversized blur.
+    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 6);
+    const bankSoft = Math.max(0.3, rw * 0.34);
+    const riverFrac = (1 - THREE.MathUtils.smoothstep(dRiver, rw - bankSoft * 0.5, rw + bankSoft)) * riverSource;
     const landFrac = 1 - riverFrac;
     const mangFrac = THREE.MathUtils.smoothstep(lon - rc, -2.5, 2.5);
     addW('river', southMask * riverFrac);
@@ -804,10 +816,11 @@ function groundColor(n, out) {
   if (lat < southNorthCoast(lon) + 2.5) {
     const dRiver = Math.abs(lon - riverCenterLon(lat));
     const rw = riverHalfWidth(lat);
-    if (rw > 0.5 && dRiver > rw - 1.6 && dRiver < rw + 4.8) {
+    const bankSoft = Math.max(0.3, rw * 0.34);
+    if (rw > 0.5 && dRiver > rw - bankSoft && dRiver < rw + bankSoft * 3) {
       const wetEdge = THREE.MathUtils.smoothstep(h, -0.35, 0.14) * (1 - THREE.MathUtils.smoothstep(h, 0.14, 0.34));
       out.lerp(_riverMud, wetEdge * 0.62);
-      const verge = THREE.MathUtils.smoothstep(h, 0.14, 0.28) * (1 - THREE.MathUtils.smoothstep(dRiver, rw + 1.4, rw + 4.6));
+      const verge = THREE.MathUtils.smoothstep(h, 0.14, 0.28) * (1 - THREE.MathUtils.smoothstep(dRiver, rw + bankSoft * 0.8, rw + bankSoft * 2.8));
       out.lerp(_riverBankGrass, verge * 0.45);
     }
   }
@@ -876,9 +889,9 @@ const ocean = (() => {
     const lat = Math.asin(THREE.MathUtils.clamp(vn.y, -1, 1)) / DEG;
     let lon = Math.atan2(vn.z, vn.x) / DEG; if (lon < 0) lon += 360;
     const rw = riverHalfWidth(lat);
-    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 5.5);
+    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 6);
     const isRiv = (lat < southNorthCoast(lon) + 2.0 && rw > 0.1)
-      ? (1 - THREE.MathUtils.smoothstep(Math.abs(lon - riverCenterLon(lat)), rw - 0.5, rw + 2.5)) * riverSource
+      ? (1 - THREE.MathUtils.smoothstep(Math.abs(lon - riverCenterLon(lat)), rw - 0.3, rw + 0.7)) * riverSource
       : 0;
     riverAttr[i] = isRiv;
   }
@@ -1081,6 +1094,18 @@ scene.add(atmo);
 // Declared early: biome blocks call addNode() while the module evaluates.
 const nodes = [];
 const tools = { axe: 1, pick: 1 }; // speed multiplier per tool; research raises these
+let hasAxe = false; // the first axe is forged by Cinder, not carried at arrival
+function grantAxe(silent = false) {
+  if (hasAxe) return null;
+  hasAxe = true;
+  try { burst(player.position.clone(), 0xffd97a, 24, 2.6); chime(760); } catch { /* early */ }
+  if (!silent) {
+    try { toast('🪓 Cinder fits the hand axe to your belt. Trees can be chopped now — press E.'); } catch { /* early */ }
+    try { pushStory('Traded wild fruit to Cinder for a hand-forged axe.', '🪓'); } catch { /* early */ }
+    try { saveCheckpoint(); } catch { /* early */ }
+  }
+  return '🪓 Cinder forges you a hand axe — trees can be chopped now!';
+}
 let onGainXp = null, onPopup = null;
 function addNode(opt) {
   const nd = { prog: 0, need: 3, depleted: false, respawnT: 0, fall: 0, fallTarget: 0, shake: 0, trunkStock: 0, stock: opt.stock || 2, ...opt };
@@ -1106,6 +1131,7 @@ function addChoppableTree(tree, lat, lon, name = 'Pine', color = 0x8fd06a) {
   });
 }
 function nodeLabel(nd) {
+  if (nd.tool === 'axe' && !hasAxe) return `${nd.name} — needs an axe`;
   if (nd.depleted) {
     if (nd.fallRoot && nd.trunkStock > 0) return `Split Trunk ${Math.min(Math.floor(nd.prog), 2)}/2`;
     return 'Regrowing…';
@@ -1116,6 +1142,10 @@ function nodeLabel(nd) {
 function gatherHit(nd) {
   const splitting = nd.depleted && nd.fallRoot && nd.trunkStock > 0;
   if (nd.depleted && !splitting) return toast('🌱 Regrowing… give it a moment.');
+  if (nd.tool === 'axe' && !hasAxe) {
+    clearAutoTask();
+    return toast('🪓 You have no axe yet — pick wild fruit and trade it to Cinder at the volcano forge.');
+  }
   if (meters.energy < 1) return toast('😮‍💨 Too tired to work — eat (F) or rest.');
   meters.energy = Math.max(0, meters.energy - 0.85);
   const action = nodeGatherAction(nd);
@@ -2113,6 +2143,17 @@ const farmGroup = new THREE.Group(); scene.add(farmGroup);
     addNode({
       type: 'food', item: 'food', name: 'Berries', verb: 'Pick', icon: '🍎', color: 0xe04a5a, chime: 560,
       lat: 5, lon: 38, kind: 'GATHER', tool: null, stock: 2, respawn: 60, shakeRoot: bush,
+      onDeplete: () => (berries.visible = false), onRegrow: () => (berries.visible = true),
+    });
+  }
+  // Hand-picked fruit around the arrival path. The first axe is bought with
+  // these, so the meadow must offer enough fruit before any tree can be cut.
+  for (const [la, lo] of [[3, 46], [-1, 49], [5, 54], [0, 56]]) {
+    const { g: bush, berries } = makeBush();
+    put(bush, la, lo, 0, rand(3));
+    addNode({
+      type: 'food', item: 'food', name: 'Wild Berries', verb: 'Pick', icon: '🍎', color: 0xe04a5a, chime: 560,
+      lat: la, lon: lo, kind: 'GATHER', tool: null, stock: 3, respawn: 55, shakeRoot: bush,
       onDeplete: () => (berries.visible = false), onRegrow: () => (berries.visible = true),
     });
   }
@@ -3151,6 +3192,7 @@ let reefPivot, reefBeamM, reefLampM, reefLight;
 }
 
 // ---------- EMBER HEIGHTS ----------
+const CINDER_SHOP = { lat: 20.8, lon: 326.8 };
 {
   const g = new THREE.Group(); scene.add(g);
   const put = (obj, la, lo, h = 0.05, yaw = 0) => {
@@ -3295,11 +3337,14 @@ for (const [la, lo] of [[13, 324], [14, 320], [11, 318]]) {
   lavaFlowG.add(poolLight);
   const lavaPoolTop = poolP.clone();
   // cooling rocks, columnar basalt organ-pipes, glassy obsidian shards
+  const nearCinderShop = (la, lo) => Math.hypot(la - CINDER_SHOP.lat, (lo - CINDER_SHOP.lon) * Math.cos(la * DEG)) < 3.4;
   for (let i = 0; i < 12; i++) {
     const glowing = i < 4;
+    let la, lo;
+    do { la = rand(6, 22); lo = rand(312, 348); } while (nearCinderShop(la, lo));
     put(mesh(new THREE.DodecahedronGeometry(rand(0.3, 0.8), 0),
       glowing ? lavaVeinM : darkRock, 0, 0.2, 0, false),
-      rand(6, 22), rand(312, 348), 0.1, rand(3));
+      la, lo, 0.1, rand(3));
   }
   {
     const cg = new THREE.Group();
@@ -3310,7 +3355,9 @@ for (const [la, lo] of [[13, 324], [14, 320], [11, 318]]) {
   const obsidianM = new THREE.MeshStandardMaterial({ color: 0x14141c, roughness: 0.3, metalness: 0.6, flatShading: true });
   for (let i = 0; i < 8; i++) {
     const sh = mesh(new THREE.ConeGeometry(0.18, rand(0.5, 1.0), 5), obsidianM, 0, 0, 0, false);
-    put(sh, rand(6, 22), rand(312, 348), 0.25, rand(3));
+    let la, lo;
+    do { la = rand(6, 22); lo = rand(312, 348); } while (nearCinderShop(la, lo));
+    put(sh, la, lo, 0.25, rand(3));
     sh.rotateX(rand(-0.35, 0.35)); sh.rotateZ(rand(-0.35, 0.35)); // lean after grounding
   }
   // survey tripod viewpoint — braced legs, plumb line, glinting scope, field crate
@@ -3367,6 +3414,82 @@ for (const [la, lo] of [[13, 324], [14, 320], [11, 318]]) {
     roll.rotation.z = Math.PI / 2; camp.add(roll); // bedroll
     camp.add(mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), mat(0x9a6b42), -1.5, 0.25, -0.6, false)); // supply crate
     put(camp, 6, 320, 0, 0.9);
+  }
+  // Cinder's blacksmith shop: an open basalt forge at the volcano's foot.
+  // The first axe is traded here for wild fruit, so the shop is a landmark
+  // rather than scenery: glowing hearth, anvil, tool rack and painted sign.
+  {
+    const shop = new THREE.Group();
+    const smithWood = furM('smith-wood', 0x7a5230, ['#5e3c20', '#96683e', '#6d4728'], { pattern: 'wood', n: 90, roughness: 0.86 });
+    const smithWoodDark = smat(0x4f321c, { roughness: 0.9 });
+    const steel = smat(0x5f6670, { metalness: 0.62, roughness: 0.42 });
+    const soot = smat(0x2c2826, { roughness: 0.9 });
+    // stone plinth + back and side walls
+    shop.add(mesh(new THREE.BoxGeometry(3.8, 0.28, 3.2), basalt, 0, 0.14, 0));
+    shop.add(mesh(new THREE.BoxGeometry(3.5, 1.95, 0.38), basalt, 0, 1.2, -1.32));
+    for (const sx of [-1, 1]) shop.add(mesh(new THREE.BoxGeometry(0.38, 1.95, 2.8), darkRock, sx * 1.56, 1.2, -0.05));
+    // corner posts and roof beams
+    for (const sx of [-1, 1]) for (const sz of [-1, 1])
+      shop.add(mesh(new THREE.CylinderGeometry(0.11, 0.14, 2.3, 6), smithWood, sx * 1.62, 1.15, sz * 1.28));
+    shop.add(mesh(new THREE.BoxGeometry(4.15, 0.18, 3.5), smithWoodDark, 0, 2.36, 0));
+    for (const s of [-1, 1]) {
+      const roof = mesh(new THREE.BoxGeometry(4.5, 0.16, 2.05), smat(0x3e4a4c, { roughness: 0.86 }), 0, 2.78, s * 0.83);
+      roof.rotation.x = s * 0.55;
+      shop.add(roof);
+    }
+    shop.add(mesh(new THREE.BoxGeometry(4.55, 0.16, 0.2), smithWoodDark, 0, 3.32, 0)); // ridge
+    // chimney
+    shop.add(mesh(new THREE.CylinderGeometry(0.38, 0.48, 3.6, 8), furM('smith-chimney', 0x6d6158, ['#544a43', '#84776c'], { pattern: 'stone', n: 70 }), -1.15, 1.8, -1.02));
+    shop.add(mesh(new THREE.BoxGeometry(1.15, 0.22, 1.1), soot, -1.15, 3.64, -1.02, false));
+    // forge hearth with living coals
+    shop.add(mesh(new THREE.BoxGeometry(1.55, 0.72, 1.05), basalt, -0.86, 0.64, -0.55));
+    const coals = mesh(new THREE.BoxGeometry(1.15, 0.14, 0.72), lavaVeinM, -0.86, 1.04, -0.55, false);
+    shop.add(coals);
+    for (let i = 0; i < 5; i++)
+      shop.add(mesh(new THREE.SphereGeometry(0.07 + rand(0.03), 6, 5), lavaCoreM,
+        -0.86 + rand(-0.45, 0.45), 1.12, -0.55 + rand(-0.28, 0.28), false));
+    shop.add(mesh(new THREE.CylinderGeometry(0.82, 0.62, 0.24, 8), darkRock, -0.86, 2.4, -0.55, false)); // hood
+    shop.add(mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.72, 7), darkRock, -0.86, 2.07, -0.55, false)); // flue
+    const forgeLight = new THREE.PointLight(0xff7a2a, 7.5, 11);
+    forgeLight.position.set(-0.86, 1.35, -0.35);
+    shop.add(forgeLight);
+    tickers.push((t) => { forgeLight.intensity = 6.4 + Math.sin(t * 9) * 1.4 + Math.sin(t * 17.3) * 0.7; });
+    // anvil, quench barrel, workbench and tool rack
+    const anvil = new THREE.Group(); anvil.position.set(0.82, 0.42, 0.12); shop.add(anvil);
+    anvil.add(mesh(new THREE.CylinderGeometry(0.23, 0.3, 0.48, 8), soot, 0, 0.06, 0, false));
+    anvil.add(mesh(new THREE.BoxGeometry(0.92, 0.24, 0.38), steel, 0, 0.36, 0, false));
+    const horn = mesh(new THREE.ConeGeometry(0.17, 0.42, 6), steel, 0.6, 0.4, 0, false);
+    horn.rotation.z = -Math.PI / 2;
+    anvil.add(horn);
+    const quench = mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.62, 9), smithWoodDark, 1.45, 0.45, 1.12);
+    shop.add(quench);
+    shop.add(mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.04, 9).rotateX(Math.PI / 2), smat(0x1f6278, { roughness: 0.2 }), 1.45, 0.52, 0.93, false));
+    shop.add(mesh(new THREE.BoxGeometry(1.5, 0.14, 0.7), smithWood, 1.0, 1.02, -1.1, false));
+    for (const sx of [-0.55, 0.55]) shop.add(mesh(new THREE.BoxGeometry(0.1, 0.9, 0.1), smithWoodDark, 1.0 + sx, 0.55, -1.1, false));
+    const rack = new THREE.Group(); rack.position.set(1.15, 0.35, 1.15); shop.add(rack);
+    for (const sx of [-0.55, 0.55]) rack.add(mesh(new THREE.CylinderGeometry(0.055, 0.065, 1.8, 5), smithWood, sx, 0.9, 0));
+    rack.add(mesh(new THREE.BoxGeometry(1.25, 0.08, 0.09), smithWood, 0, 1.6, 0, false));
+    for (let i = 0; i < 3; i++) {
+      const hx = -0.36 + i * 0.36;
+      rack.add(mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.82, 5), smithWood, hx, 1.18, 0.03, false));
+      rack.add(mesh(new THREE.BoxGeometry(0.24, 0.16, 0.05), steel, hx + 0.1, 1.48, 0.03, false));
+    }
+    // painted sign over the open front
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 220;
+    const cx = cv.getContext('2d');
+    cx.fillStyle = '#4f321c'; cx.fillRect(0, 0, 512, 220);
+    cx.strokeStyle = '#2a1a0d'; cx.lineWidth = 16; cx.strokeRect(8, 8, 496, 204);
+    cx.fillStyle = '#ffd97a'; cx.font = 'bold 54px Georgia, serif'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.fillText("CINDER'S FORGE", 256, 82);
+    cx.fillStyle = '#f3e9dc'; cx.font = 'bold 30px Inter, sans-serif';
+    cx.fillText('HAND AXES  ·  FRUIT TRADE', 256, 154);
+    const signTex = new THREE.CanvasTexture(cv);
+    signTex.colorSpace = THREE.SRGBColorSpace;
+    shop.add(mesh(new THREE.BoxGeometry(2.65, 1.15, 0.12), new THREE.MeshStandardMaterial({ map: signTex, roughness: 0.9 }), 0, 2.95, 1.55, false));
+    shop.add(mesh(new THREE.BoxGeometry(2.85, 0.1, 0.1), smithWoodDark, 0, 2.34, 1.58, false));
+    for (const sx of [-1, 1]) shop.add(mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.65, 5), smithWood, sx * 1.15, 2.68, 1.58, false));
+    put(shop, CINDER_SHOP.lat, CINDER_SHOP.lon, 0.03, -0.35);
+    occluders.push(shop);
   }
   // charred ember trees cling to the volcano's lower slopes
   for (const [la, lo] of [[8, 318], [17, 312], [20, 344], [9, 345], [5, 325], [15, 306]]) {
@@ -4285,7 +4408,7 @@ const player = new THREE.Group();
       P.elbowR.rotation.x += ((-0.35 - Math.max(0, -stroke) * 0.5) - P.elbowR.rotation.x) * k;
     }
     const heldTool = heroBuildHold ? 'hammer' : (hunting ? null : (pose ? (pose.tool || (pose.useTool === false ? null : 'axe')) : null));
-    if (P.axe) P.axe.visible = heldTool === 'axe';
+    if (P.axe) P.axe.visible = hasAxe && heldTool === 'axe';
     if (P.hammer) P.hammer.visible = heldTool === 'hammer';
     if (P.gear?.rifleG) P.gear.rifleG.visible = rangedMode;
 
@@ -5389,8 +5512,8 @@ function removeItems(cost) {
   renderStats();
   return true;
 }
-function eatFood() {
-  if (playerDead) return;
+function eatFood(automatic = false) {
+  if (playerDead) return false;
   // trail priority: hearty meals first, then milk, berries, raw eggs last
   const menu = [
     { k: 'meal', hunger: 55, energy: 25 },
@@ -5401,20 +5524,35 @@ function eatFood() {
     { k: 'egg', hunger: 12, energy: 6 },
   ];
   const m = menu.find((x) => (inv[x.k] || 0) > 0);
-  if (!m) return toast('🍽️ No food — fish, farm, or forage first.');
-  if (meters.hunger > 96 && meters.energy > 95) return toast('😋 Stuffed.');
+  if (!m) {
+    if (!automatic) toast('🍽️ No food — fish, farm, or forage first.');
+    return false;
+  }
+  if (!automatic && meters.hunger > 96 && meters.energy > 95) { toast('😋 Stuffed.'); return false; }
   const mealBuff = m.k === 'meal' ? Life.pendingMealBuff : null;
   inv[m.k]--;
   meters.hunger = Math.min(100, (meters.hunger ?? 100) + m.hunger);
   meters.energy = Math.min(100, meters.energy + m.energy);
+  // Freshly eaten: don't immediately nag about hunger again.
+  hungerWarned = meters.hunger <= 25;
+  starvingWarned = false;
   if (m.k === 'meal') {
     Life.stats.meals++;
     if (mealBuff) { applyMealBuff(mealBuff); Life.pendingMealBuff = null; }
   }
   burst(player.position.clone(), 0x9df0a8, 10, 1.6);
   chime(620);
-  toast(m.k === 'meal' ? `🍲 ${BUFF_INFO[mealBuff]?.name || 'Hearty meal'}! (+55 full, +25 energy${mealBuff ? `, ${BUFF_INFO[mealBuff].text} today` : ''})` : `😋 +${m.hunger} full.`);
+  if (automatic) {
+    const what = { meal: 'a hearty meal', meat: 'some meat', milk: 'some milk', food: 'a fruit', fish: 'a fish', egg: 'an egg' }[m.k] || m.k;
+    toast(`🍽️ Health critical — Pip eats ${what} from his pack. (+${m.hunger} full)`);
+  }
+  else toast(m.k === 'meal' ? `🍲 ${BUFF_INFO[mealBuff]?.name || 'Hearty meal'}! (+55 full, +25 energy${mealBuff ? `, ${BUFF_INFO[mealBuff].text} today` : ''})` : `😋 +${m.hunger} full.`);
   renderStats();
+  return true;
+}
+function autoEatIfCritical() {
+  if (playerDead || meters.health > 30 || meters.hunger > 55) return false;
+  return eatFood(true);
 }
 function useRemedy() {
   if (playerDead) return;
@@ -5495,6 +5633,8 @@ function renderStats() {
 }
 window.__lp = {
   inv, meters, tools, nodes, player, addItem, eatFood, packSize, packCap,
+  hasAxe: () => hasAxe,
+  grantAxe,
   boat: {
     get pos() { return (inBoat && craftMode === 'dock' && dockCraftG ? dockCraftG : boatGroup).position.toArray(); },
     get inBoat() { return inBoat; },
@@ -6051,7 +6191,11 @@ function killPlayer() {
   const g = document.getElementById('gameover');
   if (g) g.classList.remove('hidden');
   const title = document.getElementById('gameover-title');
-  if (title && lastDamageCause && combatNow - lastDamageCauseAt < 4) {
+  if (title && lastDamageCause === 'starvation' && combatNow - lastDamageCauseAt < 4) {
+    title.textContent = 'Starvation claimed you…';
+    const eyebrow = document.querySelector('.gameover-eyebrow');
+    if (eyebrow) eyebrow.textContent = 'HUNGER TOOK ITS TOLL';
+  } else if (title && lastDamageCause && combatNow - lastDamageCauseAt < 4) {
     title.textContent = `Mauled by ${lastDamageCause}…`;
     const eyebrow = document.querySelector('.gameover-eyebrow');
     if (eyebrow) eyebrow.textContent = 'THE WILD CLAIMED YOU';
@@ -6070,7 +6214,7 @@ function killPlayer() {
 }
 function respawnAtSave() {
   // soft death: keep your best axe and your fish — only lose half your loose food
-  const keepAxe = tools.axe || 1, keepFish = inv.fish || 0;
+  const keepAxe = tools.axe || 1, keepFish = inv.fish || 0, keepHasAxe = hasAxe;
   const snap = loadSave();
   const g = document.getElementById('gameover');
   if (g) g.classList.add('hidden');
@@ -6083,6 +6227,7 @@ function respawnAtSave() {
     playerPos = n0.clone().multiplyScalar(R + heightFor(n0) + 0.1);
   }
   if ((tools.axe || 1) < keepAxe) tools.axe = keepAxe;
+  if (keepHasAxe) hasAxe = true;
   if ((inv.fish || 0) < keepFish) { inv.fish = keepFish; }
   inv.food = Math.ceil((inv.food || 0) / 2); // half your berries spill, the rest stays
   playerDead = false;
@@ -6430,19 +6575,24 @@ const NPCS = [
     ],
   },
   {
-    id: 'cinder', name: 'Cinder the Smith', zone: 'EMBER HEIGHTS', lat: 6.5, lon: 325,
+    id: 'cinder', name: 'Cinder the Smith', zone: 'EMBER HEIGHTS', lat: 21.3, lon: 328.0,
     look: { coat: 0x4a4038, hat: 'hood', hatColor: 0x2a2320 },
     lines: [
-      'Basalt for coin, and — for the right bundle — I’ll put a real edge on that axe.',
-      'A sharp axe chops faster AND bites bears harder. Think about it.',
+      'Five ripe fruits buy a hand axe — no axe, no timber. That’s the forge’s rule.',
+      'Bring the axe back after and I’ll put a keener edge on it. Basalt for coin, too.',
     ],
     trades: [
-      { id: 'stone-gold', give: { stone: 2 }, get: { gold: 1 }, blurb: 'Volcanic glass stock' },
+      {
+        id: 'forge-axe', give: { food: 5 }, get: {}, blurb: 'Forge a hand axe (5 fruit) — needed for wood',
+        once: true, resultText: '🪓 hand axe', effect: () => grantAxe(), doneText: 'Axe forged ✓',
+      },
       {
         id: 'sharpen', give: { wood: 3, stone: 2 }, get: {}, blurb: 'Sharpen axe (1.5× chop + fight)',
-        once: true, effect: () => { tools.axe = 1.5; },
+        once: true, effect: () => { tools.axe = 1.5; return '🪓 Cinder puts a razor edge on your axe. (1.5× chop + fight)'; },
+        req: () => hasAxe || 'Forge a hand axe first',
         doneText: 'Axe already razor-sharp ✓',
       },
+      { id: 'stone-gold', give: { stone: 2 }, get: { gold: 1 }, blurb: 'Volcanic glass stock' },
     ],
   },
   {
@@ -6539,8 +6689,22 @@ for (const n of NPCS) {
     onUse: () => openTrade(n),
   });
 }
+// The forge building itself is a trade point, so the shop works as a shop and
+// not just as decoration around Cinder.
+{
+  const cinder = NPCS.find((n) => n.id === 'cinder');
+  if (cinder) addInteract({
+    id: 'cinder-forge', pos: anchor(CINDER_SHOP.lat, CINDER_SHOP.lon, 1.2), npc: cinder, radius: 4.8,
+    kind: '🔨 BLACKSMITH', label: () => hasAxe ? "Cinder's forge — talk & trade" : "Cinder's forge — trade 5 fruit for an axe",
+    onUse: () => openTrade(cinder),
+  });
+}
 function tradeAfford(n, t) {
   if (t.once && t.count > 0) return { ok: false, why: t.doneText || 'Done ✓' };
+  if (t.req) {
+    const r = t.req();
+    if (r !== true) return { ok: false, why: typeof r === 'string' ? r : 'Not ready yet' };
+  }
   for (const [k, need] of Object.entries(t.give)) {
     if ((inv[k] || 0) < need) return { ok: false, why: `Need ${need - (inv[k] || 0)} more ${ITEM_ICON[k] || k}` };
   }
@@ -6733,9 +6897,10 @@ const CHAPTERS = [
   {
     id: 'arrival', icon: '🌱', name: 'Arrival', age: 20,
     blurb: 'A stranger on a small green world. Survive the first nights.',
-    beat: 'You arrived with an axe and a stubborn heart. The planet is listening.',
-    tip: 'Click a tree or press E once — the hero walks over and does the whole job. Light a campfire and pitch a tent (H) before dark.',
+    beat: 'You arrived with empty hands and a stubborn heart. The planet is listening.',
+    tip: 'Pick wild fruit by hand (E), then follow the beacon to Cinder’s forge near Ember Heights and trade for your first axe. After that, light a campfire and pitch a tent (H) before dark.',
     goals: [
+      { text: 'Trade 5 fruit for a hand axe', done: () => hasAxe },
       { text: 'Light a campfire', done: () => !!Home.campfire },
       { text: 'Pitch a tent', done: () => !!Home.tent },
       { text: 'Sleep one night', done: () => Life.nights >= 1 },
@@ -8259,6 +8424,8 @@ function familyUpkeep() {
 }
 function kidStageName(s) { return ['Baby', 'Child', 'Teen', 'Adult'][s] || '?'; }
 let hungerWarned = false;
+let starvingWarned = false;
+let autoEatCd = 0;
 function moraleTarget() {
   let m = 45 + Home.house * 7 + Home.decor * 3 + (Life.spouse ? 10 : 0) + Life.kids.length * 3 + (Life.festival ? 25 : 0) + (Life.bless?.bell ? 10 : 0);
   if (Life.grief > 0) m -= 30;
@@ -8347,11 +8514,29 @@ tickers.push((t, dt) => {
   if (playerDead || sleeping) return;
   // RPG pacing: hunger drains ~3x slower so exploring beats eating on schedule.
   meters.hunger = Math.max(0, (meters.hunger ?? 100) - dt * (100 / 900));
+  autoEatCd = Math.max(0, autoEatCd - dt);
+  // A starving traveler loses health for real. Food in the pack is a safety
+  // net: at critical health the explorer eats automatically, but only after a
+  // short cooldown so a single crisis does not empty the whole pack.
   if (meters.hunger <= 0) {
-    meters.health = Math.max(1, meters.health - 2 * dt); // starving aches but won't finish you
+    meters.health = Math.max(0, meters.health - 2 * dt);
     meters.energy = Math.max(0, meters.energy - 3 * dt);
-    if (!hungerWarned) { hungerWarned = true; toast('🍽️ Starving! Eat something (F).'); chime(200); }
-  } else if (meters.hunger > 30) hungerWarned = false;
+    lastDamageT = combatNow; // no passive healing while starving
+    if (!starvingWarned) { starvingWarned = true; toast('🍽️ Starving! Your health is dropping — eat (F) or find food now.'); chime(200); }
+    if (meters.health <= 0 && !playerDead) {
+      lastDamageCause = 'starvation';
+      lastDamageCauseAt = combatNow;
+      killPlayer();
+      return;
+    }
+  } else {
+    starvingWarned = false;
+    if (meters.hunger <= 25 && !hungerWarned) { hungerWarned = true; toast('🍽️ Getting hungry — press F to eat before your health starts dropping.'); }
+    if (meters.hunger > 30) hungerWarned = false;
+  }
+  if (autoEatCd <= 0 && meters.health <= 30 && meters.hunger <= 55) {
+    if (autoEatIfCritical()) autoEatCd = 12;
+  }
   const stock = inv.food + (inv.fish || 0) + (inv.egg || 0) + (inv.milk || 0) + (inv.meal || 0);
   if (stock > Life.stats.maxFood) Life.stats.maxFood = stock;
   if (Life.grief > 0) Life.grief = Math.max(0, Life.grief - dt / 120);
@@ -13104,6 +13289,7 @@ function retireToHeir() {
   Life.chronicle.push(`Gen ${Life.gen - 1} retired in comfort 🌅 (${Life.stats.goldEarned}🪙 earned, Day ${Life.day})`);
   // New Game+: blueprints, journal and one heirloom tool carry over; the heir starts at Arrival
   tools.axe = Math.max(tools.axe || 1, 1.3);
+  hasAxe = true; // the heir inherits the family axe
   Life.chapter = 0; Life.age = 20; Life.seenCards = []; pendingTrait = null;
   applyHeroChapter(0);
   const ng = Math.max(0, (Life.gen || 1) - 1);
@@ -13149,8 +13335,17 @@ const qWonder = (id) => !!byId(id)?.done;
 const qGold = (n) => () => `Earn ${Math.min(n, Life.stats.goldEarned || 0)}/${n}🪙 total`;
 const QUESTS = [
   {
+    id: 'smith', title: 'A Hand Axe',
+    hint: 'Clover Fields · pick wild fruit by hand (E), then follow the beacon to Cinder’s forge at the foot of Ember Heights and trade 5 fruit for your first axe.',
+    subs: [
+      { id: 'smith-fruit', text: () => `Gather 5 fruit for Cinder (${Math.min(5, inv.food || 0)}/5)`, done: () => (inv.food || 0) >= 5 },
+      { id: 'smith-axe', text: 'Trade 5 fruit to Cinder for a hand axe', done: () => hasAxe },
+    ],
+    auto: () => hasAxe,
+  },
+  {
     id: 'camp', title: 'Make Camp',
-    hint: 'Clover Fields · your axe appears when you chop. Gather 3 wood, then light a campfire and pitch a tent (H).',
+    hint: 'Clover Fields · chop trees with your new axe. Gather 3 wood, then light a campfire and pitch a tent (H).',
     subs: [
       { id: 'camp-wood', text: 'Gather 3 wood', done: () => inv.wood >= 3 },
       { id: 'camp-fire', text: 'Light a campfire (H)', done: () => !!Home.campfire },
@@ -13391,7 +13586,9 @@ function questNew() {
 function questLoad(data) {
   questHide();
   if (data && typeof data.index === 'number') {
-    questIndex = Math.max(0, Math.min(QUESTS.length, data.index | 0));
+    // v2 inserted the smith objective at the front; old saves shift by one.
+    const offset = data.v === 2 ? 0 : 1;
+    questIndex = Math.max(0, Math.min(QUESTS.length, (data.index | 0) + offset));
     questDone = new Set((Array.isArray(data.done) ? data.done : []).filter((id) => QUEST_SUB_IDS.has(id)));
     questDoneObjectives = new Set((Array.isArray(data.completed) ? data.completed : []).filter((id) => QUEST_IDS.has(id)));
   } else {
@@ -13402,7 +13599,7 @@ function questLoad(data) {
   questNormalize();
 }
 function questSnapshot() {
-  return { index: questIndex, done: [...questDone], completed: [...questDoneObjectives] };
+  return { v: 2, index: questIndex, done: [...questDone], completed: [...questDoneObjectives] };
 }
 function questCompleteActive(q) {
   if (questTransition) return;
@@ -13502,10 +13699,22 @@ tickers.push(questTick);
 // Clover Fields is left deliberately beacon-free: the meadow starts as a blank
 // slate, so the player discovers and builds it without a floating gold arrow.
 const QUEST_SPOTS = {
-  camp: [2, 50], night: [-2, 56], roots: [-4.5, 54], flame: [12, 158], harvest: [-4.5, 53.5],
+  smith: [CINDER_SHOP.lat, CINDER_SHOP.lon], camp: [2, 50], night: [-2, 56], roots: [-4.5, 54], flame: [12, 158], harvest: [-4.5, 53.5],
   oasis: [4, 110], bell: [14, 279], light: [2, 230], scan: [8, 328], aurora: [60, 140],
   prosper: [-2, 56], family: [5.5, 47], legacy: [-2, 56], retire: [-2, 56],
 };
+// The smith objective guides to the nearest hand-pickable fruit until the pack
+// holds the five-fruit price, then points at Cinder's forge.
+function smithGuideSpot() {
+  if ((inv.food || 0) >= 5) return [CINDER_SHOP.lat, CINDER_SHOP.lon];
+  let best = null, bestD = Infinity;
+  for (const nd of nodes) {
+    if (nd.item !== 'food' || nd.tool || nd.depleted || !nd.interact) continue;
+    const d = player.position.distanceTo(nd.interact.pos);
+    if (d < bestD) { bestD = d; best = nd; }
+  }
+  return best ? [best.lat, best.lon] : [3, 46];
+}
 const questBeacon = new THREE.Group();
 {
   const core = mesh(new THREE.OctahedronGeometry(0.5, 0), new THREE.MeshStandardMaterial({ color: 0xffd97a, emissive: 0xa86a00, emissiveIntensity: 1.2, flatShading: true }), 0, 0, 0, false);
@@ -13519,24 +13728,25 @@ let questDistEl = null;
 tickers.push((t) => {
   if (!started || paused) { questBeacon.visible = false; return; }
   const q = QUESTS[questIndex];
-  if (!q || !QUEST_SPOTS[q.id]) { questBeacon.visible = false; return; }
+  if (!q || !(QUEST_SPOTS[q.id] || q.id === 'smith')) { questBeacon.visible = false; return; }
   if (!questDistEl) {
     questDistEl = document.createElement('div');
     questDistEl.id = 'obj-dist';
     questDistEl.style.cssText = 'margin-top:4px;font-size:12px;opacity:.85';
     document.getElementById('objective-panel')?.appendChild(questDistEl);
   }
-  const [la, lo] = QUEST_SPOTS[q.id];
+  const [la, lo] = q.id === 'smith' ? smithGuideSpot() : QUEST_SPOTS[q.id];
   const target = anchor(la, lo, 2.2);
   const d = player.position.distanceTo(target);
   const cloverField = biomeAt(target.clone().normalize()) === 'farm';
+  const hideBeacon = cloverField && q.id !== 'smith';
   // Standing on the marker? Hide the tall beam so it doesn't fill the camera.
-  questBeacon.visible = d > 4 && !cloverField;
+  questBeacon.visible = d > 4 && !hideBeacon;
   questBeacon.position.copy(target);
   questBeacon.position.addScaledVector(target.clone().normalize(), Math.sin(t * 2.4) * 0.3);
   const core = questBeacon.getObjectByName('beacon-core');
   if (core) { core.rotation.y = t * 1.8; core.position.y = Math.sin(t * 2.4) * 0.3; }
-  if (questDistEl) questDistEl.textContent = cloverField ? '' : (d < 4 ? '✨ You are here — press E!' : `➤ ${Math.round(d)}m ${d > 20 ? '— follow the gold light' : '— almost there'}`);
+  if (questDistEl) questDistEl.textContent = hideBeacon ? '' : (d < 4 ? '✨ You are here — press E!' : `➤ ${Math.round(d)}m ${d > 20 ? '— follow the gold light' : '— almost there'}`);
 });
 
 // ==================== GRAPHICS 3x pass ====================
@@ -14137,6 +14347,7 @@ function snapshot() {
     pos: playerPos.toArray(), facing: facing.toArray(), heading: moveDirSmooth.toArray(),
     inv: { ...inv }, meters: { ...meters },
     tools: { ...tools },
+    hasAxe,
     life: saveLife(),
     // v2 top-level systems (also mirrored inside life.progression for v1 compatibility)
     research: progression.research,
@@ -14211,6 +14422,8 @@ function applySave(s, respawn) {
   for (const k of ['fish', 'meat', 'egg', 'milk', 'meal', 'fur', 'leather']) if (inv[k] === undefined) inv[k] = 0;
   if (s.life) restoreLife(s.life);
   if (s.tools) Object.assign(tools, s.tools);
+  // Saves from before the forge quest carried an axe; keep it for them.
+  hasAxe = s.hasAxe === undefined ? true : !!s.hasAxe;
   for (const sn of s.npcs || []) {
     const n = NPCS.find((x) => x.id === sn.id);
     if (!n) continue;
@@ -14557,7 +14770,7 @@ function startGame(fresh) {
   if (fresh) {
     questNew();
     Life.dailyContracts = genDailyContracts();
-    pushStory('You arrived on the little planet with an axe and a stubborn heart.', '🌱');
+    pushStory('You arrived on the little planet with empty hands and a stubborn heart.', '🌱');
     rollForecast();
     saveCheckpoint(true);
     toast('🌱 A new life begins! Follow the trail objective.');
