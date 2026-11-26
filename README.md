@@ -67,10 +67,15 @@
 - **🌐 One Seamless Traversable Sphere &amp; 10 Biomes** — Walk, swim, and sail around a continuous 3D globe with smooth organic biome transitions, a meandering Great River with cattail banks, Golden Savannah, Mangrove Delta, Ember Heights volcano, and Northlight aurora.
 - **🧭 Playable Travelers** — Start as **Pip the Sprout Keeper** (felt hat, watering-can pack, faster crop growth &amp; repairs) or switch to **Nova the Starlight Explorer** (navy coat &amp; star lantern that wakes hidden night sparkles). Powered by Blender-authored 19-bone GLB rigs with contextual tools.
 - **🏡 Homestead, Farming &amp; 44-Tech Research Tree** — Progress from a campfire and A-frame tent to half-timbered farmhouses, red barns, stone wells, windmills, sawmills, and gunsmiths across five eras: *Handmade → Copper → Iron → Mechanical → Powder*.
-- **⛵ Sailing, Fishing &amp; Living Oceans** — Board your sea skiff or dock raft, trim the sail with `Q`, and fill your Fish Book across day, night, reef, and deep water while whales breach, dolphins surf, and sharks &amp; orcas patrol the deep.
+- **⛵ Sailing, Fishing &amp; Living Oceans** — Board your sea skiff or dock raft, trim the sail with `Q`, and fill your Fish Book across day, night, reef, and deep water while whales breach, dolphins surf, and sharks &amp; orcas patrol the deep. Rare catches trigger a tension minigame, and three legendary trophies — Golden Arapaima, Ice Sturgeon and Golden Marlin — pay gold and morale.
 - **🦁 Territorial Apex Predators &amp; 10 Guarded Relics** — Lions, tigers, crocodiles, hippos, and polar bears defend their home biomes. Research spears and bows before hunting them, or claim each biome's hidden relic for instant technology shortcuts.
 - **🌦️ Seasons, Hazards, Strangers &amp; Generational Legacy** — Survive dynamic weather disasters, question or welcome wandering travellers, court and marry a villager, raise children, and retire into your heir.
-- **🎵 100% Procedural Web Audio** — Surface-aware footsteps, swimming, rowing, axe swings, animal calls, whale song, surf, and storm audio synthesized live with zero external audio files.
+- **⚔️ Telegraphed Boss Combat** — Committed predator strikes paint a red ground ring. Dash through it for a **Perfect Dodge** slow-mo and guaranteed crit counter; relic guardians add pounce, lunge and frost-slam patterns.
+- **📋 Daily Contracts &amp; Gathering Rhythm** — Three rotating village contracts appear on the bounty board every dawn. While chopping, tap `E` on the beat for a 2× sweet-spot burst and a rising combo.
+- **🍲 Expedition Meals** — The campfire prepares day-long buffs from ingredient pairs: River Feast (+35% gather), Hunter's Stew (+15% ranged), Harvest Bowl (+1 harvest), Warm Custard (cold immunity) and Trail Stew (+10% travel).
+- **🗺️ Cartography Milestones** — Chart 25/50/75/100% of the fog for permanent travel speed, sprint efficiency, spyglass zoom and a daily insight.
+- **📍 Waypoints &amp; Impact Juice** — Right-click the globe (or press `P`) to pin a beacon with distance and compass direction. Heavy hits add micro hit-stop, a directional damage arrow, and soft biome music motifs.
+- **🎵 100% Procedural Web Audio** — Surface-aware footsteps, swimming, rowing, axe swings, animal calls, whale song, surf, storm audio and biome motifs synthesized live with zero external audio files.
 
 ---
 
@@ -101,8 +106,9 @@ At **2 / 4 / 6** wonders, the three fractured landmass bridges repair. At **7 / 
 | `Shift` / `Q` | Run / Dash (or trim sail) |
 | `Space` | Hop |
 | `E` | Context interact (chop, mine, talk, board, fish, awaken wonders) |
-| `H` / `K` / `J` / `L` | Homestead Board / Workshop Research / Field Journal / Loadout |
-| `M` / `C` / `3` | Globe View / Camera View / Carry Star Lantern |
+| `E` on the beat | 2× gather sweet spot while chopping |
+| `H` / `K` / `J` / `L` / `B` | Homestead Board / Workshop / Journal / Loadout / Bounty + Daily Contracts |
+| `M` / `P` / `C` / `3` | Globe View / Pin Waypoint / Camera View / Carry Star Lantern |
 | Mouse Drag / Wheel | Orbit &amp; zoom camera |
 
 Deep-link straight to any world: `#clover`, `#fernwood`, `#oasis`, `#cove`, `#reef`, `#ember`, `#north`.

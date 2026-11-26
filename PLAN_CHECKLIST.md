@@ -72,6 +72,18 @@ Status of the "A Life on the Little Planet" plan. `[x]` = implemented and covere
 - [x] Sea life: two sharks, two dolphins, one whale and one orca, with shark/orca attacks on swimmers and whale/dolphin ambience (`MCP playtest`, browser screenshot).
 - [x] `mcp/little-planet-mcp.mjs`: dependency-free stdio MCP server driving Chrome through `browse`; tools for open/start/state/eval/teleport/press/screenshot/artifact hints/close (`MCP handshake + full play loop`).
 
+## Combat feel, contracts & rhythm
+- [x] Apex predators telegraph committed strikes with a red ground danger ring; missed strikes whiff visibly (`MCP/browser: windup 0.9s, ring visible, health drop after commit`).
+- [x] **Perfect Dodge**: Q dash i-frames grant a brief slow-mo hit-stop, a `PERFECT DODGE!` popup and a guaranteed crit counter.
+- [x] Relic guardian mini-boss patterns: lion pounce, crocodile lunge, tiger leap, guardian bear frost slam; non-guardian animals keep normal strikes.
+- [x] Rotating **daily contracts** on the bounty board: three village jobs per dawn, tracked against baselines, with gold/insight and same-day expiry (`MCP: deliver-fish claimed for 8🪙 + 3💡`).
+- [x] Rhythmic gathering: a timing bar appears during swings; tapping `E` in the green band doubles progress/yield and builds a combo (`browser: 2 wood from one sweet-spot hit`).
+- [x] Globe **waypoint pin** (right-click or `P`), persistent distance/direction chip, and world beacon.
+- [x] Hit-stop on heavy blows, directional damage arrow, and per-biome procedural music motifs (`sfx` log).
+- [x] Cartography milestones: 25/50/75/100% fog coverage grant travel speed, sprint efficiency, spyglass zoom and a daily insight (`MCP: 98% charted → 25/50/75 perks`).
+- [x] Expedition meals: fish+fish, meat+meat, food+food, egg+milk or mixed produce grant day-long gather/ranged/harvest/cold/travel buffs when eaten (`browser smoke`).
+- [x] Rare-fish tension minigame: moving reel marker, green sweet band, 3–4 strikes to land, three misses or a timeout loses the fish; legendary Arapaima/Sturgeon/Marlin trophies pay gold + morale (`browser smoke`).
+
 ## Known scope notes
 - Hazards are recoverable and telegraphed; guns remain loud late-game tools rather than a power fantasy.
 - The game stays a single-file deployable (`src/main.js` + panels), with regression suites exercising chapters, hazards, research, weapons, threats, saves, hero rig and UI.

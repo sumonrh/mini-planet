@@ -1110,7 +1110,10 @@ function gatherHit(nd) {
     nd.shake = 1; // vibrate
   }
   if (chopT <= 0) startChop(null, action); // swing tool / hands
-  const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1);  nd.prog += power;
+  const sweet = gatherSweet;
+  gatherSweet = false;
+  const power = (nd.tool ? (tools[nd.tool] || 1) : 1) * (window.__rpgChopMult || 1) * (sweet ? 2 : 1) * (Buffs.day === Life.day && Buffs.work ? 1.35 : 1);
+  nd.prog += power;
   // juice: hits escalate — bigger shake, higher chime, brighter burst
   const th = splitting ? 2 : nd.need;
   const heat = Math.min(1, nd.prog / th);
@@ -1139,19 +1142,22 @@ function gatherHit(nd) {
   } else if (action === 'pick') {
     burst(fxPos, nd.color, 4, 0.9);
   }
-  chime(nd.chime + Math.round(heat * 160));
+  chime(nd.chime + Math.round(heat * 160) + (sweet ? 220 + gatherCombo * 45 : 0));
   if (nd.prog >= th) {
-    if (!addItem(nd.item, 1)) { nd.prog = th; return; } // pack full: keep it ready
+    const reward = sweet ? 2 : 1;
+    let got = 0;
+    for (let i = 0; i < reward; i++) if (addItem(nd.item, 1)) got++; else break;
+    if (!got) { nd.prog = th; return; } // pack full: keep it ready
     nd.prog = 0;
-    toast(`+1 ${nd.icon} ${nd.item}`);
-    if (nd.item === 'wood') Life.stats.woodChopped = (Life.stats.woodChopped || 0) + 1;
+    toast(`+${got} ${nd.icon} ${nd.item}${sweet ? ' — sweet spot!' : ''}`);
+    if (nd.item === 'wood') Life.stats.woodChopped = (Life.stats.woodChopped || 0) + got;
     Life.stats.firstGather = Life.stats.firstGather || {};
     if (!Life.stats.firstGather[nd.item]) {
       Life.stats.firstGather[nd.item] = true;
       grantInsight(1, `First ${nd.item}`);
     }
-    if (onPopup) onPopup(fxPos, `+1 ${nd.icon}`, '#ffe596');
-    if (onGainXp) onGainXp(splitting ? 6 : 8, fxPos);
+    if (onPopup) onPopup(fxPos, `+${got} ${nd.icon}`, sweet ? '#9df0a8' : '#ffe596');
+    if (onGainXp) onGainXp((splitting ? 6 : 8) * (sweet ? 2 : 1), fxPos);
     if (splitting) {
       flyChunk(nd.fallRoot.position.clone()); // split piece flies to the pack
       if (--nd.trunkStock <= 0) nd.fallRoot.visible = false; // trunk fully cleared
@@ -1213,6 +1219,7 @@ tickers.push((t, dt) => {
 // chopT runs 0..1 over CHOP_DUR; the wood hit lands at CHOP_IMPACT.
 const CHOP_DUR = 0.72, CHOP_IMPACT = 0.5;
 let chopT = 0;
+let gatherSweet = false, gatherCombo = 0, gatherTapLock = false, gatherTapped = false;
 let lampHeld = false; // Digit3: carry the star lantern during the day too
 let huntVisualT = 0; // brief window when a hunt shows the ranged tool on the hero
 let chopQueue = null; // { nd, fired } — logic fires on the contact frame
@@ -1238,6 +1245,39 @@ function startChop(nd, action) {
   gatherAction = action || nodeGatherAction(nd);
 }
 function swingChop(nd) { if (nd) startChop(nd); }
+function hideGatherTimingUI() {
+  const el = document.getElementById('gather-timing');
+  if (el) el.classList.add('hidden');
+}
+function updateGatherTimingUI() {
+  const el = document.getElementById('gather-timing');
+  if (!el) return;
+  if (chopT <= 0) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.classList.toggle('sweet', gatherSweet);
+  const marker = el.querySelector('.gt-marker');
+  if (marker) marker.style.left = `${Math.min(100, Math.max(0, chopT * 100))}%`;
+  const combo = document.getElementById('gather-combo');
+  if (combo) combo.textContent = gatherCombo > 1 ? `×${gatherCombo}` : '';
+}
+function tryGatherTiming() {
+  if (chopT <= 0 || gatherTapLock || playerDead) return;
+  gatherTapLock = true;
+  gatherTapped = true;
+  const err = Math.abs(chopT - CHOP_IMPACT);
+  if (err <= 0.14) {
+    gatherSweet = true;
+    gatherCombo++;
+    chime(760 + Math.min(10, gatherCombo) * 70);
+    spawnPopup(player.position.clone(), `SWEET SPOT ×${gatherCombo}`, '#9df0a8', true);
+    burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 1.1), 0x9df0a8, 12, 1.8);
+  } else {
+    gatherCombo = 0;
+    chime(240);
+    spawnPopup(player.position.clone(), 'off beat', '#9fdcff');
+  }
+  updateGatherTimingUI();
+}
 function startAttack() { attackT = 0.0001; sfxSwing(); }
 // keyframe sampler: [[t, value], ...] with smoothstep easing between keys
 function kfAt(keys, t) {
@@ -1355,12 +1395,20 @@ tickers.push((t, dt) => {
   if (chopT > 0) {
     const prev = chopT;
     chopT += dt / CHOP_DUR;
+    updateGatherTimingUI();
     if (chopQueue && !chopQueue.fired && prev < CHOP_IMPACT && chopT >= CHOP_IMPACT) {
       chopQueue.fired = true;
       try { gatherHit(chopQueue.nd); } catch { /* node vanished */ }
       if (chopImpactFx) { const fx = chopImpactFx; chopImpactFx = null; try { fx(); } catch { /* noop */ } }
     }
-    if (chopT >= 1) { chopT = 0; chopQueue = null; }
+    if (chopT >= 1) {
+      chopT = 0; chopQueue = null;
+      if (!gatherTapped) gatherCombo = 0;
+      gatherTapped = false;
+      gatherTapLock = false;
+      gatherSweet = false;
+      hideGatherTimingUI();
+    }
   }
   if (attackT > 0) { attackT += dt / 0.55; if (attackT >= 1) attackT = 0; }
   for (const nd of nodes) {
@@ -4958,8 +5006,30 @@ function sfxTraveller() {
   tone(520, 0.16, 0.045, 'sine', 80);
   setTimeout(() => tone(700, 0.2, 0.038, 'sine', -40), 140);
 }
+const BIOME_MOTIFS = {
+  farm: [392, 440, 523, 587], forest: [330, 392, 440, 523], oasis: [440, 523, 659, 523],
+  cove: [262, 330, 392, 523], reef: [294, 392, 494, 587], volcano: [110, 131, 98],
+  arctic: [880, 1047, 1319, 1568], savannah: [392, 466, 587, 698], river: [294, 349, 440],
+  mangrove: [220, 262, 330, 392], lagoon: [392, 523, 659],
+};
+function sfxMotif(biome) {
+  if (muted) return;
+  logSfx('motif:' + biome);
+  const notes = BIOME_MOTIFS[biome] || BIOME_MOTIFS.farm;
+  const type = biome === 'arctic' ? 'sine' : biome === 'volcano' ? 'sawtooth' : 'triangle';
+  notes.forEach((f, i) => setTimeout(() => tone(f, biome === 'volcano' ? 0.6 : 0.42, biome === 'volcano' ? 0.018 : 0.024, type), i * 190));
+}
 // A quiet layer of birds, crickets, surf and wind so each biome has a voice.
 let ambientSfxT = 4;
+let motifT = 14;
+tickers.push((t, dt) => {
+  if (muted || playerDead || !started) return;
+  motifT -= dt;
+  if (motifT <= 0) {
+    motifT = rand(18, 30);
+    sfxMotif(biomeAt(player.position.clone().normalize()));
+  }
+});
 tickers.push((t, dt) => {
   if (muted || playerDead || !started) return;
   ambientSfxT -= dt;
@@ -5183,6 +5253,10 @@ function renderJournal() {
     }
     addHeading('WORLD THREAT');
     addRow(`Predators, outlaws and storms grow with you: ×${threatScale().toFixed(2)}.`, '⚠️');
+    addHeading('CARTOGRAPHY');
+    const chartPct = Math.round(Chart.percent * 100);
+    const nextChart = CHART_STEPS.find((s) => Chart.percent < s.p);
+    addRow(`${chartPct}% charted — ${nextChart ? nextChart.text : 'the whole planet is charted.'}`, '🗺️');
   } else if (journalTab === 'wonders') {
     WORLDS.forEach((w, i) => {
       const done = wonders[i].done;
@@ -5270,6 +5344,8 @@ function threatScale() {
   return Math.max(0.7, 1 + (threatLevel - 1) * 0.055 + ((Life.gen || 1) - 1) * 0.07 + diff);
 }
 let playerDead = false; // game-over gate: input + bears ignore the fallen traveler
+let hitStop = 0; // tiny freeze/slow-mo on perfect dodges and heavy blows
+let lastDirHit = null; // world position of the most recent attacker (damage indicator)
 let combatNow = 0; // seconds, advanced in animate(); drives regen + cooldowns
 let lastDamageT = -99; // last time the player took a hit (for slow recovery)
 let lastDamageCause = null, lastDamageCauseAt = -99;
@@ -5311,13 +5387,17 @@ function eatFood() {
   const m = menu.find((x) => (inv[x.k] || 0) > 0);
   if (!m) return toast('🍽️ No food — fish, farm, or forage first.');
   if (meters.hunger > 96 && meters.energy > 95) return toast('😋 Stuffed.');
+  const mealBuff = m.k === 'meal' ? Life.pendingMealBuff : null;
   inv[m.k]--;
   meters.hunger = Math.min(100, (meters.hunger ?? 100) + m.hunger);
   meters.energy = Math.min(100, meters.energy + m.energy);
-  if (m.k === 'meal') Life.stats.meals++;
+  if (m.k === 'meal') {
+    Life.stats.meals++;
+    if (mealBuff) { applyMealBuff(mealBuff); Life.pendingMealBuff = null; }
+  }
   burst(player.position.clone(), 0x9df0a8, 10, 1.6);
   chime(620);
-  toast(m.k === 'meal' ? '🍲 Hearty meal! (+55 full, +25 energy)' : `😋 +${m.hunger} full.`);
+  toast(m.k === 'meal' ? `🍲 ${BUFF_INFO[mealBuff]?.name || 'Hearty meal'}! (+55 full, +25 energy${mealBuff ? `, ${BUFF_INFO[mealBuff].text} today` : ''})` : `😋 +${m.hunger} full.`);
   renderStats();
 }
 function useRemedy() {
@@ -5519,6 +5599,9 @@ const FISH_TYPES = [
   { id: 'obsidian-perch', name: 'Obsidian Perch', icon: '🐟', w: 20, size: [0.3, 0.7] },
   { id: 'ember-koi', name: 'Ember Koi', icon: '🔥🐟', w: 14, size: [0.4, 0.9] },
   { id: 'lava-eel', name: 'Lava Eel', icon: '🌋🐟', w: 10, size: [0.7, 1.5] },
+  { id: 'golden-arapaima', name: 'Golden Arapaima', icon: '✨🐟', w: 1, size: [1.8, 2.8], trophy: true },
+  { id: 'ice-sturgeon', name: 'Ice Sturgeon', icon: '❄️🐟', w: 1, size: [1.4, 2.2], ice: true, trophy: true },
+  { id: 'golden-marlin', name: 'Golden Marlin', icon: '🌟🐟', w: 1, size: [2.0, 3.0], sea: true, trophy: true },
 ];
 // Named fishing grounds. Coast/pond zones can be fished from a shore marker;
 // reef and deep-water zones are reached by skiff, raft or boat. Each ground has
@@ -5534,12 +5617,12 @@ const FISH_ZONES = [
   { id: 'reef-drop', name: 'Reef Drop-off', lat: -12, lon: 245, radius: 11, color: 0x8ab7ff, species: ['coral-grouper', 'glass-squid', 'ghost-ray'] },
   { id: 'cove-coast', name: 'Shell Cove', lat: -20, lon: 290, radius: 10, shore: [-17.6, 296], color: 0x7ad9ff, species: ['sea-bream', 'reef-flutter', 'silver-minnow'] },
   { id: 'ember-coast', name: 'Ember Shore', lat: -20, lon: 330, radius: 10, shore: [-17.6, 330], color: 0xff9a4a, species: ['obsidian-perch', 'ember-koi', 'lava-eel'] },
-  { id: 'great-river', name: 'The Great River', water: 'pond', lat: -40, lon: 98, radius: 9, shore: [-39, 92.6], color: 0x6ac7a8, species: ['river-trout', 'marsh-pike', 'silver-minnow', 'green-perch'] },
+  { id: 'great-river', name: 'The Great River', water: 'pond', lat: -40, lon: 98, radius: 9, shore: [-39, 92.6], color: 0x6ac7a8, species: ['river-trout', 'marsh-pike', 'silver-minnow', 'green-perch', 'golden-arapaima'] },
   { id: 'deep-west', name: 'Deep Blue · West', lat: -50, lon: 5, radius: 14, color: 0x5a8dff, species: ['abyss-grouper', 'ghost-ray', 'deep-king'] },
-  { id: 'deep-mid', name: 'Deep Blue · Meridian', lat: -45, lon: 195, radius: 14, color: 0x4a7dff, species: ['storm-marlin', 'abyss-grouper', 'lantern-fish', 'golden-boot'] },
+  { id: 'deep-mid', name: 'Deep Blue · Meridian', lat: -45, lon: 195, radius: 14, color: 0x4a7dff, species: ['storm-marlin', 'abyss-grouper', 'lantern-fish', 'golden-boot', 'golden-marlin'] },
   { id: 'deep-east', name: 'Deep Blue · East', lat: -35, lon: 280, radius: 14, color: 0x6a9dff, species: ['storm-marlin', 'deep-king', 'ghost-ray'] },
   { id: 'blue-hole', name: 'Blue Hole', lat: 24, lon: 225, radius: 9, color: 0x9fdcff, species: ['glass-squid', 'ghost-ray', 'deep-king'] },
-  { id: 'aurora-ice', name: 'Aurora Ice Hole', water: 'ice', lat: 57, lon: 118, radius: 6, color: 0xd9b8ff, species: ['ice-glimmer', 'frost-char', 'aurora-cod'] },
+  { id: 'aurora-ice', name: 'Aurora Ice Hole', water: 'ice', lat: 57, lon: 118, radius: 6, color: 0xd9b8ff, species: ['ice-glimmer', 'frost-char', 'aurora-cod', 'ice-sturgeon'] },
 ];
 const FISH_ZONE_BY_ID = Object.fromEntries(FISH_ZONES.map((z) => [z.id, z]));
 for (const z of FISH_ZONES) z.centerN = latLonToVec3(z.lat, z.lon, 0).normalize();
@@ -5605,7 +5688,7 @@ tickers.push((t) => {
   }
 });
 function fishFrom(source, zoneId) {
-  if (playerDead) return;
+  if (playerDead || FishGame.active) return;
   const zone = zoneId ? FISH_ZONE_BY_ID[zoneId] : (source === 'ice' ? FISH_ZONE_BY_ID['aurora-ice'] : (source === 'sea' ? fishZoneAt(boatN) : null));
   if (fishStage === 0) {
     fishSource = source;
@@ -5627,25 +5710,102 @@ function fishFrom(source, zoneId) {
     const sea = fishSource === 'sea';
     fishStage = 0;
     const spec = pickFish(zone, sea);
-    const sz = (spec.size[0] + Math.random() * (spec.size[1] - spec.size[0])).toFixed(1);
-    const tier = fishingTier();
-    const count = 1 + (tier >= 2 && Math.random() < 0.5 ? 1 : 0) + (tier >= 3 && Math.random() < 0.35 ? 1 : 0);
-    Life.stats.fishCaught = (Life.stats.fishCaught || 0) + count;
-    Life.fishBook = Life.fishBook || {};
-    const prev = Life.fishBook[spec.id];
-    const isRecord = !prev || Number(sz) > prev.best;
-    Life.fishBook[spec.id] = { n: (prev?.n || 0) + count, best: isRecord ? Number(sz) : prev.best, name: spec.name };
-    let got = 0;
-    for (let i = 0; i < count; i++) { if (!addItem(sea ? 'fish' : 'food', 1)) break; got++; }
-    if (!got) return;
-    burst(player.position.clone(), 0x7ad9ff, 30, 3);
-    chime(660); setTimeout(() => chime(880), 120);
-    const many = got > 1 ? ` ×${got}` : '';
-    toast(`🐟 ${spec.name} ${sz}kg${many}! (+${got} ${sea ? 'fish' : 'food'}${isRecord ? ' — NEW RECORD!' : ''})${zone ? ` — ${zone.name}` : ''}${tier ? ` · ${['handline', 'rod', 'net', 'trap'][tier]}` : ''}`);
-    if (sea) { if (onGainXp) onGainXp(isRecord ? 25 : 14, player.position.clone()); grantInsight(1, 'Caught a fish'); }
-    else if (onGainXp) onGainXp(isRecord ? 22 : 12, player.position.clone());
+    if (spec.trophy || spec.w <= 8 || Math.random() < 0.22) { startFishGame(zone, spec, sea); return; }
+    landFish(zone, spec, sea);
   }
 }
+const FishGame = { active: false, zone: null, spec: null, sea: false, pos: 0.5, dir: 1, speed: 1.0, hits: 0, misses: 0, need: 3, time: 10, sweetMin: 0.4, sweetMax: 0.6 };
+function fishGameUI() {
+  const el = document.getElementById('fish-minigame');
+  if (!el) return;
+  const title = document.getElementById('fm-title');
+  const hits = document.getElementById('fm-hits');
+  const marker = el.querySelector('.fm-marker');
+  const sweet = el.querySelector('.fm-sweet');
+  if (title) title.textContent = FishGame.spec ? `Rare catch — ${FishGame.spec.name}` : 'Something heavy is on the line…';
+  if (hits) hits.textContent = `${FishGame.hits} / ${FishGame.need}`;
+  if (marker) marker.style.left = `${FishGame.pos * 100}%`;
+  if (sweet) { sweet.style.left = `${FishGame.sweetMin * 100}%`; sweet.style.width = `${(FishGame.sweetMax - FishGame.sweetMin) * 100}%`; }
+}
+function startFishGame(zone, spec, sea) {
+  Object.assign(FishGame, { active: true, zone, spec, sea, pos: 0.5, dir: Math.random() < 0.5 ? -1 : 1, hits: 0, misses: 0, time: 12, need: spec.trophy ? 4 : 3, speed: spec.trophy ? 1.15 : spec.w <= 8 ? 1.0 : 0.85, sweetMin: spec.trophy ? 0.42 : 0.35, sweetMax: spec.trophy ? 0.58 : 0.65 });
+  const el = document.getElementById('fish-minigame');
+  if (el) { el.classList.remove('hidden', 'hit', 'miss'); fishGameUI(); }
+  chime(660);
+  toast(`🎣 ${spec.trophy ? 'A legend' : 'A heavy catch'} is on the line — tap E in the green!`);
+}
+function closeFishGame() {
+  FishGame.active = false;
+  const el = document.getElementById('fish-minigame');
+  if (el) el.classList.add('hidden');
+}
+function fishGameTap() {
+  if (!FishGame.active) return;
+  const inSweet = FishGame.pos >= FishGame.sweetMin && FishGame.pos <= FishGame.sweetMax;
+  const el = document.getElementById('fish-minigame');
+  if (inSweet) {
+    FishGame.hits++;
+    if (el) { el.classList.add('hit'); setTimeout(() => el.classList.remove('hit'), 140); }
+    chime(700 + FishGame.hits * 90);
+    spawnPopup(player.position.clone(), 'REEL!', '#9df0a8', true);
+  } else {
+    FishGame.misses++;
+    if (el) { el.classList.add('miss'); setTimeout(() => el.classList.remove('miss'), 140); }
+    chime(260);
+  }
+  if (FishGame.hits >= FishGame.need) {
+    const { zone, spec, sea } = FishGame;
+    closeFishGame();
+    landFish(zone, spec, sea);
+  } else if (FishGame.misses >= 3) {
+    const spec = FishGame.spec;
+    closeFishGame();
+    toast(`🐟 The ${spec?.name || 'fish'} tears free — it was too strong.`);
+    chime(220);
+  } else fishGameUI();
+}
+function landFish(zone, spec, sea) {
+  const sz = (spec.size[0] + Math.random() * (spec.size[1] - spec.size[0])).toFixed(1);
+  const tier = fishingTier();
+  const count = 1 + (tier >= 2 && Math.random() < 0.5 ? 1 : 0) + (tier >= 3 && Math.random() < 0.35 ? 1 : 0);
+  Life.stats.fishCaught = (Life.stats.fishCaught || 0) + count;
+  Life.fishBook = Life.fishBook || {};
+  const prev = Life.fishBook[spec.id];
+  const isRecord = !prev || Number(sz) > prev.best;
+  Life.fishBook[spec.id] = { n: (prev?.n || 0) + count, best: isRecord ? Number(sz) : prev.best, name: spec.name };
+  let got = 0;
+  for (let i = 0; i < count; i++) { if (!addItem(sea ? 'fish' : 'food', 1)) break; got++; }
+  if (!got) return;
+  const trophy = !!spec.trophy;
+  if (trophy) {
+    Life.stats.trophies = (Life.stats.trophies || 0) + 1;
+    inv.gold = (inv.gold || 0) + 5;
+    meters.morale = Math.min(100, (meters.morale || 80) + 10);
+    pushStory(`Landed a ${spec.name} — a true trophy of ${zone?.name || 'the sea'}.`, '🏆');
+    saveCheckpoint();
+  }
+  burst(player.position.clone(), trophy ? 0xffd97a : 0x7ad9ff, trophy ? 40 : 30, 3);
+  chime(660); setTimeout(() => chime(880), 120);
+  const many = got > 1 ? ` ×${got}` : '';
+  toast(`${spec.icon || '🐟'} ${spec.name} ${sz}kg${many}! (+${got} ${sea ? 'fish' : 'food'}${isRecord ? ' — NEW RECORD!' : ''})${trophy ? ' — TROPHY! +5🪙' : ''}${zone ? ` — ${zone.name}` : ''}`);
+  if (sea) { if (onGainXp) onGainXp(trophy ? 55 : isRecord ? 25 : 14, player.position.clone()); grantInsight(trophy ? 4 : 1, trophy ? `Trophy: ${spec.name}` : 'Caught a fish'); }
+  else if (onGainXp) onGainXp(trophy ? 50 : isRecord ? 22 : 12, player.position.clone());
+}
+tickers.push((t, dt) => {
+  if (!FishGame.active) return;
+  FishGame.time -= dt;
+  FishGame.pos += FishGame.dir * FishGame.speed * dt;
+  if (FishGame.pos > 0.98) { FishGame.pos = 0.98; FishGame.dir = -1; }
+  else if (FishGame.pos < 0.02) { FishGame.pos = 0.02; FishGame.dir = 1; }
+  fishGameUI();
+  if (FishGame.time <= 0) {
+    const spec = FishGame.spec;
+    closeFishGame();
+    toast(`🐟 The line goes slack — the ${spec?.name || 'fish'} is gone.`);
+    chime(220);
+  }
+});
+document.getElementById('fish-minigame')?.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fishGameTap(); });
 addInteract({ id: 'shell', pos: anchor(4, 284), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
 addInteract({ id: 'shell2', pos: anchor(2, 287), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
 addInteract({ id: 'shell3', pos: anchor(8, 290), kind: 'SHELL COVE', label: () => 'Pick up the shell', onUse });
@@ -5745,18 +5905,39 @@ function flashDamage() {
   f.classList.add('show');
   setTimeout(() => f.classList.remove('show'), 160);
 }
+function showDamageDirection(from) {
+  if (!from || settings.effects === 'reduced') return;
+  const el = document.getElementById('damage-dir');
+  if (!el) return;
+  const up = player.position.clone().normalize();
+  const to = from.clone().sub(player.position);
+  to.addScaledVector(up, -to.dot(up));
+  if (to.lengthSq() < 1e-6) return;
+  const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+  const camUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+  const ang = Math.atan2(to.dot(right), to.dot(camUp));
+  const arrow = el.querySelector('span');
+  if (arrow) arrow.style.transform = `rotate(${ang - Math.PI / 2}rad)`;
+  el.classList.remove('hidden');
+  clearTimeout(showDamageDirection._t);
+  showDamageDirection._t = setTimeout(() => el.classList.add('hidden'), 650);
+}
 function damagePlayer(amount, from, cause) {
   if (playerDead || meters.health <= 0) return;
   // dash i-frames: a well-timed roll avoids the hit entirely and empowers the riposte
   if (dashIFrames > 0) {
-    critBuff = 2;
-    spawnPopup(player.position.clone(), 'Clean Dodge! 💨', '#9fdcff', true);
-    chime(990);
+    critBuff = Math.max(critBuff, 2);
+    hitStop = Math.max(hitStop, 0.16);
+    camShake = Math.max(camShake, 0.3);
+    spawnPopup(player.position.clone(), 'PERFECT DODGE! 💨', '#9fdcff', true);
+    chime(1180);
     return;
   }
   if (cause) { lastDamageCause = cause; lastDamageCauseAt = combatNow; }
+  if (from) { lastDirHit = from.clone(); showDamageDirection(from); }
   meters.health = Math.max(0, meters.health - amount * (settings.difficulty === 'cozy' ? 0.5 : 1));
   lastDamageT = combatNow;
+  if (amount >= 15) hitStop = Math.max(hitStop, 0.035);
   sfxHurt();
   flashDamage();
   spawnPopup(player.position.clone(), `-${amount * (settings.difficulty === 'cozy' ? 0.5 : 1)}`, '#ff8787');
@@ -5810,6 +5991,8 @@ function attackBear(b) {
 function killBear(b) {
   b.dead = true;
   b.hp = 0;
+  b.windup = 0;
+  hideDangerRing(b);
   burst(b.mesh.position.clone(), 0xffffff, 26, 3);
   burst(b.mesh.position.clone(), 0xe03131, 14, 2);
   chime(240);
@@ -5937,6 +6120,7 @@ function updateBears(t, dt) {
       b.retreatT = 3;
       b.discomfort = 0;
       b.windup = 0;
+      hideDangerRing(b);
       if (!inBiome && !b.comfortAnnounced) {
         b.comfortAnnounced = true;
         toast('🐻‍❄️ The polar bear feels the warmth away from Northlight — it lumbers back to the ice.');
@@ -5970,20 +6154,25 @@ function updateBears(t, dt) {
         if (b.windup > 0) {
           b.windup -= dt;
           b.attackT = 0.65; // hold the rear-up through the telegraph
+          updateDangerRing(b, b.windup, b.windupMax || 0.7);
           if (b.windup <= 0) {
             b.attackCd = 1.35;
             b.attackT = 0.65;
+            hideDangerRing(b);
             setTimeout(() => {
               const playerStillInBiome = biomeAt(player.position.clone().normalize()) === b.biome;
-              if (!b.dead && !playerDead && b.retreatT <= 0 && playerStillInBiome && player.position.distanceTo(b.mesh.position) < BEAR_STRIKE + 0.6) {
+              const reach = b.guardianSpecial === 'slam' ? 4.3 : BEAR_STRIKE + 0.6;
+              if (!b.dead && !playerDead && b.retreatT <= 0 && playerStillInBiome && player.position.distanceTo(b.mesh.position) < reach) {
                 damagePlayer(Math.round((10 + Math.random() * 6) * (b.strikeMult || 1) * threatScale()), b.mesh.position);
-                toast('🐻‍❄️ The bear swipes you! Tap the bear to fight back — or dodge (Q)!');
+                toast(b.guardianSpecial === 'slam' ? '🐻‍❄️ The guardian bear slams the ice! The shockwave catches you — dodge (Q)!' : '🐻‍❄️ The bear swipes you! Tap the bear to fight back — or dodge (Q)!');
               }
+              if (b.guardianSpecial === 'slam') burst(b.mesh.position.clone().addScaledVector(b.pos.clone().normalize(), 0.12), 0xbfe9ff, 26, 3);
             }, 140);
           }
         } else if (b.attackCd <= 0) {
-          b.windup = 0.7;
+          b.windup = b.windupMax = b.guardianSpecial ? 0.95 : 0.7;
           b.strikeMult = damageMult;
+          updateDangerRing(b, b.windup, b.windupMax);
           sfxBear();
           b.hitFlash = Math.max(b.hitFlash, 0.25);
           burst(b.mesh.position.clone().addScaledVector(n, 1.2), 0xe03131, 8, 1.6);
@@ -6494,15 +6683,33 @@ const CLOTHES = ['Rags', 'Tunic', 'Parka', 'Festive Garb'];
 const Life = {
   day: 1, t: 0.3, clothes: 0, gen: 1, ring: false, spouse: null,
   kids: [], workers: [], forecast: null, festival: false,
-  nights: 0, lastGift: {}, kidSeq: 0,
+  nights: 0, lastGift: {}, kidSeq: 0, dailyContracts: [], chartMilestones: {},
   stats: { maxFood: 2, harvests: 0, meals: 0, goldEarned: 0, disasters: 0, tornadoSeen: false, fishCaught: 0, woodChopped: 0 },
   rot: { food: 0, fish: 0, meat: 0, egg: 0, milk: 0, meal: 0 },
   chronicle: [],
   fishBook: {},
   recipes: {},
   chapter: 0, age: 20, story: [], traits: [], hazardWins: {}, epitaph: null, seenCards: [], legacy: null,
+  pendingMealBuff: null,
   seed: 1 + ((Math.random() * 1000000000) | 0),
 };
+// Expedition meals are prepared at the campfire and grant a day-long buff.
+const Buffs = { day: 0, work: false, ranged: false, cold: false, harvest: false, speed: false };
+const BUFF_INFO = {
+  river: { name: 'River Feast', text: '+35% gather speed', work: true },
+  hunter: { name: "Hunter's Stew", text: '+15% ranged damage', ranged: true },
+  warm: { name: 'Warm Custard', text: 'cold immunity', cold: true },
+  harvest: { name: 'Harvest Bowl', text: '+1 harvest yield', harvest: true },
+  trail: { name: 'Trail Stew', text: '+10% travel speed', speed: true },
+};
+function applyMealBuff(kind) {
+  const info = BUFF_INFO[kind] || BUFF_INFO.trail;
+  Buffs.day = Life.day;
+  Buffs.work = !!info.work; Buffs.ranged = !!info.ranged; Buffs.cold = !!info.cold;
+  Buffs.harvest = !!info.harvest; Buffs.speed = !!info.speed;
+  toast(`🍲 ${info.name} — ${info.text} for today.`);
+  chime(780);
+}
 
 // ==================== LIFE JOURNEY, RESEARCH, WEATHER, WEAPONS ====================
 // ---------- chapters & traits ----------
@@ -6740,7 +6947,7 @@ function researchEra() {
 function fishingTier() { return hasTech('fish-trap') ? 3 : hasTech('fishing-net') ? 2 : hasTech('fishing-rod') ? 1 : 0; }
 function farmingTier() { return hasTech('thresher') ? 3 : hasTech('seed-drill') ? 2 : hasTech('plough') ? 1 : 0; }
 function buildingTier() { return hasTech('power-tools') ? 2 : hasTech('saw') ? 1 : 0; }
-function harvestYield() { return 2 + (farmingTier() >= 2 ? 1 : 0) + (farmingTier() >= 3 ? 1 : 0); }
+function harvestYield() { return 2 + (farmingTier() >= 2 ? 1 : 0) + (farmingTier() >= 3 ? 1 : 0) + (Buffs.day === Life.day && Buffs.harvest ? 1 : 0); }
 function buildSpeedMult() { return (1 + (buildingTier() >= 1 ? 0.25 : 0) + (buildingTier() >= 2 ? 0.5 : 0)) * heroPerk().build; }
 function techLevel(t) {
   return t.minLevel || (t.era >= 4 ? 12 : t.era === 3 ? 8 : t.era === 2 ? 5 : t.era === 1 ? 2 : 1);
@@ -7616,7 +7823,7 @@ function fireAt(target) {
     let total = 0;
     for (let p = 0; p < pellets; p++) {
       const falloff = w.id === 'shotgun' ? Math.max(0.3, 1 - d / (w.range * 1.5)) : 1;
-      let dmg = Math.round((24 * w.dmg / pellets) * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03) * falloff * conditionMult(w.id));
+      let dmg = Math.round((24 * w.dmg / pellets) * (0.85 + Math.random() * 0.3) * (Research.rangedBonus || 1) * (1 + (RPG.level - 1) * 0.03) * falloff * conditionMult(w.id) * (Buffs.day === Life.day && Buffs.ranged ? 1.15 : 1));
       if (target.hunt?.apex) {
         // Slings and other first-generation ranged tools barely scratch them.
         dmg = w.tier < 1 ? Math.max(1, Math.round(dmg * 0.18)) : Math.round(dmg * (1 + Math.max(0, w.tier - 1) * 0.12));
@@ -7887,6 +8094,8 @@ function dawnRoutine(rested) {
   overnightStall();
   overnightTech();
   overnightTravellers();
+  overnightContracts();
+  if (Life.chartMilestones?.['100']) { grantInsight(1); overnightNews.push('🗺️ the master chart yields +1 insight'); }
   ageKids();
   const bedQ = [70, 85, 100, 100, 100][Home.house] ?? 70;
   if (rested) {
@@ -7940,6 +8149,10 @@ function saveLife() {
     home: { house: Home.house, tent: !!Home.tent, campfire: !!Home.campfire, well: Home.well, barn: Home.barn, fences: Home.fences, cabin: Home.cabin, stall: Home.stall, lanterns: Home.lanterns, dog: Home.dog, decor: Home.decor, dock: !!Home.dock, raft: !!Home.raft, boat: !!Home.boat, build: Home.build ? { target: Home.build.target, t: Home.build.t, dur: Home.build.dur } : null, sites: JSON.parse(JSON.stringify(Home.sites || {})), plots: Home.plots.map((p) => ({ crop: p.crop, growth: p.growth, water: p.water, bought: p.bought })) },
     artifacts: { ...ArtifactState.claimed },
     lastTravellerDay: Life.lastTravellerDay || 0,
+    chartMilestones: { ...(Life.chartMilestones || {}) },
+    pendingMealBuff: Life.pendingMealBuff || null,
+    buffs: { ...Buffs },
+    dailyContracts: (Life.dailyContracts || []).map((c) => ({ ...c })),
     animals: animals.map((a) => ({ kind: a.kind, fed: a.fed, sick: a.sick })),
     hearts: NPCS.map((n) => ({ id: n.id, hearts: n.hearts || 0 })),
   };
@@ -7966,6 +8179,11 @@ function restoreLife(s) {
   Life.fishBook = { ...(s.fishBook || {}) };
   Life.recipes = { ...(s.recipes || {}) };
   Life.lastTravellerDay = s.lastTravellerDay || 0;
+  Life.chartMilestones = { ...(s.chartMilestones || {}) };
+  Life.pendingMealBuff = s.pendingMealBuff || null;
+  Object.assign(Buffs, { day: 0, work: false, ranged: false, cold: false, harvest: false, speed: false }, s.buffs || {});
+  Life.dailyContracts = Array.isArray(s.dailyContracts) ? s.dailyContracts.map((c) => ({ ...c })) : [];
+  if (typeof applyChartPerks === 'function') applyChartPerks(true);
   ArtifactState.claimed = { ...(s.artifacts || {}) };
   ArtifactState.count = Object.keys(ArtifactState.claimed).length;
   if (typeof refreshArtifactVisuals === 'function') refreshArtifactVisuals();
@@ -8039,6 +8257,11 @@ function nearHomeFire() {
 function coldTick(dt, nn) {
   const winter = seasonNow() === 3;
   const arctic = biomeAt(nn) === 'arctic';
+  if (Buffs.day === Life.day && Buffs.cold) {
+    meters.warmth = Math.min(100, meters.warmth + dt * 16);
+    meters.cold = Math.max(0, meters.cold - dt * 24);
+    return;
+  }
   let exposure = arctic ? 9 : 0;
   if (winter && !arctic) exposure += 5;
   else if (winter) exposure += 2;
@@ -8090,9 +8313,17 @@ function cookMeal() {
   Life.recipes = Life.recipes || {};
   const isNew = key && !Life.recipes[key];
   if (key) Life.recipes[key] = (Life.recipes[key] || 0) + 1;
+  const counts = used.reduce((a, k) => (a[k] = (a[k] || 0) + 1, a), {});
+  let buff = 'trail';
+  if (counts.fish === 2) buff = 'river';
+  else if (counts.meat === 2) buff = 'hunter';
+  else if (counts.egg && counts.milk) buff = 'warm';
+  else if (counts.food === 2) buff = 'harvest';
+  Life.pendingMealBuff = buff;
+  const bi = BUFF_INFO[buff];
   burst(homeFirePos ? homeFirePos.clone() : player.position.clone(), 0xffb35a, isNew ? 26 : 14, isNew ? 3 : 2);
   chime(700); if (isNew) setTimeout(() => chime(880), 140);
-  toast(isNew ? `🍲 New recipe! ${used.join(' + ')} → hearty meal!` : '🍲 Cooked a hearty meal! (F to eat)');
+  toast(isNew ? `🍲 New recipe! ${used.join(' + ')} → ${bi.name} (${bi.text} today).` : `🍲 Cooked ${bi.name} — F to eat (${bi.text} today).`);
   if (onGainXp) onGainXp(isNew ? 18 : 10, (homeFirePos ? homeFirePos.clone() : player.position.clone()));
   renderStats();
 }
@@ -11335,6 +11566,54 @@ const BOUNTIES = [
   { id: 'boar', name: 'Hunt 2 boar', icon: '🐗', target: 2, get: () => Threats.boars || 0, gold: 6, insight: 3 },
   { id: 'fish', name: 'Catch 3 fish', icon: '🐟', target: 3, get: () => Life.stats.fishCaught || 0, gold: 4, insight: 2 },
 ];
+// Rotating dawn contracts. Each morning the board offers three short jobs
+// from villagers across the planet, giving every day a fresh reason to set out.
+const DAILY_DEFS = {
+  fish: { icon: '🐟', name: 'Catch {n} fish', need: 3, stat: () => Life.stats.fishCaught || 0, gold: 4, insight: 2, giver: 'Marina' },
+  venison: { icon: '🦌', name: 'Bring {n} venison', need: 2, stat: () => Threats.venison || 0, gold: 5, insight: 2, giver: 'Ash' },
+  boar: { icon: '🐗', name: 'Hunt {n} boar', need: 2, stat: () => Threats.boars || 0, gold: 6, insight: 3, giver: 'Cinder' },
+  wood: { icon: '🪵', name: 'Chop {n} wood', need: 6, stat: () => Life.stats.woodChopped || 0, gold: 4, insight: 2, giver: 'Elowen' },
+  harvest: { icon: '🌾', name: 'Harvest {n} crops', need: 2, stat: () => Life.stats.harvests || 0, gold: 5, insight: 2, giver: 'Rowan' },
+  wolves: { icon: '🐺', name: 'Cull {n} wolf', need: 1, stat: () => Threats.wolvesCulled || 0, gold: 5, insight: 2, giver: 'Siku' },
+  robbers: { icon: '⚠️', name: 'Drive off {n} robber', need: 1, stat: () => Threats.robbersDrivenOff || 0, gold: 5, insight: 2, giver: 'Neri' },
+  'deliver-fish': { icon: '🐟', name: 'Deliver {n} fish to Zara', need: 3, deliver: 'fish', gold: 8, insight: 3, giver: 'Zara' },
+  'deliver-stone': { icon: '🪨', name: 'Deliver {n} stone to Brann', need: 4, deliver: 'stone', gold: 7, insight: 2, giver: 'Brann' },
+  'deliver-wool': { icon: '🐑', name: 'Deliver {n} wool to Neri', need: 2, deliver: 'wool', gold: 6, insight: 2, giver: 'Neri' },
+  'deliver-meal': { icon: '🍲', name: 'Deliver {n} meal to Ash', need: 1, deliver: 'meal', gold: 6, insight: 3, giver: 'Ash' },
+};
+function genDailyContracts() {
+  const kinds = Object.keys(DAILY_DEFS).sort(() => Math.random() - 0.5).slice(0, 3);
+  return kinds.map((kind, i) => {
+    const d = DAILY_DEFS[kind];
+    return { id: 'dc' + Life.day + '-' + i, kind, need: d.need, baseline: d.stat ? d.stat() : 0, claimed: false };
+  });
+}
+function dailyContractDef(c) { return DAILY_DEFS[c?.kind] || null; }
+function dailyProgress(c) {
+  const d = dailyContractDef(c);
+  if (!d) return 0;
+  if (d.deliver) return Math.min(c.need, Math.floor(inv[d.deliver] || 0));
+  return Math.min(c.need, Math.max(0, (d.stat() || 0) - (c.baseline || 0)));
+}
+function claimDaily(c) {
+  const d = dailyContractDef(c);
+  if (!d || !c || c.claimed) return;
+  if (dailyProgress(c) < c.need) { toast('📋 That contract is not finished yet.'); return; }
+  if (d.deliver && !removeItems({ [d.deliver]: c.need })) { toast('📋 The goods are not in your pack.'); return; }
+  c.claimed = true;
+  earnGold(d.gold);
+  grantInsight(d.insight, `Contract: ${d.giver}`);
+  Threats.contracts = (Threats.contracts || 0) + 1;
+  toast(`📋 Contract complete — ${d.giver} pays ${d.gold}🪙 and ${d.insight}💡.`);
+  chime(860);
+  saveCheckpoint();
+  renderBounty();
+  renderStats();
+}
+function overnightContracts() {
+  Life.dailyContracts = genDailyContracts();
+  overnightNews.push('📋 three new contracts are pinned to the bounty board');
+}
 const BountyClaimed = {};
 let bountyOpen = false;
 function openBounty() {
@@ -11368,6 +11647,41 @@ function renderBounty() {
   const body = document.getElementById('bounty-body');
   if (!body) return;
   body.innerHTML = '';
+  const dh = document.createElement('div');
+  dh.className = 'journal-eyebrow';
+  dh.textContent = `DAILY CONTRACTS · DAY ${Life.day}`;
+  body.appendChild(dh);
+  if (!Life.dailyContracts.length) {
+    const row = document.createElement('div');
+    row.className = 'almanac-row';
+    row.innerHTML = '<span class="when">📋</span><span class="what">No contracts yet — sleep until dawn.</span>';
+    body.appendChild(row);
+  }
+  for (const c of Life.dailyContracts) {
+    const d = dailyContractDef(c);
+    if (!d) continue;
+    const prog = dailyProgress(c);
+    const row = document.createElement('div');
+    row.className = 'almanac-row' + (!c.claimed && prog >= c.need ? ' hazard' : '');
+    row.innerHTML = `<span class="when">${d.icon}</span><span class="what"><b>${d.name.replace('{n}', c.need)}</b> — ${prog}/${c.need} · ${d.giver} · ${d.gold}🪙 ${d.insight}💡</span>`;
+    if (c.claimed) {
+      const s = document.createElement('span'); s.className = 'ok'; s.textContent = 'paid ✓'; row.appendChild(s);
+    } else {
+      const btn = document.createElement('button');
+      btn.className = 'loadout-btn';
+      btn.style.width = 'auto'; btn.style.padding = '5px 12px'; btn.style.fontSize = '11px';
+      btn.disabled = prog < c.need;
+      btn.textContent = prog >= c.need ? 'Claim' : 'In progress';
+      btn.onclick = () => claimDaily(c);
+      row.appendChild(btn);
+    }
+    body.appendChild(row);
+  }
+  const bh = document.createElement('div');
+  bh.className = 'journal-eyebrow';
+  bh.style.marginTop = '8px';
+  bh.textContent = 'BOUNTIES';
+  body.appendChild(bh);
   for (const b of BOUNTIES) {
     const prog = Math.min(b.target, b.get() || 0);
     const claimed = !!BountyClaimed[b.id];
@@ -11451,6 +11765,75 @@ function apexComfortWarning(entry) {
   const h = entry.hunt || {};
   toast(`${h.icon || '⚠️'} The ${h.name || 'predator'} belongs to ${apexPlaceName(h.biome || entry.homeBiome)} — it turns back.`);
 }
+// Ground danger ring shared by predators. A committed strike is telegraphed
+// on the surface so a Q dash can slip through it for a Perfect Dodge.
+function makeDangerRing(target) {
+  if (target.dangerRing) return target.dangerRing;
+  const g = new THREE.Group();
+  const m = new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.32, side: THREE.DoubleSide, depthWrite: false });
+  g.add(new THREE.Mesh(new THREE.RingGeometry(0.85, 1.3, 32).rotateX(-Math.PI / 2), m));
+  g.visible = false;
+  scene.add(g);
+  target.dangerRing = g;
+  target.dangerRingMat = m;
+  return g;
+}
+function updateDangerRing(target, remain, max, river = false) {
+  const g = makeDangerRing(target);
+  g.visible = true;
+  const n = target.mesh.position.clone().normalize();
+  const ground = river ? Math.max(0.12, heightFor(n)) : heightFor(n);
+  const p = n.clone().multiplyScalar(R + ground + 0.09);
+  g.position.copy(p);
+  orientOnSphere(g, p, 0);
+  const t = 1 - Math.max(0, remain) / Math.max(0.001, max);
+  g.scale.setScalar(1 + t * 0.9);
+  target.dangerRingMat.opacity = 0.2 + t * 0.42;
+}
+function hideDangerRing(target) {
+  if (target?.dangerRing) target.dangerRing.visible = false;
+}
+function apexStrike(entry, h, damageMult, river) {
+  const mesh = entry.mesh;
+  const special = h.guardianSpecial;
+  let d = mesh.position.distanceTo(player.position);
+  const n = mesh.position.clone().normalize();
+  if ((special === 'lunge' || special === 'pounce' || special === 'leap') && d < 9) {
+    const flat = player.position.clone().sub(mesh.position);
+    flat.addScaledVector(n, -flat.dot(n));
+    if (flat.lengthSq() > 1e-6) {
+      const dir = flat.normalize();
+      const step = special === 'lunge' ? Math.min(2.8, Math.max(0, d - (h.attackRange || 2.6))) : Math.max(0, d - 1.25);
+      const ax = new THREE.Vector3().crossVectors(n, dir).normalize();
+      mesh.position.applyAxisAngle(ax, step / R);
+      const nn = mesh.position.clone().normalize();
+      const ground = river ? Math.max(0.12, heightFor(nn)) : heightFor(nn);
+      mesh.position.copy(nn.multiplyScalar(R + ground + 0.05));
+      faceAlong(mesh, mesh.position, dir);
+      d = mesh.position.distanceTo(player.position);
+      burst(mesh.position.clone().addScaledVector(nn, 0.08), special === 'lunge' ? 0x6ac7a8 : 0xffd97a, 18, 2.2);
+    }
+  }
+  const range = (h.attackRange || 2.6) + (special ? 1.1 : 0.7);
+  if (d <= range) {
+    const mult = special ? 1.12 : 1;
+    damagePlayer(Math.max(1, Math.round((h.damage || 18) * damageMult * threatScale() * mult)), mesh.position.clone(), `the ${h.name}`);
+    burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 0.9), 0xe03131, 10, 1.8);
+    chime(150);
+    if (!entry.hitAnnounced) {
+      entry.hitAnnounced = true;
+      toast(`${h.icon || '⚠️'} The ${h.name} strikes! Run or get to range!`);
+    }
+  } else {
+    spawnPopup(player.position.clone(), 'MISS', '#9fdcff', true);
+    chime(520);
+    if (!entry.hitAnnounced) {
+      entry.hitAnnounced = true;
+      toast(`💨 ${h.icon || '⚠️'} The ${h.name} commits — you slip just out of reach!`);
+    }
+  }
+  hideDangerRing(entry);
+}
 // Apex predators do not wait to be attacked: they pick up the traveler within
 // sight range, close the distance, and strike. With a first-generation axe the
 // best option is to run; javelins, bows and firearms are the real answer.
@@ -11468,6 +11851,23 @@ function updateApexPredator(entry, t, dt, river = false) {
   const resolve = h.resolve || 0.95;
   entry.discomfort = Math.max(0, (entry.discomfort || 0) + ((outside || (entry.aggro && playerLeftBiome)) ? dt : -dt * 2.5));
   entry.attackCd = Math.max(0, (entry.attackCd || 0) - dt);
+  if (playerDead && entry.windup > 0) { entry.windup = 0; hideDangerRing(entry); }
+  if (entry.windup > 0) {
+    entry.windup -= dt;
+    const toP = player.position.clone().sub(mesh.position);
+    const flat = toP.clone();
+    flat.addScaledVector(n, -flat.dot(n));
+    if (flat.lengthSq() > 1e-6) faceAlong(mesh, mesh.position, flat.normalize());
+    updateDangerRing(entry, entry.windup, entry.windupMax || 0.6, river);
+    if (entry.windup <= 0) {
+      entry.windup = 0;
+      apexStrike(entry, h, damageMult, river);
+      entry.attackCd = (h.attackCd || 1.4) * (outside ? 1.6 : 1);
+    }
+    if (entry.interact) entry.interact.pos.copy(mesh.position);
+    animateAnimal(mesh, t, 0.35, dt);
+    return true;
+  }
   const sight = h.sight || 12;
   const dPlayer = mesh.position.distanceTo(player.position);
   if (!playerDead && (dPlayer < sight || entry.aggro)) {
@@ -11480,6 +11880,8 @@ function updateApexPredator(entry, t, dt, river = false) {
       entry.hitAnnounced = false;
       entry.returning = true;
       entry.discomfort = 0;
+      entry.windup = 0;
+      hideDangerRing(entry);
       if (discomfortGiveUp) apexComfortWarning(entry);
     } else if (!entry.aggro && (outside || playerLeftBiome)) {
       // Do not start a new hunt outside the predator's home biome.
@@ -11508,14 +11910,13 @@ function updateApexPredator(entry, t, dt, river = false) {
           faceAlong(mesh, mesh.position, dir);
         }
       } else if (entry.attackCd <= 0) {
-        entry.attackCd = (h.attackCd || 1.4) * (outside ? 1.6 : 1);
-        damagePlayer(Math.max(1, Math.round((h.damage || 18) * damageMult * threatScale())), mesh.position.clone(), `the ${h.name}`);
-        burst(player.position.clone().addScaledVector(player.position.clone().normalize(), 0.9), 0xe03131, 10, 1.8);
-        chime(150);
-        if (!entry.hitAnnounced) {
-          entry.hitAnnounced = true;
-          toast(`${h.icon || '⚠️'} The ${h.name} strikes! Run or get to range!`);
-        }
+        entry.windup = entry.windupMax = h.windup || (h.guardianSpecial ? 0.9 : 0.55);
+        entry.attackCd = (h.attackCd || 1.4) + entry.windup;
+        entry.hitAnnounced = false;
+        updateDangerRing(entry, entry.windup, entry.windupMax, river);
+        spawnPopup(mesh.position.clone(), '❗', '#ff6b6b', true);
+        chime(140);
+        if (h.name === 'Crocodile' || h.name === 'Hippo') sfxCroc(); else sfxRoar(h.name);
       }
       if (entry.interact) entry.interact.pos.copy(mesh.position);
       animateAnimal(mesh, t, outside ? 0.55 : 1, dt);
@@ -11523,6 +11924,8 @@ function updateApexPredator(entry, t, dt, river = false) {
     }
   }
   if (entry.returning) {
+    entry.windup = 0;
+    hideDangerRing(entry);
     const homePos = entry.home.clone().multiplyScalar(R + (river ? 0.14 : heightFor(entry.home) + 0.05));
     if (mesh.position.distanceTo(homePos) > 0.9) {
       const toHome = homePos.clone().sub(mesh.position);
@@ -11596,6 +11999,8 @@ function killAmbient(entry) {
   if (!entry || entry.dead) return;
   const h = entry.hunt || {};
   entry.dead = true;
+  entry.windup = 0;
+  hideDangerRing(entry);
   const parent = entry.mesh.parent || scene;
   entry.parent = parent;
   parent.remove(entry.mesh);
@@ -11638,6 +12043,8 @@ function reviveAmbient(entry) {
   entry.attackCd = 0;
   entry.discomfort = 0;
   entry.comfortAnnounced = false;
+  entry.windup = 0;
+  hideDangerRing(entry);
   entry.respawnTimer = null;
   (entry.parent || scene).add(entry.mesh);
   attachAmbientHunt(entry);
@@ -12298,10 +12705,17 @@ const ARTIFACT_DEFS = [
 ];
 for (const def of ARTIFACT_DEFS) addArtifact(def);
 lionGuardian.artifactGuardian = 'savannah';
+lionGuardian.hunt = { ...southHunts.lion, guardianSpecial: 'pounce', windup: 0.9 };
 crocGuardian.artifactGuardian = 'river';
+crocGuardian.hunt.guardianSpecial = 'lunge';
+crocGuardian.hunt.windup = 0.85;
 tigerGuardian.artifactGuardian = 'mangrove';
+tigerGuardian.hunt.guardianSpecial = 'leap';
+tigerGuardian.hunt.windup = 0.75;
 sharkArtifactGuardian.artifactGuardian = 'reef';
+sharkArtifactGuardian.hunt = { ...SEA_HUNTS.shark, guardianSpecial: 'lunge' };
 bears[0].artifactGuardian = 'arctic';
+bears[0].guardianSpecial = 'slam';
 tickers.push((t) => {
   for (const a of ARTIFACTS) {
     if (ArtifactState.claimed[a.id]) continue;
@@ -13258,6 +13672,58 @@ tickers.push((t, dt) => {
   if (dLon > 180) dLon = 360 - dLon;
   if (Math.hypot(la - fogLast.lat, dLon) > 1.25) fogReveal(la, lo);
 });
+// --- cartography: fog coverage milestones reward genuine exploration ---
+const Chart = { percent: 0, speed: 1, stamina: 1, zoom: 1 };
+const CHART_STEPS = [
+  { key: '25', p: 0.25, text: '25% charted — +8% travel speed' },
+  { key: '50', p: 0.5, text: '50% charted — sprinting costs 10% less energy' },
+  { key: '75', p: 0.75, text: '75% charted — spyglass zoom +8%' },
+  { key: '100', p: 1, text: '100% charted — the master chart yields +1 insight each dawn' },
+];
+function fogCompletion() {
+  try {
+    const data = fogCtx.getImageData(0, 0, FOG_MASK_W, FOG_MASK_H).data;
+    let total = 0, seen = 0;
+    for (let y = 0; y < FOG_MASK_H; y += 4) {
+      const lat = (90 - (y + 2) / FOG_MASK_H * 180) * DEG;
+      const w = Math.max(0.05, Math.cos(lat));
+      for (let x = 0; x < FOG_MASK_W; x += 4) {
+        total += w;
+        if (data[(y * FOG_MASK_W + x) * 4] > 100) seen += w;
+      }
+    }
+    return total ? THREE.MathUtils.clamp(seen / total, 0, 1) : 0;
+  } catch { return Chart.percent; }
+}
+function applyChartPerks(silent = false) {
+  const m = Life.chartMilestones || (Life.chartMilestones = {});
+  Chart.speed = m['25'] ? 1.08 : 1;
+  Chart.stamina = m['50'] ? 0.9 : 1;
+  Chart.zoom = m['75'] ? 1.08 : 1;
+  try { camera.zoom = Chart.zoom; camera.updateProjectionMatrix(); } catch { /* early */ }
+  if (!silent) renderStats();
+}
+function checkChartMilestones() {
+  Chart.percent = fogCompletion();
+  for (const step of CHART_STEPS) {
+    if (Chart.percent >= step.p && !(Life.chartMilestones || {})[step.key]) {
+      Life.chartMilestones = Life.chartMilestones || {};
+      Life.chartMilestones[step.key] = true;
+      applyChartPerks();
+      toast(`🗺️ ${step.text}`);
+      chime(900);
+      saveCheckpoint();
+    }
+  }
+}
+let chartT = 1.5;
+tickers.push((t, dt) => {
+  if (!started || paused) return;
+  chartT -= dt;
+  if (chartT > 0) return;
+  chartT = 2.5;
+  checkChartMilestones();
+});
 // --- sun + moon glow sprites that track the sky ---
 function glowTexture(inner, outer) {
   const cv = document.createElement('canvas'); cv.width = cv.height = 128;
@@ -14074,6 +14540,7 @@ function startGame(fresh) {
   applyHeroChapter(Life.chapter || 0);
   if (fresh) {
     questNew();
+    Life.dailyContracts = genDailyContracts();
     pushStory('You arrived on the little planet with an axe and a stubborn heart.', '🌱');
     rollForecast();
     saveCheckpoint(true);
@@ -14822,6 +15289,7 @@ Object.assign(window.__lp, {
   pacing: { dayLen: DAY_LEN, daysPerSeason: DAYS_PER_SEASON, yearDays: DAYS_PER_SEASON * 4 },
   terrain: { height: (lat, lon) => heightFor(latLonToVec3(lat, lon, 0).normalize()), biome: (lat, lon) => biomeAt(latLonToVec3(lat, lon, 0).normalize()) },
   life: Life, home: Home, research: Research, weather: Weather, threats: Threats, season: seasonNow,
+  buffs: { state: () => ({ ...Buffs }), pending: () => Life.pendingMealBuff, cook: cookMeal, eat: eatFood, apply: applyMealBuff },
   homeProps: () => { const out = {}; homeGroup.traverse((o) => { const p = o.userData && o.userData.prop; if (p) out[p] = (out[p] || 0) + 1; }); return out; },
   rebuildHome: rebuildHomestead,  tech: { list: TECH, start: startResearch, available: techAvailable, level: techLevel, has: hasTech, era: researchEra, grant: grantInsight, queue: () => Research.queue, queued: () => Research.queued, fishingTier, farmingTier, buildingTier, harvestYield, buildSpeedMult, apply: applyTech },
   tree: { zoom: treeZoom, reset: treeReset, view: () => treeView },
@@ -14835,7 +15303,7 @@ Object.assign(window.__lp, {
   wildfireCells: () => (hazardProps && hazardProps.cells) ? hazardProps.cells : [],
   recoverHerd, captureRobber, addHerdTrail, rustleHerd, killAnimal, interactables, stealTool,
   counters: hazardCounterTags, ward: hazardWard, swing: () => window.__rpgSwing, hazardIcon, renderWeatherChip,
-  gather: { start: (kind) => startChop(null, kind), stop: () => { chopT = 0; chopQueue = null; }, kind: () => gatherAction, actionFor: nodeGatherAction, pose: currentChopPose, hit: (nd) => gatherHit(nd),
+  gather: { start: (kind) => startChop(null, kind), stop: () => { chopT = 0; chopQueue = null; }, kind: () => gatherAction, actionFor: nodeGatherAction, pose: currentChopPose, hit: (nd) => gatherHit(nd), timing: () => ({ chopT, combo: gatherCombo, sweet: gatherSweet, lock: gatherTapLock }), tryTiming: tryGatherTiming, setTiming: (v) => { chopT = THREE.MathUtils.clamp(Number(v) || 0, 0, 0.999); updateGatherTimingUI(); },
     lastPickup: () => window.__lastPickup, lastKind: () => window.__lastGatherKind,
     sample: (kind, t) => { const set = poseSetForAction(kind); return { useTool: set === CHOP, tool: set === CHOP ? 'axe' : set === BUILD ? 'hammer' : null, crouch: set.crouch ? kfAt(set.crouch, t) : 0, shR: kfAt(set.shR, t) }; } },
   crops: { cycle: (i) => plotCycle(i), mesh: (i) => plotMesh[i], harvestYield },
@@ -14864,11 +15332,14 @@ Object.assign(window.__lp, {
   threat: { scale: threatScale, level: () => threatLevel, gainXp: (n) => onGainXp(n, player.position.clone()) },
   ambient: { list: ambientWanderers, hunt: huntAmbient, kill: killAmbient },
   fog: { reveal: (la, lo) => fogReveal(la, lo, true), reset: fogClearMask, points: () => fogPoints.length, circles: fogSnapshot },
-  fishing: { zones: FISH_ZONES, species: FISH_TYPES, zoneAt: (lat, lon) => fishZoneAt(latLonToVec3(lat, lon, 0).normalize()), book: () => Life.fishBook, cast: (id) => fishFrom('sea', id) },
-  bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty, wanted: WANTED, claimWanted },
+  fishing: { zones: FISH_ZONES, species: FISH_TYPES, zoneAt: (lat, lon) => fishZoneAt(latLonToVec3(lat, lon, 0).normalize()), book: () => Life.fishBook, cast: (id) => fishFrom('sea', id), game: FishGame, startGame: startFishGame, tapGame: fishGameTap, landFish, closeGame: closeFishGame },
+  bounties: { list: BOUNTIES, claimed: BountyClaimed, open: openBounty, claim: claimBounty, render: renderBounty, wanted: WANTED, claimWanted,
+    daily: { list: () => Life.dailyContracts, defs: DAILY_DEFS, generate: genDailyContracts, progress: dailyProgress, claim: claimDaily, overnight: overnightContracts } },
   retire: { ready: hearthRetireReady, go: retireToHeir },
   reputation: { value: () => Threats.reputation || 0, tier: repTier, rebate: reputationRebate },
-  sfx: { log: sfxLog, weather: weatherSound, footstep: sfxFootstep, swim: sfxSwim, row: sfxRow, swing: sfxSwing, hit: sfxHit, hurt: sfxHurt, bird: sfxBird, roar: sfxRoar, croc: sfxCroc, bear: sfxBear, wolf: sfxWolfHowl, whale: sfxWhale, dolphin: sfxDolphin, shark: sfxShark, orca: sfxOrca, traveller: sfxTraveller },
+  sfx: { log: sfxLog, weather: weatherSound, footstep: sfxFootstep, swim: sfxSwim, row: sfxRow, swing: sfxSwing, hit: sfxHit, hurt: sfxHurt, bird: sfxBird, roar: sfxRoar, croc: sfxCroc, bear: sfxBear, wolf: sfxWolfHowl, whale: sfxWhale, dolphin: sfxDolphin, shark: sfxShark, orca: sfxOrca, traveller: sfxTraveller, motif: sfxMotif },
+  waypoint: { dropAt: (lat, lon) => { const n = latLonToVec3(lat, lon, 0).normalize(); placeWaypoint(n.clone().multiplyScalar(R + heightFor(n))); }, toggle: toggleGlobePin, get: () => waypointPos ? waypointPos.toArray() : null },
+  chart: { percent: () => Chart.percent, fog: fogCompletion, check: checkChartMilestones, perks: applyChartPerks, milestones: () => ({ ...(Life.chartMilestones || {}) }) },
   legacy: { score: legacyScore, story: lifeStorySummary, parts: legacyScoreParts },
   journal: { open: toggleJournal, tab: (t) => { journalTab = t; renderJournal(); } },
   hero: { lod: refreshHeroLod, portrait: setHeroPortrait, level: () => player.userData.lodLevel, character: () => activeHeroKey, setCharacter: (k) => { if (HERO_CHARACTERS[k]) { settings.hero = k; persistSettings(); applySettings(); } }, list: () => Object.keys(HERO_CHARACTERS), swimming: () => !!player.userData.swimming, axeVisible: () => !!(player.userData.axe && player.userData.axe.visible), hammerVisible: () => !!(player.userData.hammer && player.userData.hammer.visible), buildHold: () => heroBuildHold, heldTool: () => currentChopPose().tool, meshes: () => player.userData.meshCount, drawCalls: () => renderer.info.render.calls, triangles: () => renderer.info.render.triangles, heroCalls: measureHeroDrawCalls, refreshTools: applyHeroToolGear,
@@ -14935,7 +15406,7 @@ Object.defineProperties(window.__lp, {
  // ---------- input ----------
 const keys = {};
 addEventListener('keydown', (e) => {
-  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'KeyC', 'Digit1', 'Digit2', 'Digit3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (['Space', 'Tab', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'KeyM', 'KeyP', 'KeyF', 'KeyR', 'KeyH', 'KeyJ', 'KeyK', 'KeyN', 'KeyL', 'KeyX', 'KeyB', 'KeyC', 'Digit1', 'Digit2', 'Digit3', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   keys[e.code] = true;
   if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
     moveTargetN = null; // manual steering cancels click-to-move
@@ -14943,6 +15414,8 @@ addEventListener('keydown', (e) => {
   }
   if (e.code === 'Escape') { handleEscape(); return; }
   if (!started || paused) return;
+  if (e.code === 'KeyE' && !e.repeat && FishGame.active) { fishGameTap(); return; }
+  if (e.code === 'KeyE' && !e.repeat && chopT > 0) { tryGatherTiming(); return; }
   if (e.code === 'KeyK') { workshopOpen ? closeWorkshop() : openWorkshop(); return; }
   if (e.code === 'KeyN') { almanacOpen ? closeAlmanac() : openAlmanac(); return; }
   if (e.code === 'KeyL') { loadoutOpen ? closeLoadout() : openLoadout(); return; }
@@ -14973,6 +15446,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'KeyX' && !playerDead) { startReload(); return; }
   if (e.code === 'KeyH' && !playerDead && !npcOpen) { if (placement) cancelPlacement(); else buildOpen ? closeBuild() : openBuild(); }
   if (e.code === 'KeyM') toggleGlobe();
+  if (e.code === 'KeyP') toggleGlobePin();
   if (e.code === 'KeyJ') toggleJournal();
 });
 addEventListener('keyup', (e) => (keys[e.code] = false));
@@ -15163,6 +15637,7 @@ function clickToMove(x, y) {
   clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
   // globe view: click a far shore to fast-travel there (the debug goto, now a feature)
   if (globeMode) {
+    if (globePinMode) { dropWaypointAt(x, y); return; }
     const hits = clickRay.intersectObjects([planetMesh, ocean], false);
     if (!hits.length) return;
     const p = hits[0].point.clone().normalize();
@@ -15202,6 +15677,7 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button === 2) {
     e.preventDefault();
     if (placement) { cancelPlacement(); return; }
+    if (globeMode) { dropWaypointAt(e.clientX, e.clientY); return; }
     try { cursorEl?.classList.add('aiming'); } catch { /* noop */ }
     if (started && !paused && !playerDead) manualFire(e.clientX, e.clientY);
     return;
@@ -15318,6 +15794,73 @@ function toggleThirdPersonView() {
   toast(thirdPerson ? '🎥 Third-person camera — drag to look around' : '🎥 Tactical camera');
 }
 let photoMode = null; // { dist, height, side, aim } — QA portrait camera
+let waypointN = null, waypointPos = null, waypointG = null, globePinMode = false;
+function makeWaypointBeacon() {
+  const g = new THREE.Group();
+  const ringM = new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.045, 6, 24).rotateX(Math.PI / 2), ringM);
+  g.add(ring);
+  const beamM = new THREE.MeshBasicMaterial({ color: 0x9fdcff, transparent: true, opacity: 0.28, depthWrite: false });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.11, 2.7, 6), beamM);
+  beam.position.y = 1.35; g.add(beam);
+  const tipM = new THREE.MeshStandardMaterial({ color: 0x9fdcff, emissive: 0x3d9fce, emissiveIntensity: 1.8 });
+  const tip = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), tipM);
+  tip.position.y = 2.8; g.add(tip);
+  const glowM = new THREE.SpriteMaterial({ map: makeGlowTexture(), color: 0x9fdcff, transparent: true, opacity: 0.5, depthWrite: false, blending: THREE.AdditiveBlending });
+  const glow = new THREE.Sprite(glowM); glow.position.y = 2.8; glow.scale.setScalar(1.2); g.add(glow);
+  g.visible = false; scene.add(g);
+  waypointG = { g, ring, beam, tip, glow, ringM, beamM };
+  return g;
+}
+function placeWaypoint(p) {
+  const n = p.clone().normalize();
+  waypointN = n.clone();
+  waypointPos = n.clone().multiplyScalar(R + Math.max(heightFor(n), 0.12) + 0.1);
+  if (!waypointG) makeWaypointBeacon();
+  waypointG.g.position.copy(waypointPos);
+  orientOnSphere(waypointG.g, waypointPos, 0);
+  waypointG.g.visible = true;
+  const dist = Math.round(player.position.distanceTo(waypointPos));
+  const chip = document.getElementById('waypoint-chip');
+  if (chip) {
+    chip.classList.remove('hidden');
+    const d = document.getElementById('waypoint-dist'); if (d) d.textContent = `${dist}m`;
+    const dir = document.getElementById('waypoint-dir'); if (dir) dir.textContent = compassTo(waypointPos);
+  }
+  toast(`📍 Waypoint pinned — ${dist}m ${compassTo(waypointPos)}. Right-click the globe to move it.`);
+  chime(720);
+}
+function dropWaypointAt(x, y) {
+  if (!planetMesh) return false;
+  clickRay.setFromCamera({ x: (x / innerWidth) * 2 - 1, y: -(y / innerHeight) * 2 + 1 }, camera);
+  const hits = clickRay.intersectObjects([planetMesh, ocean], false);
+  if (!hits.length) return false;
+  placeWaypoint(hits[0].point);
+  return true;
+}
+function toggleGlobePin() {
+  globePinMode = !globePinMode;
+  if (globePinMode && !globeMode) toggleGlobe();
+  toast(globePinMode ? '📍 Pin mode — left-click the globe to drop a waypoint.' : '📍 Pin mode off — globe clicks fast-travel again.');
+  chime(globePinMode ? 760 : 420);
+}
+tickers.push((t, dt) => {
+  if (!waypointG || !waypointPos) return;
+  const pulse = 1 + Math.sin(t * 3.2) * 0.12;
+  waypointG.ring.scale.setScalar(pulse);
+  waypointG.ringM.opacity = 0.55 + Math.sin(t * 3.2) * 0.2;
+  waypointG.glow.material.opacity = 0.38 + Math.sin(t * 2.1) * 0.12;
+  waypointG.tip.rotation.y = t * 1.4;
+  const chip = document.getElementById('waypoint-chip');
+  if (chip) {
+    chip.classList.remove('hidden');
+    const dist = Math.round(player.position.distanceTo(waypointPos));
+    const distEl = document.getElementById('waypoint-dist');
+    const dirEl = document.getElementById('waypoint-dir');
+    if (distEl) distEl.textContent = `${dist}m`;
+    if (dirEl) dirEl.textContent = compassTo(waypointPos);
+  }
+});
 function toggleGlobe() {
   globeMode = !globeMode;
   if (globeMode) {
@@ -15475,7 +16018,7 @@ function updateBoatControl(dt) {
   if (jx || jy) moveTargetN = null;
   const trimmed = (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0;
   const craftSpeed = craftMode === 'dock' ? (Home.boat ? 7.4 : 3.6) : 5.4;
-  let speed = craftSpeed * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1);
+  let speed = craftSpeed * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1) * (Buffs.day === Life.day && Buffs.speed ? 1.1 : 1);
   if (meters.energy <= 0) speed *= 0.55;
   let moved = false;
   if (ix || iz) {
@@ -15597,7 +16140,7 @@ function updatePlayer(dt) {
   const swimming = waterH < -0.1; // deep water: swim instead of wade
   player.userData.inWater = inWater;
   player.userData.swimming = swimming;
-  let speed = (swimming ? 3.8 : inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1);
+  let speed = (swimming ? 3.8 : inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1) * Chart.speed * (Buffs.day === Life.day && Buffs.speed ? 1.1 : 1);
   if (meters.energy <= 0) speed *= 0.5; // exhausted: trudge; eat (F) or stand still to recover
   // dash: a short Fleetfoot tumble with i-frames, on a cooldown
   if (dashCd > 0) dashCd -= dt;
@@ -15658,7 +16201,7 @@ function updatePlayer(dt) {
   const surfH = heightFor(nn) + 0.1 + hopH + (swimming ? (0.02 - heightFor(nn)) : inWater ? -0.35 : 0);
   // survival meters: running burns energy, standing still restores, arctic chills
   const sprinting = !!(ix || iz) && (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0;
-  if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt);
+  if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt * Chart.stamina);
   else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 7 * dt);
   // footstep dust / wading splash: the world answers every step
   updatePlayer._dustT = (updatePlayer._dustT || 0) - dt;
@@ -15886,7 +16429,12 @@ tickers.push((t) => {
 }
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const rawDt = Math.min(clock.getDelta(), 0.05);
+  let dt = rawDt;
+  if (hitStop > 0) {
+    hitStop = Math.max(0, hitStop - rawDt);
+    dt *= 0.28; // brief impact slow-mo, then the world catches up
+  }
   const t = clock.elapsedTime;
   if (paused) { orbitYaw += dt * 0.04; hideContextCursor(); composer.render(); return; } // menu vista: slow drift
   // Adaptive safety: if the first seconds are slow, drop to 1× pixel density

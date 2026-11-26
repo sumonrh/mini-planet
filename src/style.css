@@ -137,6 +137,69 @@ html, body {
   padding: 10px 22px; border-radius: 999px; box-shadow: 0 8px 30px rgba(0,0,0,0.35);
 }
 
+#fish-minigame {
+  position: fixed; left: 50%; bottom: 118px; transform: translateX(-50%);
+  z-index: 18; width: min(360px, 70vw); padding: 14px 16px 12px;
+  background: rgba(9, 24, 30, 0.94); color: #eaf2f5;
+  border: 1px solid rgba(122, 217, 255, 0.5); border-radius: 18px;
+  box-shadow: 0 14px 44px rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+}
+#fish-minigame.hidden { display: none; }
+#fish-minigame.hit { border-color: rgba(157,240,168,0.85); }
+#fish-minigame.miss { border-color: rgba(255,107,107,0.85); }
+.fm-title { font-size: 13px; font-weight: 700; letter-spacing: 0.03em; margin-bottom: 9px; color: #bdefff; }
+.fm-track {
+  position: relative; height: 20px; border-radius: 999px; overflow: hidden;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.16);
+}
+.fm-sweet { position: absolute; top: 0; bottom: 0; left: 40%; width: 20%; background: rgba(157,240,168,0.38); border-left: 1px solid rgba(157,240,168,0.8); border-right: 1px solid rgba(157,240,168,0.8); }
+.fm-marker { position: absolute; top: -3px; left: 50%; width: 5px; height: 26px; margin-left: -2.5px; border-radius: 3px; background: #ffd97a; box-shadow: 0 0 12px rgba(255,217,122,0.9); }
+.fm-foot { display: flex; justify-content: space-between; font-size: 10px; letter-spacing: 0.08em; color: #c6d8de; margin-top: 6px; }
+.fm-foot kbd { background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.22); border-radius: 5px; padding: 1px 5px; font-family: inherit; }
+@media (max-width: 640px) { #fish-minigame { bottom: 132px; } }
+
+#waypoint-chip {
+  position: fixed; top: 112px; left: 22px; z-index: 12;
+  display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+  background: rgba(10, 22, 26, 0.78); color: #eaf2f5;
+  border: 1px solid rgba(157, 220, 255, 0.35); border-radius: 999px;
+  font-size: 12px; backdrop-filter: blur(4px);
+}
+#waypoint-chip.hidden { display: none; }
+#waypoint-chip b { color: #9fdcff; font-weight: 700; }
+#waypoint-chip small { color: #aebfc5; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+@media (max-width: 640px) { #waypoint-chip { top: 100px; left: 12px; } }
+
+#gather-timing {
+  position: fixed; left: 50%; bottom: 62px; transform: translateX(-50%);
+  z-index: 14; width: min(320px, 58vw); pointer-events: none;
+}
+.gt-track {
+  position: relative; height: 14px; border-radius: 999px; overflow: hidden;
+  background: rgba(7, 17, 21, 0.82); border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+}
+.gt-zone {
+  position: absolute; top: 0; bottom: 0; left: 36%; width: 28%;
+  background: rgba(157, 240, 168, 0.32);
+  border-left: 1px solid rgba(157,240,168,0.55); border-right: 1px solid rgba(157,240,168,0.55);
+}
+.gt-marker {
+  position: absolute; top: -4px; left: 0; width: 4px; height: 22px; margin-left: -2px;
+  border-radius: 3px; background: #ffd97a; box-shadow: 0 0 10px rgba(255,217,122,0.9);
+}
+#gather-timing.sweet .gt-marker { background: #9df0a8; box-shadow: 0 0 14px rgba(157,240,168,1); }
+.gt-copy {
+  margin-top: 5px; text-align: center; font-size: 10px; letter-spacing: 0.08em;
+  color: #d7e5e9; text-shadow: 0 1px 4px rgba(0,0,0,0.65);
+}
+.gt-copy kbd {
+  background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 5px; padding: 1px 5px; font-family: inherit; font-size: 10px;
+}
+#gather-combo { color: #9df0a8; margin-left: 6px; }
+@media (max-width: 640px) { #gather-timing { bottom: 86px; width: 64vw; } }
+
 #place-hint {
   position: fixed; top: 128px; left: 50%; transform: translateX(-50%); z-index: 44;
   display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px;
@@ -328,7 +391,15 @@ body.custom-cursor #scene { cursor: none; }
 #health-fill.low { background: #e03131; animation: hpulse 0.8s ease-in-out infinite; }
 @keyframes hpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
 
-/* Damage flash + game over */
+/* Damage flash + directional hit marker + game over */
+#damage-dir {
+  position: fixed; left: 50%; top: 43%; z-index: 61; pointer-events: none;
+  font-size: 68px; line-height: 1; color: #ff6b6b; opacity: 0.9;
+  text-shadow: 0 0 18px rgba(255, 60, 60, 0.75), 0 2px 8px rgba(0,0,0,0.6);
+  transition: opacity 0.15s ease;
+}
+#damage-dir span { display: block; transform-origin: 50% 50%; }
+#damage-dir.hidden { display: none; }
 #damage-flash {
   position: fixed; inset: 0; z-index: 40; pointer-events: none;
   background: radial-gradient(ellipse at center, rgba(224,49,49,0) 40%, rgba(224,49,49,0.55) 100%);

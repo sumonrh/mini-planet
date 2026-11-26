@@ -62,9 +62,27 @@
     <p id="biome-desc">Every great adventure starts with a small step.</p>
   </div>
 
+  <!-- Custom globe waypoint -->
+  <div id="waypoint-chip" class="hidden" role="status">
+    <span>📍</span><b id="waypoint-dist">—</b><small id="waypoint-dir">waypoint</small>
+  </div>
+
   <!-- Toast & Floating RPG Popups -->
   <div id="toast" class="hidden"></div>
   <div id="popups"></div>
+
+  <!-- Rhythmic gather timing -->
+  <div id="gather-timing" class="hidden" aria-hidden="true">
+    <div class="gt-track"><span class="gt-zone"></span><span class="gt-marker"></span></div>
+    <div class="gt-copy">Tap <kbd>E</kbd> on the beat <b id="gather-combo"></b></div>
+  </div>
+
+  <!-- Rare-fish tension minigame -->
+  <div id="fish-minigame" class="hidden" role="dialog" aria-label="Reel in the fish">
+    <div class="fm-title" id="fm-title">Something heavy is on the line…</div>
+    <div class="fm-track"><span class="fm-sweet"></span><span class="fm-marker"></span></div>
+    <div class="fm-foot"><span id="fm-hits">0 / 3</span><span>Tap <kbd>E</kbd> or click</span></div>
+  </div>
 
   <!-- Build-site placement hint -->
   <div id="place-hint" class="hidden" role="status" aria-live="polite">
@@ -107,8 +125,9 @@
   <!-- Sleep fade -->
   <div id="sleep-fade" class="hidden"></div>
 
-  <!-- Damage flash + game-over overlay -->
+  <!-- Damage flash + directional hit marker + game-over overlay -->
   <div id="damage-flash" class="hidden"></div>
+  <div id="damage-dir" class="hidden"><span>➤</span></div>
   <div id="gameover" class="hidden">
     <div class="gameover-card">
       <div class="gameover-eyebrow">NORTHLIGHT CLAIMED YOU</div>
@@ -140,20 +159,20 @@
         <li><b>Characters:</b> you travel as <b>Pip the Sprout Keeper</b> — brown hat, watering-can pack, quicker planting and bridge repairs. Prefer Nova the Starlight Explorer? Switch any time in <b>Settings → Traveler</b>. Both travel empty-handed; the axe appears only while chopping, the hammer while building, and the hunting tool while a ranged weapon is drawn. After dark the star lantern wakes, lights nearby dark wonders, and reveals hidden starlight sparkles.</li>
         <li><b>Build a site:</b> open the homestead board (<kbd>H</kbd>), pick a structure, then click a clear, dry spot near the homestead. The settler walks over and hammers it up; <kbd>Esc</kbd> cancels before any materials are spent. Buildings can be re-sited this way, and the family, herd and work hands move with them.</li>
         <li><b>Dock &amp; boats:</b> build a <b>Dock</b> at a shoreline, then a <b>Raft</b> at the dock. Research <b>Boatbuilding</b> to upgrade the raft into a proper boat. Board at the dock, sail with WASD and press <kbd>E</kbd> to fish or step ashore.</li>
-        <li><b>Fishing grounds:</b> 15 named grounds — ponds, coasts, reefs, deep water and the aurora ice hole — each with its own species. Fish from a shore marker, the skiff, or your raft/boat. Discovered species and grounds are listed in Journal → Almanac.</li>
+        <li><b>Fishing grounds:</b> 15 named grounds — ponds, coasts, reefs, deep water and the aurora ice hole — each with its own species. Fish from a shore marker, the skiff, or your raft/boat. Rare and legendary fish trigger a <b>tension minigame</b>: tap <kbd>E</kbd> or click while the marker is in the green band to reel them in. Legendary catches (Golden Arapaima, Ice Sturgeon, Golden Marlin) are trophies worth gold and morale. Discovered species and grounds are listed in Journal → Almanac.</li>
         <li><b>Hunting:</b> deer, hares and boars can be hunted with basic gear for <b>🍖 meat</b>. Lions, tigers, crocodiles, hippos and polar bears are apex predators — they hunt you on sight, and an axe will barely scratch them. They are territorial: outside their home biome they slow down, strike weakly and turn back. Research <b>Spearmaking</b> for the javelin, then <b>Bowyer</b> for the bow and arrows; later firearms include the <b>Hunting Rifle</b>. Run first, hunt later.</li>
         <li><b>Biome relics:</b> each of the ten biomes hides one guarded artifact. Five are kept by wardens who ask for a hard offering; five are guarded by beasts. Claim a relic to unlock a technology immediately — farming, fishing, building, forging or hunting. The journal's technology tab tracks all ten.</li>
         <li><b>Sea life:</b> sharks and orcas patrol the deep water and will bite a swimmer; dolphins surf the reef and whales breach in the open blue. Boats are safe — but the sea is not empty.</li>
         <li><b>World threat:</b> predators, wolves, outlaws and storms grow stronger as you level. Higher technology eras also require a higher explorer level, so gather, hunt and build before chasing the next bench project.</li>
         <li><b>Strangers:</b> from the sixth day, travellers may arrive at the edge of your land. Some bring gifts or maps; some are not what they seem. Welcome them, question them, or send them on.</li>
-        <li><b>Run &amp; dash:</b> hold <kbd>Shift</kbd> to run (it burns energy). Tap <kbd>Q</kbd> to dash — a short roll through danger with brief invulnerability. Dodging a swipe at the last moment triggers a <b>Clean Dodge</b> + critical hits.</li>
+        <li><b>Run &amp; dash:</b> hold <kbd>Shift</kbd> to run (it burns energy). Tap <kbd>Q</kbd> to dash — a short roll through danger with brief invulnerability. Committed predator strikes now paint a red ground ring; dodge through the strike for a <b>Perfect Dodge</b> — brief slow-mo and a guaranteed crit counter. Relic guardians have their own pounce, lunge and slam patterns.</li>
         <li><b>Levels:</b> chopping, fighting, fishing, cooking and wonders earn XP. Level up for perks and better weapons (Rusty Hatchet → Starforged Blade).</li>
-        <li><b>Fast travel:</b> press <kbd>M</kbd> for the globe, then click any shore to teleport there.</li>
+        <li><b>Fast travel &amp; waypoints:</b> press <kbd>M</kbd> for the globe, then click any shore to teleport there. Right-click the globe to pin a waypoint beacon, or press <kbd>P</kbd> for pin mode. The waypoint chip shows distance and direction. Charting 25/50/75/100% of the fog grants permanent travel, stamina, spyglass and insight perks.</li>
         <li><b>Life chapters:</b> Arrival → Roots → Family → Mastery → Legacy. Each chapter unlocks a life trait. Open <kbd>J</kbd> for the journal story, family, technology and almanac tabs.</li>
         <li><b>Weather:</b> press <kbd>N</kbd> for the almanac. A day before a hazard the sky darkens, birds flee inland, farm animals head for the barn, tracks appear, and a neighbour warns you. Build storm shutters, a lightning rod, sandbags, hail netting, a cellar, a well, irrigation, a pump or an ash mask before it hits. A scarecrow deters night robbers.</li>
         <li><b>Research:</b> press <kbd>K</kbd> to open the workshop. Earn insight by discovering things, surviving hazards and completing chapters; research tools, buildings and firearms. Build the Workshop on the homestead board (<kbd>H</kbd>) once researched.</li>
         <li><b>Weapons:</b> press <kbd>L</kbd> for the loadout. Melee: hatchet → iron axe → war axe → halberd. Ranged: sling → javelin → bow → crossbow → musket → lever rifle → shotgun. Right-click to aim/fire manually, <kbd>X</kbd> to reload, left-click a predator for auto-engage. Gear wears with use — a gunsmith repairs it. Craft ammo at the workshop; gunshots are loud and can call wolves.</li>
-        <li><b>Bounties &amp; hunting:</b> press <kbd>B</kbd> for the bounty board. Deer and hares roam the forest and fields — hunt them for meat and pelts. A clean shot (one or two hits) yields bonus meat; a wounded animal leaves a blood trail you can follow. Drive off poachers to free trapped animals, or confront them. Wild prey and predators replenish at dawn; well-fed pairs of livestock may raise a new animal.</li>
+        <li><b>Bounties &amp; contracts:</b> press <kbd>B</kbd> for the bounty board. Each dawn brings three rotating <b>daily contracts</b> from villagers — catch fish, chop wood, cull wolves, deliver goods — with same-day gold and insight rewards. Deer and hares roam the forest and fields; a clean shot yields bonus meat, and wounded animals leave a blood trail. Drive off poachers or confront them. Wild prey and predators replenish at dawn; well-fed pairs of livestock may raise a new animal.</li>
         <li><b>Tools:</b> research upgrades the whole kit — fishing handline → rod → net → trap, farming hoe → plough → seed drill → thresher, building hammer → saw → power tools. The hero visibly carries the new rod, saw and drill.</li>
         <li><b>Accessibility:</b> pause menu settings include reduced flashes/shake, large text, high-contrast panels, pause-on-hazard, and the Cozy difficulty.</li>
         <li><b>Legacy:</b> when your goals are met, retire into an heir from the homestead board. New Game+ keeps your blueprints, journal and one heirloom tool, with harsher weather.</li>
@@ -165,15 +184,16 @@
         <li><b>Tideglass Reef:</b> light the lighthouse (you can swim!).</li>
         <li><b>Ember Heights:</b> scan the volcano — hold still.</li>
         <li><b>Northlight:</b> wake the aurora at the stones.</li>
-        <li><b>Gather:</b> your axe appears only while chopping — click any pine, palm, or orchard tree and the hero fells it and splits the trunk automatically. Nodes regrow.</li>
+        <li><b>Gather:</b> your axe appears only while chopping — click any pine, palm, or orchard tree and the hero fells it and splits the trunk automatically. Tap <kbd>E</kbd> when the timing marker crosses the green band for a <b>2× sweet-spot burst</b>. Consecutive sweet spots raise the combo. Nodes regrow.</li>
         <li><b>Sea skiff:</b> follow the trail south from Shell Cove to the shore skiff. Click it (or <kbd>E</kbd>) to board, sail with WASD, and click/press <kbd>E</kbd> in open water to cast and again to reel in a 🐟. Click shore (or <kbd>E</kbd>) to step off.</li>
         <li><b>Move:</b> WASD, arrow keys, or click anywhere on the planet to walk there.</li>
         <li><b>Survive:</b> running burns energy — eat food (<kbd>F</kbd>), rest by standing still, beware the arctic cold.</li>
         <li><b>Live:</b> hunger drains slowly now — explore first, eat later. Press <kbd>H</kbd> for the homestead board: light a campfire, pitch a tent, then build hut → farmhouse, dig a well, plant plots, raise animals.</li>
+        <li><b>Expedition meals:</b> the campfire now prepares buffs. Fish + fish = River Feast (+35% gather speed today); meat + meat = Hunter's Stew (+15% ranged); food + food = Harvest Bowl (+1 harvest); egg + milk = Warm Custard (cold immunity); mixed produce = Trail Stew (+10% travel). Eat the meal with <kbd>F</kbd>.</li>
         <li><b>Family:</b> befriend Marina with gifts, craft a sunstone ring, marry, raise kids — every mouth adds upkeep. Hire hands, survive droughts, floods, tornadoes and wolf packs, then retire into your heir.</li>
         <li><b>Bears & wolves:</b> adults flash ❗ before a heavy swipe — dash away or take the hit. Click a predator once and your hero fights automatically. Pick 🌿 remedy from glowing bushes, press <kbd>R</kbd> to heal fast. Save anytime from the pause menu (<kbd>Esc</kbd> → Save Game); death returns you to your last save.</li>
       </ul>
-      <p class="muted">WASD/arrows move · click map to walk · click target to auto-act · Shift run · Q dash · space hop · E auto-act/fight · F eat food · R remedy · M globe travel · J journal · Esc menu · drag mouse to orbit</p>
+      <p class="muted">WASD/arrows move · click map to walk · click target to auto-act · Shift run · Q dash · space hop · E auto-act/fight · E on beat while gathering · F eat food · R remedy · M globe travel · P pin waypoint · J journal · Esc menu · drag mouse to orbit</p>
       <button id="btn-close-help">Start exploring</button>
     </div>
   </div>
