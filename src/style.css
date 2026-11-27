@@ -937,3 +937,5 @@ body.contrast-high #weather-chip { color: #fff; font-weight: 700; }
 .meter > span { opacity: 0.9; }
 #health-fill { background: linear-gradient(90deg, #ff9a9a, #ef5a68) !important; }
 #energy-fill { background: linear-gradient(90deg, #ffe7a1, #f0c563) !important; }
+#energy-fill.swimming { background: linear-gradient(90deg, #74e0e0, #38b2c4) !important; }
+#energy-fill.sinking { background: linear-gradient(90deg, #ff6b6b, #e03131) !important; animation: hpulse 0.6s ease-in-out infinite; }

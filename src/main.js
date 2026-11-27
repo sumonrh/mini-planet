@@ -439,76 +439,88 @@ function makeBirdMesh(s, bodyCol, wingCol, tones) {
   body.add(wl, wr);
   return { g, body, wl, wr };
 }
-// Seven worlds: polar Northlight + six tuned equatorial sectors (lon degrees).
-// Smooth organic border warps & blended transition zones remove hard seams while
-// keeping every landmark firmly inside its home biome.
-// The southern ocean holds Golden Savannah (west) and Mangrove Delta (east),
-// separated by the naturally meandering Great River.
-// Two long, gentle bends only: both banks are offsets of the same centre line,
-// so they always curve together instead of wiggling apart.
-function riverCenterLon(lat) {
-  return 98.0
-    + 2.6 * Math.sin(lat * 0.105 + 0.55)
-    + 0.9 * Math.sin(lat * 0.215 - 1.05);
+// Seven worlds: compact polar Northlight + Clover Fields mountain range + six equatorial sectors
+// + organic Mangrove Delta & Golden Savannah continents + Mountain-to-Sea Great River.
+function arcticEdge(lon) {
+  return 0.72 + 0.018 * Math.sin(lon * 0.11 + 0.5) + 0.01 * Math.cos(lon * 0.27);
 }
-// Local east-west slope of the centre line. A slanted reach must be widened in
-// longitude terms so its *perpendicular* width stays the same as a straight one.
+function cloverMountainFactor(lat, lon) {
+  const lat0 = Math.asin(THREE.MathUtils.clamp(arcticEdge(lon), -1, 1)) / DEG - 2.2;
+  const latEnv = THREE.MathUtils.smoothstep(7.2 - Math.abs(lat - lat0), 0, 5.2);
+  if (latEnv <= 1e-4) return 0;
+  const lonEnv = THREE.MathUtils.smoothstep(lon, 2, 10) * (1 - THREE.MathUtils.smoothstep(lon, 54, 64));
+  if (lonEnv <= 1e-4) return 0;
+  const ridge = 0.55 + 0.45 * Math.pow(0.5 + 0.5 * Math.sin(lon * 0.31 + 0.6) * Math.cos((lat - lat0) * 0.28), 1.4);
+  const pass = 0.25 + 0.75 * THREE.MathUtils.smoothstep(Math.hypot(lat - 41.5, lon - 23.3), 1.5, 6.5);
+  return latEnv * lonEnv * ridge * pass;
+}
+const RIVER_SOURCE_LAT = 41.5;
+const RIVER_MOUTH_LAT = -47.5;
+function riverCenterLon(lat) {
+  const t = THREE.MathUtils.clamp((RIVER_SOURCE_LAT - lat) / (RIVER_SOURCE_LAT - RIVER_MOUTH_LAT), 0, 1);
+  return 25.0 - 10.5 * Math.sin(t * Math.PI * 1.12) + 14.0 * t * t + 1.8 * Math.sin(lat * 0.11 + 0.5);
+}
 function riverCenterSlope(lat) {
   const e = 0.25;
   return (riverCenterLon(lat + e) - riverCenterLon(lat - e)) / (2 * e);
 }
-// The river runs from a spring in the far south to the northern sea. Keep its
-// physical width nearly constant, then open into a shallow estuary at the coast.
-const RIVER_SOURCE_LAT = -72;
-const RIVER_HALF_WIDTH = 2.75; // world units, measured across the channel
 function riverHalfWidth(lat) {
-  const source = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 6);
-  if (source <= 0) return 0;
+  if (lat > RIVER_SOURCE_LAT + 1 || lat < RIVER_MOUTH_LAT - 2) return 0;
+  const source = THREE.MathUtils.smoothstep(RIVER_SOURCE_LAT - lat, -0.5, 3.0);
+  const endFade = 1 - THREE.MathUtils.smoothstep(RIVER_MOUTH_LAT - lat, 0, 2.0);
+  if (source <= 0 || endFade <= 0) return 0;
   const latR = lat * DEG;
   const cosLat = Math.max(0.26, Math.cos(latR));
-  // One degree of longitude shrinks with cos(latitude); convert a fixed world
-  // width back into degrees so the channel does not pinch toward the pole.
   const degPerUnit = 57.2957795 / (R * cosLat);
   const slope = riverCenterSlope(lat);
   const bankScale = Math.sqrt(1 + Math.pow(slope * cosLat, 2));
-  const base = RIVER_HALF_WIDTH * degPerUnit * bankScale;
-  const coast = southNorthCoast(riverCenterLon(lat));
-  const mouth = 0.55 * THREE.MathUtils.smoothstep(lat, coast - 5.5, coast);
-  return Math.max(0, (base + mouth) * source);
+  const baseWorldW = THREE.MathUtils.lerp(1.15, 2.25, THREE.MathUtils.smoothstep(RIVER_SOURCE_LAT - lat, 0, 22));
+  const mouth = 1.65 * THREE.MathUtils.smoothstep(-lat, 41.0, 47.5);
+  return Math.max(0, (baseWorldW * degPerUnit * bankScale + mouth) * source * endFade);
 }
-function southNorthCoast(lon) {
-  return -23.0 + 2.2 * Math.sin(lon * 0.21 + 0.4) + 1.4 * Math.sin(lon * 0.63 + 1.7);
+const _MANGROVE_LOBES = [
+  [-19, 23, 14], [-31, 30, 16], [-37, 42, 13],
+].map(([la, lo, r]) => ({ c: latLonToVec3(la, lo, 0).normalize(), r }));
+const _SAVANNAH_LOBES = [
+  [-38, 86, 16], [-44, 112, 18], [-40, 138, 15],
+].map(([la, lo, r]) => ({ c: latLonToVec3(la, lo, 0).normalize(), r }));
+function smin(a, b, k = 4.5) {
+  const h = THREE.MathUtils.clamp(0.5 + 0.5 * (b - a) / k, 0, 1);
+  return THREE.MathUtils.lerp(b, a, h) - k * h * (1 - h);
 }
-function southWestCoast(lat) {
-  return 18.0 + 1.9 * Math.sin(lat * 0.17 + 0.8) + 0.85 * Math.cos(lat * 0.41);
+function coastWarp(n) {
+  return 3.2 * Math.sin(n.x * 7.1 + n.z * 5.3)
+    + 2.1 * Math.cos(n.y * 8.4 - n.x * 6.2)
+    + 1.3 * Math.sin(n.z * 11.7 + n.y * 9.5);
 }
-function southEastCoast(lat) {
-  return 172.0 + 1.9 * Math.sin(lat * 0.16 - 0.5) + 0.85 * Math.cos(lat * 0.38);
+function lobeMargin(n, lobes) {
+  let d = 999;
+  for (const L of lobes) {
+    const ang = Math.acos(THREE.MathUtils.clamp(n.dot(L.c), -1, 1)) / DEG - L.r;
+    d = d > 900 ? ang : smin(d, ang, 4.5);
+  }
+  return -(d - coastWarp(n) * 0.45);
 }
+function mangroveMargin(n) { return lobeMargin(n, _MANGROVE_LOBES); }
+function savannahMargin(n) { return lobeMargin(n, _SAVANNAH_LOBES); }
 function warpedEqLon(lat, lon) {
   // Subtle organic wave on equatorial sector lines (dampened near farm/oasis lon 62)
   const nearHome = 1.0 - 0.65 * Math.exp(-Math.pow((lon - 62) / 10, 2));
   const w = (1.6 * Math.sin(lat * 0.15 + 0.4) + 0.75 * Math.cos(lat * 0.33 - 0.8)) * nearHome;
   return ((lon + w) % 360 + 360) % 360;
 }
-function southLandBiome(lat, lon) {
-  const edge = southNorthCoast(lon);
-  if (lat > edge) return null;
-  const rc = riverCenterLon(lat), rw = riverHalfWidth(lat);
-  if (Math.abs(lon - rc) <= rw) return 'river';
-  if (lon > southWestCoast(lat) && lon < rc - rw) return 'savannah';
-  if (lon > rc + rw && lon < southEastCoast(lat)) return 'mangrove';
-  return null;
-}
 function biomeAt(n) {
   const lat = Math.asin(THREE.MathUtils.clamp(n.y, -1, 1)) / DEG;
   let lon = Math.atan2(n.z, n.x) / DEG;
   if (lon < 0) lon += 360;
-  const arcticEdge = 0.52 + 0.018 * Math.sin(lon * 0.11 + 0.5) + 0.01 * Math.cos(lon * 0.27);
-  if (n.y > arcticEdge) return 'arctic';
-  if (n.y < 0) {
-    const south = southLandBiome(lat, lon);
-    if (south) return south;
+  if (n.y > arcticEdge(lon)) return 'arctic';
+  if (lat <= RIVER_SOURCE_LAT + 0.5 && lat >= RIVER_MOUTH_LAT - 1) {
+    const rc = riverCenterLon(lat), rw = riverHalfWidth(lat);
+    if (rw > 0.1 && Math.abs(lon - rc) <= rw) return 'river';
+  }
+  if (n.y < -0.18) {
+    if (mangroveMargin(n) > 0) return 'mangrove';
+    if (savannahMargin(n) > 0) return 'savannah';
   }
   const lagoonEdge = -0.32 + 0.016 * Math.sin(lon * 0.13 - 0.4) + 0.008 * Math.cos(lon * 0.31);
   if (n.y < lagoonEdge) return 'lagoon';
@@ -516,7 +528,7 @@ function biomeAt(n) {
   if (wl < 62) return 'farm';      // Clover Fields
   if (wl < 128) return 'oasis';    // Sunstone Oasis
   if (wl < 178) return 'forest';   // Fernwood
-  if (wl < 258) return 'reef';     // Tideglass Reef
+  if (wl < 258) return 'reef';     // Tideglass Lagoon
   if (wl < 298) return 'cove';     // Shell Cove
   return 'volcano';                // Ember Heights
 }
@@ -536,53 +548,53 @@ function biomeWeights(n) {
   const w = {};
   const addW = (k, v) => { if (v > 1e-4) w[k] = (w[k] || 0) + v; };
 
-  // 1) Arctic polar cap smooth transition
-  const arcticEdge = 0.52 + 0.018 * Math.sin(lon * 0.11 + 0.5) + 0.01 * Math.cos(lon * 0.27);
-  const arcticW = THREE.MathUtils.smoothstep(n.y, arcticEdge - 0.055, arcticEdge + 0.055);
+  // 1) Compact Arctic polar cap smooth transition
+  const ae = arcticEdge(lon);
+  const arcticW = THREE.MathUtils.smoothstep(n.y, ae - 0.055, ae + 0.055);
   addW('arctic', arcticW);
   const nonArctic = 1 - arcticW;
   if (nonArctic <= 1e-4) return w;
 
-  // 2) Southern continent (Golden Savannah, Great River, Mangrove Delta)
-  const sNorth = southNorthCoast(lon);
-  const sWest = southWestCoast(lat);
-  const sEast = southEastCoast(lat);
-  const inSouthLat = THREE.MathUtils.smoothstep(sNorth + 2.6 - lat, 0, 5.2);
-  const inSouthLon = THREE.MathUtils.smoothstep(lon - (sWest - 2.6), 0, 5.2)
-                   * THREE.MathUtils.smoothstep((sEast + 2.6) - lon, 0, 5.2);
-  const southMask = nonArctic * inSouthLat * inSouthLon;
-  if (southMask > 1e-4) {
+  // 2) Mountain-to-sea Great River mask (flows through Clover Fields -> Mangrove Delta -> Sea)
+  let riverFrac = 0;
+  if (lat <= RIVER_SOURCE_LAT + 1 && lat >= RIVER_MOUTH_LAT - 2) {
     const rc = riverCenterLon(lat), rw = riverHalfWidth(lat);
-    const dRiver = Math.abs(lon - rc);
-    // Smooth bank mask: full water inside the channel, then a short shared
-    // soft edge. The softness scales with width so narrow reaches are not
-    // swallowed by a fixed, oversized blur.
-    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 6);
-    const bankSoft = Math.max(0.3, rw * 0.34);
-    const riverFrac = (1 - THREE.MathUtils.smoothstep(dRiver, rw - bankSoft * 0.5, rw + bankSoft)) * riverSource;
-    const landFrac = 1 - riverFrac;
-    const mangFrac = THREE.MathUtils.smoothstep(lon - rc, -2.5, 2.5);
-    addW('river', southMask * riverFrac);
-    addW('savannah', southMask * landFrac * (1 - mangFrac));
-    addW('mangrove', southMask * landFrac * mangFrac);
+    if (rw > 0.05) {
+      const dRiver = Math.abs(lon - rc);
+      const bankSoft = Math.max(0.3, rw * 0.34);
+      const source = THREE.MathUtils.smoothstep(RIVER_SOURCE_LAT - lat, -0.5, 3.0);
+      const endFade = 1 - THREE.MathUtils.smoothstep(RIVER_MOUTH_LAT - lat, 0, 2.0);
+      riverFrac = (1 - THREE.MathUtils.smoothstep(dRiver, rw - bankSoft * 0.5, rw + bankSoft)) * source * endFade;
+    }
   }
-  const rem = nonArctic - southMask;
+  const riverW = nonArctic * riverFrac;
+  addW('river', riverW);
+  const rem = nonArctic - riverW;
   if (rem <= 1e-4) return w;
 
-  // 3) Southern ocean lagoon vs equatorial belt
+  // 3) Organic Mangrove Delta & Golden Savannah continents
+  const southMask = THREE.MathUtils.smoothstep(-n.y, 0.14, 0.30);
+  const mangroveW = rem * southMask * THREE.MathUtils.smoothstep(mangroveMargin(n), -2.5, 2.5);
+  addW('mangrove', mangroveW);
+  const remAfterM = rem - mangroveW;
+  const savannahW = remAfterM * southMask * THREE.MathUtils.smoothstep(savannahMargin(n), -2.5, 2.5);
+  addW('savannah', savannahW);
+  const rem2 = remAfterM - savannahW;
+  if (rem2 <= 1e-4) return w;
+
+  // 4) Southern ocean lagoon vs equatorial belt
   const lagoonEdge = -0.32 + 0.016 * Math.sin(lon * 0.13 - 0.4) + 0.008 * Math.cos(lon * 0.31);
-  const lagoonW = rem * THREE.MathUtils.smoothstep(lagoonEdge + 0.055 - n.y, 0, 0.11);
+  const lagoonW = rem2 * THREE.MathUtils.smoothstep(lagoonEdge + 0.055 - n.y, 0, 0.11);
   addW('lagoon', lagoonW);
-  const eqMask = rem - lagoonW;
+  const eqMask = rem2 - lagoonW;
   if (eqMask <= 1e-4) return w;
 
-  // 4) Smoothly blended equatorial sectors (~8° cross-fade across each border)
+  // 5) Smoothly blended equatorial sectors (~8° cross-fade across each border)
   const wl = warpedEqLon(lat, lon);
   const halfBlend = 4.2;
   let eqSum = 0;
   const eqTmp = [];
   for (const s of _EQ_SECTORS) {
-    // signed angular distance inside [a, b]
     let dA = wl - s.a; if (dA < -180) dA += 360; if (dA > 180) dA -= 360;
     let dB = s.b - wl; if (dB < -180) dB += 360; if (dB > 180) dB -= 360;
     const f = THREE.MathUtils.smoothstep(dA, -halfBlend, halfBlend)
@@ -600,12 +612,12 @@ const BIOME_META = {
   farm: { code: 'FARM · 02', name: 'Clover Fields', desc: 'A little care makes a world of difference.' },
   oasis: { code: 'DESERT · 03', name: 'Sunstone Oasis', desc: 'A quiet green secret among the golden dunes.' },
   forest: { code: 'FOREST · 01', name: 'Fernwood', desc: 'Every great adventure starts with a small step.' },
-  reef: { code: 'OCEAN · 05', name: 'Tideglass Reef', desc: 'There is a whole other world beneath the blue.' },
+  reef: { code: 'LAGOON · 05', name: 'Tideglass Lagoon', desc: 'Clear turquoise shallows encircling the lighthouse isle.' },
   cove: { code: 'BEACH · 04', name: 'Shell Cove', desc: 'Leave only tiny footprints.' },
   volcano: { code: 'VOLCANO · 06', name: 'Ember Heights', desc: 'Even a sleeping mountain has stories to tell.' },
   arctic: { code: 'ARCTIC · 07', name: 'Northlight', desc: 'The quietest places hold the brightest wonders.' },
   savannah: { code: 'SAVANNAH · 08', name: 'Golden Savannah', desc: 'The grass remembers every hoofbeat.' },
-  river: { code: 'RIVER · 09', name: 'The Great River', desc: 'One slow green road between two worlds.' },
+  river: { code: 'RIVER · 09', name: 'The Great River', desc: 'From alpine snows through green fields to the sea.' },
   mangrove: { code: 'MANGROVE · 10', name: 'Mangrove Delta', desc: 'Roots in the water, secrets in the shade.' },
   lagoon: { code: 'BEACH · 04', name: 'Shell Cove', desc: 'Leave only tiny footprints.' },
 };
@@ -723,12 +735,12 @@ function biomeHeightRaw(b, lat, lon, n) {
   }
   if (b === 'forest') return 0.6 + 0.05 * Math.sin(lon * 0.16 - lat * 0.12);
   if (b === 'reef') {
-    // smooth dry island around the lighthouse so the traveler stands above the water
     let dLon = Math.abs(lon - 230);
     if (dLon > 180) dLon = 360 - dLon;
     const d = Math.hypot(lat - 2, dLon);
-    const island = 1 - THREE.MathUtils.smoothstep(d, 5.6, 10.4);
-    return -0.18 + island * 0.66;
+    const island = 1 - THREE.MathUtils.smoothstep(d, 5.2, 8.2);
+    const shelf = 1 - THREE.MathUtils.smoothstep(d, 10.5, 19.5);
+    return -0.90 + shelf * 0.62 + island * 0.84;
   }
   if (b === 'cove') return 0.35 + 0.03 * Math.sin(lon * 0.18 + lat * 0.15);
   if (b === 'volcano') return 0.85 + 0.08 * Math.sin(lon * 0.19 + lat * 0.16);
@@ -754,7 +766,9 @@ function heightFor(n) {
     h += biomeHeightRaw(k, lat, lon, n) * w[k];
     total += w[k];
   }
-  return total > 0 ? h / total : 0.35;
+  const baseH = total > 0 ? h / total : 0.35;
+  const mElev = cloverMountainFactor(lat, lon) * 3.8 * (1 - (w.river || 0));
+  return baseH + mElev;
 }
 const _tmpCol = new THREE.Color();
 const _mixCol = new THREE.Color();
@@ -763,13 +777,13 @@ const _riverMud = new THREE.Color(0x7c7352);
 const _riverBankGrass = new THREE.Color(0x5f854d);
 function biomeBaseColor(b, lat, lonRad, n, wob, micro, out) {
   if (b === 'arctic') {
-    const t = THREE.MathUtils.clamp((n.y - 0.48) * 3.6 + wob * 0.14, 0, 1);
+    const t = THREE.MathUtils.clamp((n.y - 0.68) * 4.6 + wob * 0.14, 0, 1);
     out.setHex(0xedf2e9).lerp(_mixCol.setHex(0xdfe9e4), t * 0.55);
     if (wob > 0.32) out.lerp(_mixCol.setHex(0xd6e6e4), 0.42);
     else if (micro > 0.25) out.lerp(_mixCol.setHex(0xf5f8f0), 0.48);
     return out;
   }
-  if (b === 'lagoon') { out.setHex(0x1f7688); return out; }
+  if (b === 'lagoon') { out.setHex(0x1b6d80); return out; }
   if (b === 'farm') {
     out.setHex(0x8db84a);
     const g1 = THREE.MathUtils.smoothstep(Math.sin(lonRad * 9 + lat * 0.25), -0.3, 0.7);
@@ -787,13 +801,13 @@ function biomeBaseColor(b, lat, lonRad, n, wob, micro, out) {
     out.lerp(_mixCol.setHex(0x5bb25e), THREE.MathUtils.smoothstep(-wob, 0.1, 0.7) * 0.5);
     out.lerp(_mixCol.setHex(0x357d3e), THREE.MathUtils.smoothstep(micro, 0.2, 0.8) * 0.4);
   } else if (b === 'reef') {
-    out.setHex(0x34b2a4);
-    out.lerp(_mixCol.setHex(0x279392), THREE.MathUtils.smoothstep(wob, -0.1, 0.65) * 0.5);
-    out.lerp(_mixCol.setHex(0xe8d9a4), THREE.MathUtils.smoothstep(lat, 3.5, 9.5) * 0.8);
     let dLonI = Math.abs(lonRad / DEG - 230);
     if (dLonI > 180) dLonI = 360 - dLonI;
-    const isl = 1 - THREE.MathUtils.smoothstep(Math.hypot(lat - 2, dLonI), 5.4, 9.4);
-    out.lerp(_mixCol.setHex(0xe8d9a4), isl * 0.92);
+    const d = Math.hypot(lat - 2, dLonI);
+    const shelf = 1 - THREE.MathUtils.smoothstep(d, 9.5, 18.0);
+    const isl = 1 - THREE.MathUtils.smoothstep(d, 5.2, 8.4);
+    out.setHex(0x1b6d80).lerp(_mixCol.setHex(0x68c4b8), shelf * 0.85);
+    out.lerp(_mixCol.setHex(0xe6d6a2), isl * 0.94);
   } else if (b === 'volcano') {
     out.setHex(0x50423a);
     out.lerp(_mixCol.setHex(0x604f45), THREE.MathUtils.smoothstep(wob, 0.05, 0.65) * 0.5);
@@ -838,12 +852,22 @@ function groundColor(n, out) {
   else out.setHex(0x8da762);
 
   const h = heightFor(n);
+  // Clover Fields Mountain Range: matte slate rock slopes + snowcap peaks
+  const mElev = cloverMountainFactor(lat, lon) * 3.8 * (1 - (w.river || 0));
+  if (mElev > 0.45) {
+    const rockT = THREE.MathUtils.smoothstep(mElev, 0.45, 1.35);
+    out.lerp(_mixCol.setHex(wob > 0 ? 0x6f7982 : 0x5a646d), rockT * 0.88);
+    if (mElev > 1.85) {
+      const snowT = THREE.MathUtils.smoothstep(mElev, 1.85, 2.65);
+      out.lerp(_mixCol.setHex(0xf0f5ee), snowT * 0.92);
+    }
+  }
   // Natural wet riverbank silt + lush green verge along the curved Great River
-  if (lat < southNorthCoast(lon) + 2.5) {
+  if (lat <= RIVER_SOURCE_LAT + 1 && lat >= RIVER_MOUTH_LAT - 2) {
     const dRiver = Math.abs(lon - riverCenterLon(lat));
     const rw = riverHalfWidth(lat);
     const bankSoft = Math.max(0.3, rw * 0.34);
-    if (rw > 0.5 && dRiver > rw - bankSoft && dRiver < rw + bankSoft * 3) {
+    if (rw > 0.2 && dRiver > rw - bankSoft && dRiver < rw + bankSoft * 3) {
       const wetEdge = THREE.MathUtils.smoothstep(h, -0.35, 0.14) * (1 - THREE.MathUtils.smoothstep(h, 0.14, 0.34));
       out.lerp(_riverMud, wetEdge * 0.62);
       const verge = THREE.MathUtils.smoothstep(h, 0.14, 0.28) * (1 - THREE.MathUtils.smoothstep(dRiver, rw + bankSoft * 0.8, rw + bankSoft * 2.8));
@@ -901,9 +925,9 @@ scene.add(planetGroup);
 const oceanUniforms = {
   uTime: { value: 0 },
   uSunDir: { value: new THREE.Vector3(0.5, 0.8, 0.3).normalize() },
-  uDeep: { value: new THREE.Color(0x155d72) },
-  uMid: { value: new THREE.Color(0x26989e) },
-  uShallow: { value: new THREE.Color(0x5fd0c0) },
+  uDeep: { value: new THREE.Color(0x155b72) },
+  uMid: { value: new THREE.Color(0x228b9c) },
+  uShallow: { value: new THREE.Color(0x54cebe) },
   uFoam: { value: new THREE.Color(0xeff8f5) },
   uSky: { value: new THREE.Color(0x88c8d8) },
 };
@@ -919,9 +943,10 @@ const ocean = (() => {
     const lat = Math.asin(THREE.MathUtils.clamp(vn.y, -1, 1)) / DEG;
     let lon = Math.atan2(vn.z, vn.x) / DEG; if (lon < 0) lon += 360;
     const rw = riverHalfWidth(lat);
-    const riverSource = THREE.MathUtils.smoothstep(lat, RIVER_SOURCE_LAT, RIVER_SOURCE_LAT + 6);
-    const isRiv = (lat < southNorthCoast(lon) + 2.0 && rw > 0.1)
-      ? (1 - THREE.MathUtils.smoothstep(Math.abs(lon - riverCenterLon(lat)), rw - 0.3, rw + 0.7)) * riverSource
+    const source = THREE.MathUtils.smoothstep(RIVER_SOURCE_LAT - lat, -0.5, 3.0);
+    const endFade = 1 - THREE.MathUtils.smoothstep(RIVER_MOUTH_LAT - lat, 0, 2.0);
+    const isRiv = (lat <= RIVER_SOURCE_LAT + 1 && lat >= RIVER_MOUTH_LAT - 2 && rw > 0.1)
+      ? (1 - THREE.MathUtils.smoothstep(Math.abs(lon - riverCenterLon(lat)), rw - 0.3, rw + 0.7)) * source * endFade
       : 0;
     riverAttr[i] = isRiv;
   }
@@ -960,9 +985,9 @@ const ocean = (() => {
       varying vec3 vNormalW;
       void main() {
         vec3 n = normalize(vNormalW);
-        // 3 stepped origami depth bands (deep -> mid -> shallow shelf)
-        float bandMid = smoothstep(-0.82, -0.70, vShore);
-        float bandShallow = smoothstep(-0.34, -0.22, vShore);
+        // 3 smooth origami bathymetry bands (deep -> mid -> shallow lagoon shelf)
+        float bandMid = smoothstep(-0.78, -0.52, vShore);
+        float bandShallow = smoothstep(-0.34, -0.10, vShore);
         vec3 waterCol = mix(uDeep, uMid, bandMid);
         waterCol = mix(waterCol, uShallow, bandShallow * 0.85);
         // Bright pale-aqua central current ribbon inside the Great River
@@ -1294,6 +1319,7 @@ function addShake(a) { camShake = Math.min(0.45, camShake + a); }
 let gripBlend = 0; // 0 = arms free, 1 = both hands closed on the axe handle
 let wadeBlend = 0; // 0 = dry stride, 1 = high-stepping wade
 let swimBlend = 0, swimPhase = 0; // 0 = dry, 1 = swimming stroke
+let swimSink = 0, swimWarnStage = 0, drownTickT = 0;
 let heroBuildHold = false; // show the hammer while hauling/raising it on a build site
 let chopImpactFx = null; // one-shot callback fired on the next swing's contact frame
 let gatherAction = 'chop';
@@ -2153,6 +2179,48 @@ const farmGroup = new THREE.Group(); scene.add(farmGroup);
     addBlossomPetals(tree, 32);
   }
 }
+
+// ---------- CLOVER FIELDS MOUNTAIN RANGE (Northlight–Clover border + river headwater) ----------
+{
+  const mountainGroup = new THREE.Group(); scene.add(mountainGroup);
+  const rockA = mat(0x6b757e), rockB = mat(0x7d8890), snowM = mat(0xf2f7f2);
+  const putM = (obj, la, lo, h = 0.0, yaw = rand(Math.PI * 2)) => {
+    const b = latLonToVec3(la, lo, 0).normalize();
+    orientOnSphere(obj, b.clone().multiplyScalar(R + heightFor(b) + h), yaw);
+    mountainGroup.add(obj);
+    return obj;
+  };
+  for (let i = 0; i < 15; i++) {
+    const lo = 6 + (i / 14) * 54 + rand(-1.2, 1.2);
+    const la = 44.0 + Math.sin(i * 1.4) * 2.2;
+    if (Math.hypot(la - 41.5, lo - 23.3) < 4.0) continue; // keep river spring pass open
+    const peak = new THREE.Group();
+    const h1 = rand(2.6, 4.4), r1 = rand(1.6, 2.5);
+    peak.add(mesh(new THREE.ConeGeometry(r1, h1, 6), i % 2 ? rockA : rockB, 0, h1 * 0.5, 0));
+    peak.add(mesh(new THREE.ConeGeometry(r1 * 0.48, h1 * 0.44, 6), snowM, 0, h1 * 0.80, 0, false));
+    for (let k = 0; k < 2; k++) {
+      const a = k * 2.4 + rand(0.6);
+      const h2 = h1 * rand(0.55, 0.78), r2 = r1 * rand(0.55, 0.72);
+      const ox = Math.cos(a) * r1 * 0.65, oz = Math.sin(a) * r1 * 0.65;
+      peak.add(mesh(new THREE.ConeGeometry(r2, h2, 5), k % 2 ? rockB : rockA, ox, h2 * 0.46, oz));
+      if (h2 > 2.4) peak.add(mesh(new THREE.ConeGeometry(r2 * 0.45, h2 * 0.42, 5), snowM, ox, h2 * 0.76, oz, false));
+    }
+    putM(peak, la, lo, -0.35);
+  }
+  for (let i = 0; i < 16; i++) {
+    const la = rand(35, 40), lo = rand(8, 58);
+    if (Math.hypot(la - 41.5, lo - 23.3) < 3.5) continue;
+    const pine = putM(makeTree(rand(2.0, 3.2)), la, lo, 0);
+    addChoppableTree(pine, la, lo, 'Alpine Pine');
+  }
+  // Alpine spring pool & waterfall rocks where the Great River begins
+  const spring = new THREE.Group();
+  spring.add(mesh(new THREE.CylinderGeometry(1.5, 1.8, 0.25, 7), mat(0x54cebe), 0, 0.08, 0, false));
+  spring.add(mesh(new THREE.ConeGeometry(0.95, 1.9, 5), rockA, -1.2, 0.9, -0.8));
+  spring.add(mesh(new THREE.ConeGeometry(0.45, 0.8, 5), snowM, -1.2, 1.55, -0.8, false));
+  spring.add(mesh(new THREE.ConeGeometry(0.85, 1.6, 5), rockB, 1.15, 0.75, -0.7));
+  putM(spring, 41.5, 23.3, -0.05, 0);
+}
 // ---------- WHISPERING FOREST ----------
 let fireLight, fireCone, bellGroup;
 {
@@ -2375,7 +2443,7 @@ function bearTurnToward(b, dir, dt, maxRate) {
     orientOnSphere(obj, latLonToVec3(la, lo, heightFor(b.normalize()) + h), yaw);
     g.add(obj); return obj;
   };
-  scatterOnSphere(g, 52, 100, 10, 16, () => makeCrystal(rand(0.8, 1.8)));
+  scatterOnSphere(g, 58, 108, 9, 16, () => makeCrystal(rand(0.8, 1.8)));
   put(makeCrystal(2.2), 62, 110, 0, 1);
   put(makeCrystal(1.6), 60, 95, 0, 2);
   // igloo: domed snow-block lodge with arched tunnel entrance & warm interior glow
@@ -2444,7 +2512,7 @@ function bearTurnToward(b, dir, dt, maxRate) {
   fm.add(mesh(new THREE.SphereGeometry(0.42, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), mat(0xc93a3a), 0, 2.15, 0, false));
   put(fm, 57.5, 120, 0, -1.2);
   // pines at border
-  scatterOnSphere(g, 46, 135, 6, 22, () => makeTree(rand(2, 3.4)), addChoppableTree);
+  scatterOnSphere(g, 49, 135, 5, 22, () => makeTree(rand(2, 3.4)), addChoppableTree);
   steppingStones([[52, 92], [54, 96], [55, 100], [56, 104], [57, 108], [58, 112]], 0xdceef7, 0.4);
 }
 
@@ -2795,7 +2863,8 @@ function boardBoat(mode = 'skiff') {
   playerVel = 0; hopH = 0;
   burst(player.position.clone(), 0x9fdcff, 12, 1.5);
   chime(520);
-  toast(mode === 'dock' ? `⛵ Aboard the ${Home.boat ? 'boat' : 'raft'} — WASD to sail, E to fish or dock.` : '⛵ Aboard the skiff — WASD to sail, Q to trim, E to fish or dock.');
+  const rescued = meters.energy < 25;
+  toast(rescued ? '⛵ Pulled yourself aboard just in time!' : (mode === 'dock' ? `⛵ Aboard the ${Home.boat ? 'boat' : 'raft'} — WASD to sail, E to fish or dock.` : '⛵ Aboard the skiff — WASD to sail, Q to trim, E to fish or dock.'));
   return true;
 }
 function leaveBoat() {
@@ -2862,7 +2931,7 @@ function restoreBoatState(b) {
   }
 }
 const boatInteract = {
-  id: 'skiff', pos: boatGroup.position.clone(), radius: 5.2, kind: '⛵ SEA SKIFF',
+  id: 'skiff', pos: boatGroup.position.clone(), radius: 6.0, kind: '⛵ SEA SKIFF',
   label: () => {
     if (!inBoat) return 'Board the sea skiff';
     if (fishStage === 1) return 'Reel in the line';
@@ -3766,9 +3835,9 @@ function pickGreenBushSpot() {
 // The Great River's curving grassy banks (follows riverCenterLon + riverHalfWidth).
 function pickRiverBankSpot() {
   for (let k = 0; k < 80; k++) {
-    const la = rand(-63, -25);
+    const la = rand(-45, 39);
     const rc = riverCenterLon(la), rw = riverHalfWidth(la);
-    if (rw < 0.5) continue;
+    if (rw < 0.4) continue;
     const side = Math.random() < 0.5 ? -1 : 1;
     const lo = rc + side * (rw + rand(1.1, 3.6));
     const n = latLonToVec3(la, lo, 0).normalize();
@@ -3779,7 +3848,7 @@ function pickRiverBankSpot() {
 }
 function pickSavannahBushSpot() {
   for (let k = 0; k < 70; k++) {
-    const la = rand(-68, -25), lo = rand(20, 92);
+    const la = rand(-66, -24), lo = rand(66, 162);
     const n = latLonToVec3(la, lo, 0).normalize();
     if (biomeAt(n) === 'savannah' && heightFor(n) > 0.2) return [la, lo, n];
   }
@@ -3787,7 +3856,7 @@ function pickSavannahBushSpot() {
 }
 function pickMangroveBushSpot() {
   for (let k = 0; k < 70; k++) {
-    const la = rand(-68, -25), lo = rand(104, 170);
+    const la = rand(-50, -15), lo = rand(6, 54);
     const n = latLonToVec3(la, lo, 0).normalize();
     if (biomeAt(n) === 'mangrove' && heightFor(n) > 0.1) return [la, lo, n];
   }
@@ -3822,9 +3891,9 @@ scatterInstanced(new THREE.OctahedronGeometry(0.5, 0),
   46, ['arctic'], 0.6, 1.6, [0x9fe4ff, 0x5ecdf5, 0xd6f2ff], { lift: 0.35 });
 // southern continents: acacia scrub and mangrove rocks
 scatterInstanced(new THREE.DodecahedronGeometry(0.42, 0), mat(0xffffff, { roughness: 1 }), 34,
-  ['savannah'], 0.5, 1.2, [0x9a8a7a, 0x8a7a6a, 0xb9a28a], { latRange: [-70, -24], shadow: true, lift: 0.1 });
+  ['savannah'], 0.5, 1.2, [0x9a8a7a, 0x8a7a6a, 0xb9a28a], { latRange: [-66, -24], shadow: true, lift: 0.1 });
 scatterInstanced(new THREE.DodecahedronGeometry(0.38, 0), mat(0xffffff, { roughness: 1 }), 26,
-  ['mangrove'], 0.5, 1.2, [0x6b5a3f, 0x7a6a4f, 0x5a4a35], { latRange: [-70, -24], minHeight: 0.1, shadow: true, lift: 0.08 });
+  ['mangrove'], 0.5, 1.2, [0x6b5a3f, 0x7a6a4f, 0x5a4a35], { latRange: [-50, -15], minHeight: 0.1, shadow: true, lift: 0.08 });
 
 // ---------- player: hand-built traveler with a full joint hierarchy ----------
 // hips/legs → knees → ankles, torso → chest → shoulders → elbows → wrists → axe.
@@ -4293,11 +4362,12 @@ const player = new THREE.Group();
     const s = Math.sin(phase), c = Math.cos(phase);
     const k = 1 - Math.exp(-16 * dt);
     const waterH = heightFor(playerPos.clone().normalize());
-    const swimmingNow = waterH < -0.1;
-    const wading = waterH < 0.12 && !swimmingNow;
+    const waterDepth = 0.12 - waterH;
+    const swimmingNow = !inBoat && waterDepth > 0.38;
+    const wading = !inBoat && waterDepth > 0.02 && !swimmingNow;
     wadeBlend += ((wading ? 1 : 0) - wadeBlend) * Math.min(1, 4 * dt);
     swimBlend += ((swimmingNow ? 1 : 0) - swimBlend) * Math.min(1, 5 * dt);
-    if (swimmingNow || inBoat) swimBlend = inBoat ? 0 : swimBlend;
+    if (inBoat) swimBlend = 0;
     swimPhase += dt * (moving ? 6.5 : 1.2);
     const amp = moving ? (0.50 + runF * 0.28) * (1 + 0.45 * wadeBlend) : 0;
 
@@ -4635,16 +4705,16 @@ function updateHeroGlbAnimation(dt, moving, runF, sp = 0) {
   const chopping = chopT > 0;
   const attacking = attackT > 0;
   const building = heroBuildHold && !chopping && !attacking;
+  const isSwim = !!player.userData.swimming && !inBoat;
   let want = 'Idle';
   if (chopping || attacking || building) want = 'Chop';
+  else if (isSwim) want = 'Walk';
   else if (moving) want = runF > 0.42 ? 'Run' : 'Walk';
   setHeroGlbState(want, want === 'Chop' ? 0.08 : 0.18);
   const act = g.actions[g.state];
   if (g.state === 'Chop' && act) {
     const dur = Math.max(0.001, act.getClip().duration);
     if (chopping) {
-      // Drive the authored swing from chopT so the wood hit lands exactly on
-      // CHOP_IMPACT instead of drifting with the mixer clock.
       act.paused = true;
       act.time = Math.min(0.999, chopT) * dur;
     } else if (attacking) {
@@ -4655,12 +4725,18 @@ function updateHeroGlbAnimation(dt, moving, runF, sp = 0) {
       act.setEffectiveTimeScale(1.1);
     }
   } else if (act && g.state === 'Walk') {
-    // Scale cadence with ground speed (like the procedural rig's
-    // phase += dt*(4+sp*0.95)) so the feet keep up instead of gliding.
-    // At the standard 6.2 u/s stroll this lands near the authored 1.1x.
-    act.setEffectiveTimeScale(THREE.MathUtils.clamp(sp / 5.2, 0.6, 1.5));
+    act.setEffectiveTimeScale(isSwim ? (moving ? 1.35 : 0.65) : THREE.MathUtils.clamp(sp / 5.2, 0.6, 1.5));
   } else if (act && g.state === 'Run') {
     act.setEffectiveTimeScale(THREE.MathUtils.clamp(sp / 8, 0.8, 1.5));
+  }
+  if (g.root) {
+    const kTilt = 1 - Math.exp(-8 * dt);
+    const targetRx = isSwim ? 1.15 * swimBlend : 0;
+    const targetRz = isSwim ? Math.sin(swimPhase) * 0.16 * swimBlend : 0;
+    const targetPy = isSwim ? 0.32 * swimBlend : 0;
+    g.root.rotation.x += (targetRx - g.root.rotation.x) * kTilt;
+    g.root.rotation.z += (targetRz - g.root.rotation.z) * kTilt;
+    g.root.position.y += (targetPy - g.root.position.y) * kTilt;
   }
   g.mixer.update(dt);
 }
@@ -5588,9 +5664,13 @@ function renderStats() {
     if (xf) xf.style.width = `${Math.min(100, (RPG.xp / RPG.xpNext) * 100)}%`;
     // Compact status conditions live with the vitals.
     const badges = [];
+    if (player.userData.swimming) {
+      if ((meters.energy ?? 100) <= 0) badges.push('🫧 Sinking!');
+      else if ((meters.energy ?? 100) <= 40) badges.push('😮‍💨 Tiring');
+      else badges.push('🏊 Swimming');
+    } else if ((meters.energy ?? 100) <= 15) badges.push('😮‍💨 Tired');
     if ((meters.hunger ?? 100) <= 25) badges.push('🍽️ Hungry');
     if ((meters.cold ?? 0) >= 60) badges.push('🥶 Freezing');
-    if ((meters.energy ?? 100) <= 15) badges.push('😮‍💨 Tired');
     if ((meters.morale ?? 80) >= 85) badges.push('✨ Inspired');
     if (critBuff > 0) badges.push('💥 Crit x2');
     const badgeHtml = badges.map((b) => `<span class="status-pill">${b}</span>`).join('');
@@ -5606,6 +5686,13 @@ function renderStats() {
     const ef = document.getElementById('energy-fill');
     if (ef) ef.style.width = e + '%';
   }
+  try {
+    const ef = document.getElementById('energy-fill');
+    if (ef) {
+      ef.classList.toggle('swimming', !!player.userData.swimming && meters.energy > 0);
+      ef.classList.toggle('sinking', !!player.userData.swimming && meters.energy <= 0);
+    }
+  } catch { /* headless */ }
   if (statsCache.h !== h) {
     statsCache.h = h;
     const hf = document.getElementById('health-fill');
@@ -6172,7 +6259,11 @@ function killPlayer() {
   const g = document.getElementById('gameover');
   if (g) g.classList.remove('hidden');
   const title = document.getElementById('gameover-title');
-  if (title && lastDamageCause === 'starvation' && combatNow - lastDamageCauseAt < 4) {
+  if (title && lastDamageCause === 'drowning' && combatNow - lastDamageCauseAt < 4) {
+    title.textContent = 'You grew tired and sank beneath the waves…';
+    const eyebrow = document.querySelector('.gameover-eyebrow');
+    if (eyebrow) eyebrow.textContent = 'THE DEEP CLAIMED YOU';
+  } else if (title && lastDamageCause === 'starvation' && combatNow - lastDamageCauseAt < 4) {
     title.textContent = 'Starvation claimed you…';
     const eyebrow = document.querySelector('.gameover-eyebrow');
     if (eyebrow) eyebrow.textContent = 'HUNGER TOOK ITS TOLL';
@@ -6212,6 +6303,7 @@ function respawnAtSave() {
   if ((inv.fish || 0) < keepFish) { inv.fish = keepFish; }
   inv.food = Math.ceil((inv.food || 0) / 2); // half your berries spill, the rest stays
   playerDead = false;
+  swimSink = 0; swimWarnStage = 0; drownTickT = 0;
   lastDamageT = combatNow;
   renderStats();
   toast('🧭 Back on your feet. Axe and fish kept — only lost half your 🍎.');
@@ -9232,7 +9324,7 @@ function ensureDockInteract() {
   const pos = homeSpot(d.s.lat, d.s.lon, 1.15);
   if (!dockInteract) {
     dockInteract = {
-      id: 'home-dock', pos, radius: 5.5, kind: '⚓ DOCK',
+      id: 'home-dock', pos, radius: 6.0, kind: '⚓ DOCK',
       label: () => {
         if (inBoat && craftMode === 'dock') return fishStage === 1 ? 'Reel in the line' : nearestLand(boatN) ? 'Step ashore' : 'Cast a line';
         if (inBoat) return 'Already aboard the sea skiff';
@@ -12319,30 +12411,31 @@ function putSouth(obj, la, lo, h = 0.04, yaw = rand(Math.PI * 2)) {
   return obj;
 }
 for (let i = 0; i < 24; i++) {
-  const spot = findSouthSpot(20, 92, -68, -26, 'savannah', 0.22);
+  const spot = findSouthSpot(66, 162, -66, -24, 'savannah', 0.22);
   if (!spot) continue;
   const tree = putSouth(makeAcacia(rand(2.8, 4.4)), spot[0], spot[1], 0, rand(Math.PI * 2));
   if (i % 4 === 0) addChoppableTree(tree, spot[0], spot[1], 'Acacia', 0xd9b166);
 }
 for (let i = 0; i < 28; i++) {
-  const spot = findSouthSpot(104, 170, -68, -25, 'mangrove', 0.12);
+  const spot = findSouthSpot(6, 54, -50, -15, 'mangrove', 0.12);
   if (!spot) continue;
   const tree = putSouth(makeMangrove(rand(3.1, 4.6)), spot[0], spot[1], 0, rand(Math.PI * 2));
   if (i % 5 === 0) addChoppableTree(tree, spot[0], spot[1], 'Mangrove', 0x3f7a4a);
 }
-// reed & cattail clusters and river stones hugging the meandering river banks
+// reed & cattail clusters and river stones hugging the meandering mountain-to-sea river banks
 const _reedStemM = smat(0x4f7f42, { roughness: 0.88 });
 const _reedLeafM = smat(0x699a4f, { roughness: 0.9 });
 const _cattailM = smat(0x5a361e, { roughness: 0.94 });
 const _riverStoneM = furM('riv-stone', 0x736958, ['#575044', '#8e8471', '#5a6e4c'], { pattern: 'stone', n: 90 });
-for (let i = 0; i < 68; i++) {
-  const la = rand(-64, -24.5);
+for (let i = 0; i < 84; i++) {
+  const la = rand(-45, 38);
   const rc = riverCenterLon(la), rw = riverHalfWidth(la);
+  if (rw < 0.35) continue;
   const side = i % 2 ? -1 : 1;
   const lo = rc + side * (rw + rand(0.75, 2.35));
   const n = latLonToVec3(la, lo, 0).normalize();
   const h = heightFor(n);
-  if (h < 0.03 || h > 0.34) continue;
+  if (h < 0.03 || h > 0.42) continue;
   const clump = new THREE.Group();
   for (let k = 0; k < 3; k++) {
     const rh = rand(0.65, 1.15);
@@ -12361,9 +12454,10 @@ for (let i = 0; i < 68; i++) {
   }
   putSouth(clump, la, lo, -0.02, rand(Math.PI * 2));
 }
-for (let i = 0; i < 22; i++) {
-  const la = rand(-64, -25);
+for (let i = 0; i < 28; i++) {
+  const la = rand(-45, 39);
   const rc = riverCenterLon(la), rw = riverHalfWidth(la);
+  if (rw < 0.35) continue;
   const side = i % 2 ? -1 : 1;
   const lo = rc + side * (rw + rand(0.45, 2.2));
   const n = latLonToVec3(la, lo, 0).normalize();
@@ -12413,33 +12507,76 @@ function addRiverWanderer(meshObj, lat, lon, radius = 2.2, speed = 0.14, phase =
   });
   return entry;
 }
+const WATER_SURFACE_H = 0.12;
+function waterDepthAt(n) { return WATER_SURFACE_H - heightFor(n); }
+function terrainGradTangent(n) {
+  const east = V3(-n.z, 0, n.x);
+  if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
+  east.normalize();
+  const north = new THREE.Vector3().crossVectors(n, east).normalize();
+  const eps = 0.35 / R;
+  const dhE = (heightFor(n.clone().addScaledVector(east, eps).normalize()) - heightFor(n.clone().addScaledVector(east, -eps).normalize())) / (2 * eps);
+  const dhN = (heightFor(n.clone().addScaledVector(north, eps).normalize()) - heightFor(n.clone().addScaledVector(north, -eps).normalize())) / (2 * eps);
+  return east.multiplyScalar(dhE).addScaledVector(north, dhN);
+}
+function pushOffLand(n, minDepth = 0.25) {
+  let cur = n.clone().normalize();
+  for (let i = 0; i < 8; i++) {
+    if (waterDepthAt(cur) >= minDepth) return cur;
+    const g = terrainGradTangent(cur);
+    if (g.lengthSq() < 1e-8) break;
+    cur.addScaledVector(g.normalize(), -0.65 / R).normalize();
+  }
+  return cur;
+}
+function stepInWater(curN, desiredDir, stepDist, minDepth = 0.25) {
+  const d = desiredDir.clone().addScaledVector(curN, -desiredDir.dot(curN));
+  if (d.lengthSq() < 1e-8) return pushOffLand(curN, minDepth);
+  d.normalize();
+  const probeN = curN.clone().addScaledVector(d, (stepDist + 1.4) / R).normalize();
+  let candN = curN.clone().addScaledVector(d, stepDist / R).normalize();
+  if (waterDepthAt(probeN) < minDepth || waterDepthAt(candN) < minDepth) {
+    const grad = terrainGradTangent(probeN);
+    if (grad.lengthSq() > 1e-8) {
+      const up = grad.normalize();
+      const towardLand = d.dot(up);
+      if (towardLand > 0) d.addScaledVector(up, -towardLand * 1.35);
+    }
+    if (d.lengthSq() > 1e-8) candN = curN.clone().addScaledVector(d.normalize(), stepDist / R).normalize();
+  }
+  return pushOffLand(candN, minDepth);
+}
 function addRiverFish(lat, lon, color, phase) {
   const fish = makeFish(color, rand(0.6, 0.9));
-  const home = latLonToVec3(lat, lon, 0).normalize();
+  const home = pushOffLand(latLonToVec3(lat, lon, 0).normalize(), 0.16);
   const east = V3(-home.z, 0, home.x).normalize();
   const north = new THREE.Vector3().crossVectors(home, east).normalize();
+  let curN = home.clone();
   scene.add(fish);
-  tickers.push((t) => {
+  tickers.push((t, dt) => {
     const a = t * 0.42 + phase;
-    const n = home.clone()
-      .addScaledVector(east, Math.sin(a) * 2.4 / R)
-      .addScaledVector(north, Math.cos(a * 0.8) * 1.2 / R)
+    const targetN = home.clone()
+      .addScaledVector(east, Math.sin(a) * 2.2 / R)
+      .addScaledVector(north, Math.cos(a * 0.8) * 1.1 / R)
       .normalize();
-    const p = n.clone().multiplyScalar(R + 0.13 + Math.sin(t * 2 + phase) * 0.025);
-    const dir = east.clone().multiplyScalar(Math.cos(a)).addScaledVector(north, -Math.sin(a * 0.8) * 0.7);
+    const desired = targetN.clone().sub(curN);
+    curN = stepInWater(curN, desired, 2.2 * Math.min(dt, 0.05), 0.16);
+    const p = curN.clone().multiplyScalar(R + 0.13 + Math.sin(t * 2 + phase) * 0.025);
+    const dir = p.clone().sub(fish.position);
+    dir.addScaledVector(curN, -dir.dot(curN));
     if (dir.lengthSq() > 1e-6) faceAlong(fish, p, dir.normalize());
     fish.position.copy(p);
   });
 }
 const riverFishCols = [0x7ad9ff, 0x9fe4ff, 0x6ac7a8, 0xffd97a, 0xff9a8a];
-for (let i = 0; i < 11; i++) {
-  const rLa = rand(-56, -27);
-  addRiverFish(rLa, riverCenterLon(rLa) + rand(-1.6, 1.6), riverFishCols[i % riverFishCols.length], rand(Math.PI * 2));
+for (let i = 0; i < 16; i++) {
+  const rLa = rand(-44, 34);
+  addRiverFish(rLa, riverCenterLon(rLa) + rand(-0.6, 0.6), riverFishCols[i % riverFishCols.length], rand(Math.PI * 2));
 }
-const crocGuardian = addRiverWanderer(makeCrocodile(1.0), -32, riverCenterLon(-32) - 0.5, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 120, meat: 4, pelt: 1, apex: true, biome: 'river', range: 10, resolve: 0.8, offBiomeSpeed: 0.35, offBiomeDamage: 0.25, sight: 11, speed: 6.8, damage: 20, attackRange: 2.8, attackCd: 1.35, warning: '🐊 A crocodile surges out of the shallows — run!' });
-addRiverWanderer(makeCrocodile(0.85), -54, riverCenterLon(-54) + 0.4, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 100, meat: 3, pelt: 1, apex: true, biome: 'river', range: 10, resolve: 0.8, offBiomeSpeed: 0.35, offBiomeDamage: 0.25, sight: 10, speed: 6.6, damage: 18, attackRange: 2.6, attackCd: 1.4, warning: '🐊 The crocodile has you in its sight — run!' });
-addRiverWanderer(makeHippo(1.0), -42, riverCenterLon(-42) - 0.3, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 220, meat: 6, apex: true, biome: 'river', range: 11, resolve: 0.9, offBiomeSpeed: 0.45, offBiomeDamage: 0.35, sight: 12, speed: 6.5, damage: 28, attackRange: 3.1, attackCd: 1.6, warning: '🦛 The hippo charges — get out of the water!' });
-addRiverWanderer(makeHippo(0.9), -48, riverCenterLon(-48) + 0.5, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 190, meat: 5, apex: true, biome: 'river', range: 11, resolve: 0.9, offBiomeSpeed: 0.45, offBiomeDamage: 0.35, sight: 11, speed: 6.3, damage: 25, attackRange: 3.0, attackCd: 1.7, warning: '🦛 A hippo is coming for you — run!' });
+const crocGuardian = addRiverWanderer(makeCrocodile(1.0), -29, riverCenterLon(-29) - 0.3, 2.0, 0.09, 0.4, { name: 'Crocodile', icon: '🐊', hp: 120, meat: 4, pelt: 1, apex: true, biome: 'river', range: 10, resolve: 0.8, offBiomeSpeed: 0.35, offBiomeDamage: 0.25, sight: 11, speed: 6.8, damage: 20, attackRange: 2.8, attackCd: 1.35, warning: '🐊 A crocodile surges out of the shallows — run!' });
+addRiverWanderer(makeCrocodile(0.85), -38, riverCenterLon(-38) + 0.3, 1.8, 0.08, 2.6, { name: 'Crocodile', icon: '🐊', hp: 100, meat: 3, pelt: 1, apex: true, biome: 'river', range: 10, resolve: 0.8, offBiomeSpeed: 0.35, offBiomeDamage: 0.25, sight: 10, speed: 6.6, damage: 18, attackRange: 2.6, attackCd: 1.4, warning: '🐊 The crocodile has you in its sight — run!' });
+addRiverWanderer(makeHippo(1.0), -23, riverCenterLon(-23) - 0.2, 2.2, 0.07, 1.2, { name: 'Hippo', icon: '🦛', hp: 220, meat: 6, apex: true, biome: 'river', range: 11, resolve: 0.9, offBiomeSpeed: 0.45, offBiomeDamage: 0.35, sight: 12, speed: 6.5, damage: 28, attackRange: 3.1, attackCd: 1.6, warning: '🦛 The hippo charges — get out of the water!' });
+addRiverWanderer(makeHippo(0.9), -34, riverCenterLon(-34) + 0.3, 2.0, 0.06, 3.8, { name: 'Hippo', icon: '🦛', hp: 190, meat: 5, apex: true, biome: 'river', range: 11, resolve: 0.9, offBiomeSpeed: 0.45, offBiomeDamage: 0.35, sight: 11, speed: 6.3, damage: 25, attackRange: 3.0, attackCd: 1.7, warning: '🦛 A hippo is coming for you — run!' });
 // Savannah and mangrove wildlife
 const southHunts = {
   lion: { name: 'Lion', icon: '🦁', hp: 140, meat: 5, fur: 1, apex: true, biome: 'savannah', range: 26, resolve: 1.1, offBiomeSpeed: 0.55, offBiomeDamage: 0.4, sight: 15, speed: 7.0, damage: 23, attackRange: 2.9, attackCd: 1.3, warning: '🦁 The lion has caught your scent — run!' },
@@ -12452,40 +12589,42 @@ const southHunts = {
   deer: { name: 'Deer', icon: '🦌', hp: 45, meat: 3, pelt: 1 },
   monkey: { name: 'Monkey', icon: '🐒', hp: 30, meat: 1 },
 };
-const lionGuardian = addAmbientWanderer(makeLion(1.05), -34, 36, 3.4, 0.1, 0.4, southHunts.lion);
-addAmbientWanderer(makeLion(1.05), -47, 56, 3.4, 0.1, 3.1, southHunts.lion);
-for (const [la, lo, ph] of [[-31, 61, 0.8], [-34, 67, 2.4], [-38, 63, 4.9], [-41, 71, 1.7]]) addAmbientWanderer(makeImpala(1), la, lo, 2.8, 0.22, ph, southHunts.impala);
-for (const [la, lo, ph] of [[-42, 42, 1.2], [-45, 47, 3.6], [-48, 51, 5.2]]) addAmbientWanderer(makeWildebeest(1), la, lo, 3.0, 0.12, ph, southHunts.wildebeest);
-for (const [la, lo, ph] of [[-33, 76, 0.6], [-37, 81, 3.9]]) addAmbientWanderer(makeGiraffe(1), la, lo, 3.2, 0.09, ph, southHunts.giraffe);
-addAmbientWanderer(makeRhino(1.05), -52, 33, 3.0, 0.08, 1.5, southHunts.rhino);
-for (const [la, lo, ph] of [[-56, 60, 2.2], [-51, 72, 5.1]]) addAmbientWanderer(makeElephant(1.05), la, lo, 3.4, 0.07, ph, southHunts.elephant);
-const tigerGuardian = addAmbientWanderer(makeTiger(1.05), -35, 128, 3.0, 0.12, 2.8, southHunts.tiger);
-for (const [la, lo, ph] of [[-38, 141, 0.9], [-43, 151, 3.3], [-46, 136, 5.7]]) addAmbientWanderer(makeDeer(), la, lo, 2.7, 0.14, ph, southHunts.deer);
-for (const [la, lo, ph] of [[-31, 116, 0.2], [-34, 123, 2.8]]) addAmbientWanderer(makeMonkey(1), la, lo, 2.0, 0.28, ph, southHunts.monkey);
+const lionGuardian = addAmbientWanderer(makeLion(1.05), -36, 92, 3.4, 0.1, 0.4, southHunts.lion);
+addAmbientWanderer(makeLion(1.05), -46, 114, 3.4, 0.1, 3.1, southHunts.lion);
+for (const [la, lo, ph] of [[-34, 102, 0.8], [-38, 108, 2.4], [-42, 100, 4.9], [-40, 118, 1.7]]) addAmbientWanderer(makeImpala(1), la, lo, 2.8, 0.22, ph, southHunts.impala);
+for (const [la, lo, ph] of [[-42, 86, 1.2], [-46, 94, 3.6], [-49, 104, 5.2]]) addAmbientWanderer(makeWildebeest(1), la, lo, 3.0, 0.12, ph, southHunts.wildebeest);
+for (const [la, lo, ph] of [[-35, 124, 0.6], [-41, 132, 3.9]]) addAmbientWanderer(makeGiraffe(1), la, lo, 3.2, 0.09, ph, southHunts.giraffe);
+addAmbientWanderer(makeRhino(1.05), -50, 120, 3.0, 0.08, 1.5, southHunts.rhino);
+for (const [la, lo, ph] of [[-52, 108, 2.2], [-46, 136, 5.1]]) addAmbientWanderer(makeElephant(1.05), la, lo, 3.4, 0.07, ph, southHunts.elephant);
+const tigerGuardian = addAmbientWanderer(makeTiger(1.05), -31, 36, 3.0, 0.12, 2.8, southHunts.tiger);
+for (const [la, lo, ph] of [[-25, 22, 0.9], [-33, 24, 3.3], [-39, 34, 5.7]]) addAmbientWanderer(makeDeer(), la, lo, 2.7, 0.14, ph, southHunts.deer);
+for (const [la, lo, ph] of [[-24, 30, 0.2], [-30, 41, 2.8]]) addAmbientWanderer(makeMonkey(1), la, lo, 2.0, 0.28, ph, southHunts.monkey);
 
-// sea turtles surface for air in the warm shallows
+// sea turtles surface for air in the warm shallows (kept strictly inside water bounds)
 function addSeaTurtle(lat, lon, phase = rand(Math.PI * 2)) {
   const turtle = makeSeaTurtle();
-  const center = latLonToVec3(lat, lon, 0).normalize();
+  const center = pushOffLand(latLonToVec3(lat, lon, 0).normalize(), 0.20);
   const east = V3(-center.z, 0, center.x);
   if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
   east.normalize();
   const north = new THREE.Vector3().crossVectors(center, east).normalize();
-  turtle.position.copy(center).multiplyScalar(R + 0.11);
+  let curN = center.clone();
+  turtle.position.copy(curN).multiplyScalar(R + 0.11);
   scene.add(turtle);
   const entry = { mesh: turtle, kindTag: 'ambient', dead: false, hp: 30, maxHp: 30, hunt: { name: 'Sea Turtle', icon: '🐢', hp: 30, meat: 2 }, fleeT: 0 };
   ambientWanderers.push(entry);
   attachAmbientHunt(entry);
-  tickers.push((t) => {
+  tickers.push((t, dt) => {
     if (entry.dead) return;
     const a = t * 0.14 + phase;
-    const n = center.clone()
+    const targetN = center.clone()
       .addScaledVector(east, Math.cos(a) * 3.2 / R)
       .addScaledVector(north, Math.sin(a) * 2.4 / R)
       .normalize();
-    const p = n.clone().multiplyScalar(R + 0.11 + Math.sin(t * 1.6 + phase) * 0.02);
-    const d = east.clone().multiplyScalar(-Math.sin(a) * 3.2)
-      .addScaledVector(north, Math.cos(a) * 2.4);
+    curN = stepInWater(curN, targetN.clone().sub(curN), 1.4 * Math.min(dt, 0.05), 0.20);
+    const p = curN.clone().multiplyScalar(R + 0.11 + Math.sin(t * 1.6 + phase) * 0.02);
+    const d = p.clone().sub(turtle.position);
+    d.addScaledVector(curN, -d.dot(curN));
     if (d.lengthSq() > 1e-6) faceAlong(turtle, p, d.normalize());
     turtle.position.copy(p);
     if (entry.interact) entry.interact.pos.copy(p);
@@ -12498,12 +12637,12 @@ function addSeaTurtle(lat, lon, phase = rand(Math.PI * 2)) {
   });
 }
 addSeaTurtle(-22, 295, 0.7);
-addSeaTurtle(-1, 216, 2.9);
+addSeaTurtle(-1, 214, 2.9);
 addSeaTurtle(-6, 244, 4.6);
 
-// --- fish schools: bright surface shoals that make the sea feel alive ---
+// --- fish schools: bright surface shoals kept strictly inside water bounds ---
 function addFishSchool(lat, lon, count = 5, spread = 2.2, phase = rand(Math.PI * 2)) {
-  const center = latLonToVec3(lat, lon, 0).normalize();
+  const center = pushOffLand(latLonToVec3(lat, lon, 0).normalize(), 0.22);
   const east = V3(-center.z, 0, center.x);
   if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
   east.normalize();
@@ -12516,18 +12655,20 @@ function addFishSchool(lat, lon, count = 5, spread = 2.2, phase = rand(Math.PI *
     f.position.copy(n0);
     f.userData.phase = rand(Math.PI * 2);
     scene.add(f);
-    fish.push({ g: f, r: spread * rand(0.55, 1.0), off: rand(Math.PI * 2) });
+    fish.push({ g: f, r: spread * rand(0.55, 1.0), off: rand(Math.PI * 2), curN: center.clone() });
   }
-  tickers.push((t) => {
+  tickers.push((t, dt) => {
+    const stepD = 2.6 * Math.min(dt, 0.05);
     for (const f of fish) {
       const a = t * 0.16 + phase + f.off * 0.18;
-      const n = center.clone()
+      const targetN = center.clone()
         .addScaledVector(east, Math.cos(a) * f.r / R)
         .addScaledVector(north, Math.sin(a) * f.r * 0.72 / R)
         .normalize();
-      const p = n.clone().multiplyScalar(R + 0.13 + Math.sin(t * 2.2 + f.g.userData.phase) * 0.015);
-      const d = east.clone().multiplyScalar(-Math.sin(a) * f.r)
-        .addScaledVector(north, Math.cos(a) * f.r * 0.72);
+      f.curN = stepInWater(f.curN, targetN.clone().sub(f.curN), stepD, 0.22);
+      const p = f.curN.clone().multiplyScalar(R + 0.13 + Math.sin(t * 2.2 + f.g.userData.phase) * 0.015);
+      const d = p.clone().sub(f.g.position);
+      d.addScaledVector(f.curN, -d.dot(f.curN));
       if (d.lengthSq() > 1e-6) faceAlong(f.g, p, d.normalize());
       f.g.position.copy(p);
       f.g.rotateZ(Math.sin(t * 2 + f.g.userData.phase) * 0.08);
@@ -12706,13 +12847,15 @@ const SEA_LIFE = [];
 function addSeaLife(kind, lat, lon, radius = 5, speed = 0.2, opts = {}) {
   const factory = kind === 'shark' ? makeShark : kind === 'dolphin' ? makeDolphin : kind === 'whale' ? makeWhale : makeOrca;
   const obj = factory(opts.scale || 1);
-  const center = latLonToVec3(lat, lon, 0).normalize();
+  const minDepth = kind === 'whale' ? 0.55 : kind === 'orca' ? 0.45 : 0.34;
+  const center = pushOffLand(latLonToVec3(lat, lon, 0).normalize(), minDepth);
   const east = V3(-center.z, 0, center.x);
   if (east.lengthSq() < 1e-6) east.set(1, 0, 0);
   east.normalize();
   const north = new THREE.Vector3().crossVectors(center, east).normalize();
   const phase = opts.phase ?? rand(Math.PI * 2);
-  obj.position.copy(center).multiplyScalar(R + 0.12);
+  let curN = center.clone();
+  obj.position.copy(curN).multiplyScalar(R + 0.12);
   scene.add(obj);
   const hunt = opts.hunt || null;
   const entry = {
@@ -12732,17 +12875,17 @@ function addSeaLife(kind, lat, lon, radius = 5, speed = 0.2, opts = {}) {
       .addScaledVector(east, Math.cos(a) * radius / R)
       .addScaledVector(north, Math.sin(a) * radius * 0.72 / R)
       .normalize();
-    let n = circleN;
+    let desired = circleN.clone().sub(curN);
+    let stepD = Math.max(1.2, speed * radius) * Math.min(dt, 0.05);
     const playerN = player.position.clone().normalize();
-    const playerWater = !inBoat && heightFor(playerN) < -0.1;
+    const playerWater = !inBoat && heightFor(playerN) < -0.15;
     const dPlayer = obj.position.distanceTo(player.position);
     if (hunter && !playerDead && playerWater && dPlayer < 16) {
-      const fromHere = obj.position.clone().normalize();
       const flat = player.position.clone().sub(obj.position);
-      flat.addScaledVector(fromHere, -flat.dot(fromHere));
-      if (dPlayer > (kind === 'orca' ? 3.4 : 2.6) && flat.lengthSq() > 1e-6 && center.angleTo(fromHere) * R < 26) {
-        const chase = fromHere.clone().addScaledVector(flat.normalize(), (opts.chaseSpeed || 5.4) * dt / R).normalize();
-        if (heightFor(chase) < 0.05) n = chase;
+      flat.addScaledVector(curN, -flat.dot(curN));
+      if (dPlayer > (kind === 'orca' ? 3.4 : 2.6) && flat.lengthSq() > 1e-6 && center.angleTo(curN) * R < 26) {
+        desired = flat;
+        stepD = (opts.chaseSpeed || 5.4) * Math.min(dt, 0.05);
       }
       if (dPlayer < (kind === 'orca' ? 3.4 : 2.6) && entry.attackCd <= 0) {
         entry.attackCd = kind === 'orca' ? 1.8 : 1.4;
@@ -12751,6 +12894,8 @@ function addSeaLife(kind, lat, lon, radius = 5, speed = 0.2, opts = {}) {
         sfxShark();
       }
     }
+    const n = stepInWater(curN, desired, stepD, minDepth);
+    curN = n;
     const breach = kind === 'dolphin' ? Math.pow(Math.max(0, Math.sin(t * 0.35 + phase + 1.2)), 6) * 1.15 : 0;
     const p = n.clone().multiplyScalar(R + 0.12 + Math.sin(t * 1.6 + phase) * 0.025 + breach);
     const move = p.clone().sub(obj.position);
@@ -12780,7 +12925,7 @@ function addSeaLife(kind, lat, lon, radius = 5, speed = 0.2, opts = {}) {
   });
   return entry;
 }
-const sharkArtifactGuardian = addSeaLife('shark', 0, 220, 5.5, 0.22, { hunt: SEA_HUNTS.shark, guardian: true, scale: 1.15, chaseSpeed: 5.8 });
+const sharkArtifactGuardian = addSeaLife('shark', -3, 214, 5.0, 0.22, { hunt: SEA_HUNTS.shark, guardian: true, scale: 1.15, chaseSpeed: 5.8 });
 addSeaLife('shark', -18, 245, 6.0, 0.18, { hunt: SEA_HUNTS.shark, scale: 1.0 });
 addSeaLife('dolphin', -4, 240, 4.5, 0.32, { scale: 1.0, phase: 0.7 });
 addSeaLife('dolphin', 7, 251, 4.0, 0.28, { scale: 0.9, phase: 3.2 });
@@ -12889,9 +13034,9 @@ const ARTIFACT_DEFS = [
   { id: 'volcano', name: 'Ember Heart', icon: '🔥', biome: 'Ember Heights', lat: 13, lon: 335, color: 0xff7a2a, tech: 'forge', guardianNpc: 'warden-brann', guardianName: 'Brann the Cinder Warden', taskHint: 'bring Brann 10🪨 + 4🪙', lore: 'A coal that never cools. Metal bends toward it like a dog to a fire.' },
   { id: 'reef', name: 'Tideglass Pearl', icon: '🦪', biome: 'Tideglass Reef', lat: 3, lon: 231, color: 0x7ad9ff, tech: 'fishing-net', guardianName: 'the reef shark', guardianEntry: sharkArtifactGuardian, taskHint: 'defeat the reef shark', lore: 'A pearl with a current inside it. Nets thrown near it come back full.' },
   { id: 'arctic', name: 'Aurora Shard', icon: '🌌', biome: 'Northlight', lat: 55, lon: 103, color: 0xd9b8ff, tech: 'heat-gear', guardianName: 'the polar bear', guardianBear: bears[0], taskHint: 'defeat the polar bear', lore: 'A splinter of frozen sky. It keeps a little of the aurora warm.' },
-  { id: 'savannah', name: 'Lion’s Mane Totem', icon: '🦁', biome: 'Golden Savannah', lat: -33.5, lon: 35.5, color: 0xffd97a, tech: 'bowyer', guardianName: 'the lion', guardianEntry: lionGuardian, taskHint: 'defeat the lion', lore: 'A carved mane around a sun-dark stone. The savannah grass bends away from it.' },
-  { id: 'river', name: 'Riverstone Idol', icon: '🐊', biome: 'The Great River', lat: -31, lon: riverCenterLon(-31), lift: 1.0, color: 0x6ac7a8, tech: 'fish-trap', guardianName: 'the crocodile', guardianEntry: crocGuardian, taskHint: 'defeat the crocodile', lore: 'Smooth green stone, worn by a thousand floods. Fish gather where it is set down.' },
-  { id: 'mangrove', name: 'Tiger’s Eye', icon: '🐅', biome: 'Mangrove Delta', lat: -34.5, lon: 128.5, color: 0xff9a8a, tech: 'thresher', guardianName: 'the tiger', guardianEntry: tigerGuardian, taskHint: 'defeat the tiger', lore: 'A banded amber bead. The delta’s roots seem to part for whoever carries it.' },
+  { id: 'savannah', name: 'Lion’s Mane Totem', icon: '🦁', biome: 'Golden Savannah', lat: -35.5, lon: 91.5, color: 0xffd97a, tech: 'bowyer', guardianName: 'the lion', guardianEntry: lionGuardian, taskHint: 'defeat the lion', lore: 'A carved mane around a sun-dark stone. The savannah grass bends away from it.' },
+  { id: 'river', name: 'Riverstone Idol', icon: '🐊', biome: 'The Great River', lat: -28, lon: riverCenterLon(-28), lift: 1.0, color: 0x6ac7a8, tech: 'fish-trap', guardianName: 'the crocodile', guardianEntry: crocGuardian, taskHint: 'defeat the crocodile', lore: 'Smooth green stone, worn by a thousand floods. Fish gather where it is set down.' },
+  { id: 'mangrove', name: 'Tiger’s Eye', icon: '🐅', biome: 'Mangrove Delta', lat: -31.5, lon: 36.5, color: 0xff9a8a, tech: 'thresher', guardianName: 'the tiger', guardianEntry: tigerGuardian, taskHint: 'defeat the tiger', lore: 'A banded amber bead. The delta’s roots seem to part for whoever carries it.' },
 ];
 for (const def of ARTIFACT_DEFS) addArtifact(def);
 lionGuardian.artifactGuardian = 'savannah';
@@ -14668,6 +14813,7 @@ tickers.push((t) => {
 });
 tickers.push(() => {
   try {
+    heroShadow.visible = !inBoat && !player.userData.swimming;
     const n = playerPos.clone().normalize();
     heroShadow.position.copy(n).multiplyScalar(R + heightFor(n) + 0.06);
     heroShadow.lookAt(0, 0, 0);
@@ -16215,6 +16361,8 @@ function updateBoatControl(dt) {
   ix += jx; iz += -jy;
   if (jx || jy) moveTargetN = null;
   const trimmed = (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0;
+  if (!trimmed) meters.energy = Math.min(100, meters.energy + 4.5 * dt);
+  swimSink = Math.max(0, swimSink - dt * 2.5); swimWarnStage = 0; drownTickT = 0;
   const craftSpeed = craftMode === 'dock' ? (Home.boat ? 7.4 : 3.6) : 5.4;
   let speed = craftSpeed * (trimmed ? 1.4 : 1) * moraleSpeed() * (meters.hunger <= 0 ? 0.82 : 1) * (Buffs.day === Life.day && Buffs.speed ? 1.1 : 1);
   if (meters.energy <= 0) speed *= 0.55;
@@ -16334,12 +16482,20 @@ function updatePlayer(dt) {
   if (jx || jy) { if (activeTask && !taskIsCombat(activeTask.interact)) clearAutoTask(); }
   const running = (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0 ? 1.7 : 1;
   const waterH = heightFor(n);
-  const inWater = waterH < 0.12; // lagoon floor + reef shelf lie below the ocean skin
-  const swimming = waterH < -0.1; // deep water: swim instead of wade
+  const waterDepth = 0.12 - waterH;
+  const wading = waterDepth > 0.02 && waterDepth <= 0.38;
+  const swimming = waterDepth > 0.38;
+  const inWater = wading || swimming;
   player.userData.inWater = inWater;
+  player.userData.wading = wading;
   player.userData.swimming = swimming;
-  let speed = (swimming ? 3.8 : inWater ? 3.2 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1) * Chart.speed * (Buffs.day === Life.day && Buffs.speed ? 1.1 : 1);
-  if (meters.energy <= 0) speed *= 0.5; // exhausted: trudge; eat (F) or stand still to recover
+  let speed = (swimming ? 3.8 : wading ? 3.6 : 6.2) * running * moraleSpeed() * (meters.hunger <= 0 ? 0.8 : 1) * (RPG.perkRun || 1) * Chart.speed * (Buffs.day === Life.day && Buffs.speed ? 1.1 : 1);
+  if (swimming) {
+    if (meters.energy <= 0) speed *= 0.30;
+    else if (meters.energy <= 15) speed *= 0.55;
+  } else if (meters.energy <= 0) {
+    speed *= 0.5; // exhausted on land: trudge; eat (F) or stand still to recover
+  }
   // dash: a short Fleetfoot tumble with i-frames, on a cooldown
   if (dashCd > 0) dashCd -= dt;
   if (dashIFrames > 0) dashIFrames -= dt;
@@ -16379,8 +16535,8 @@ function updatePlayer(dt) {
       else moveDirSmooth.addScaledVector(n, -moveDirSmooth.dot(n)).normalize();
     }
   }
-  // hop
-  if (keys.Space && hopH <= 0.01 && playerVel <= 0) playerVel = 5.2;
+  // hop (disabled while swimming in deep water)
+  if (keys.Space && !swimming && hopH <= 0.01 && playerVel <= 0) playerVel = 5.2;
   playerVel -= 14 * dt;
   hopH += playerVel * dt;
   if (hopH < 0) { hopH = 0; playerVel = 0; }
@@ -16396,11 +16552,49 @@ function updatePlayer(dt) {
     }
   } catch { /* noop */ }
   const nn = playerPos.clone().normalize();
-  const surfH = heightFor(nn) + 0.1 + hopH + (swimming ? (0.02 - heightFor(nn)) : inWater ? -0.35 : 0);
-  // survival meters: running burns energy, standing still restores, arctic chills
   const sprinting = !!(ix || iz) && (keys.ShiftLeft || keys.ShiftRight) && meters.energy > 0;
-  if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt * Chart.stamina);
-  else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + 7 * dt);
+  // Swimming fatigue, sinking & drowning in deep water
+  if (swimming && !playerDead) {
+    const drainRate = (sprinting ? 9.5 : (ix || iz || autoMove) ? 6.5 : 3.5) * Chart.stamina;
+    meters.energy = Math.max(0, meters.energy - drainRate * dt);
+    if (meters.energy <= 40 && swimWarnStage < 1) {
+      swimWarnStage = 1;
+      toast('🌊 Your arms grow heavy — swim to land or find a boat!');
+    }
+    if (meters.energy <= 15 && swimWarnStage < 2) {
+      swimWarnStage = 2;
+      toast('🫧 Exhausted! You’re starting to sink — reach shore or a boat NOW!');
+    }
+    if (meters.energy <= 15 && meters.energy > 0 && Math.random() < dt * 2.5) {
+      burst(player.position.clone().addScaledVector(nn, 0.35), 0xd9f2ff, 3, 0.7);
+    }
+    if (meters.energy <= 0) {
+      swimSink = Math.min(1, swimSink + dt * 0.28);
+      drownTickT += dt;
+      if (drownTickT >= 0.65) {
+        drownTickT = 0;
+        burst(player.position.clone().addScaledVector(nn, 0.45), 0xd9f2ff, 7, 1.1);
+        lastDamageCause = 'drowning';
+        lastDamageCauseAt = combatNow;
+        lastDamageT = combatNow;
+        meters.health = Math.max(0, meters.health - 16);
+        flashDamage();
+        sfxHurt();
+        chime(150);
+        if (meters.health <= 0) killPlayer();
+      }
+    } else {
+      swimSink = Math.max(0, swimSink - dt * 1.5);
+      drownTickT = 0;
+    }
+  } else {
+    swimSink = Math.max(0, swimSink - dt * 2.5);
+    swimWarnStage = 0;
+    drownTickT = 0;
+    if (sprinting) meters.energy = Math.max(0, meters.energy - 5 * dt * Chart.stamina);
+    else if (!(ix || iz)) meters.energy = Math.min(100, meters.energy + (wading ? 4 : 7) * dt);
+  }
+  const surfH = swimming ? (0.12 - 0.56 - swimSink * 0.95) : wading ? (heightFor(nn) + 0.06 + hopH) : (heightFor(nn) + 0.1 + hopH);
   // footstep dust / wading splash: the world answers every step
   updatePlayer._dustT = (updatePlayer._dustT || 0) - dt;
   if ((ix || iz || autoMove) && updatePlayer._dustT <= 0) {
